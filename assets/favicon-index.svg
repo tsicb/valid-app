@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="有効応募分析 データ作成・更新">
+  <rect x="2" y="2" width="28" height="28" rx="4" fill="#148ecc"/>
+  <rect x="34" y="2" width="28" height="28" rx="4" fill="#eeff16"/>
+  <rect x="2" y="34" width="28" height="28" rx="4" fill="#148ecc"/>
+  <rect x="34" y="34" width="28" height="28" rx="4" fill="#148ecc"/>
+</svg>
