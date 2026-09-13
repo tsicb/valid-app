@@ -4117,6 +4117,70 @@
             color: var(--viewer-text-secondary);
         }
 
+
+
+        /* =========================================================
+           Viewer UI v30.22
+           Export actions
+           ========================================================= */
+        .viewer-export-button,
+        .viewer-table-copy-button {
+            appearance: none;
+            border: 1px solid var(--viewer-border-default);
+            border-radius: 9px;
+            background: #fff;
+            color: var(--viewer-brand-blue-deep);
+            font: inherit;
+            font-weight: 850;
+            cursor: pointer;
+            transition: border-color .14s ease, background .14s ease, color .14s ease, box-shadow .14s ease, transform .14s ease;
+        }
+        .viewer-export-button:hover,
+        .viewer-table-copy-button:hover {
+            border-color: var(--viewer-border-strong);
+            background: var(--viewer-brand-blue-soft);
+            color: var(--viewer-brand-blue-deep);
+        }
+        .viewer-export-button:active,
+        .viewer-table-copy-button:active { transform: translateY(1px); }
+        .viewer-export-button:disabled,
+        .viewer-table-copy-button:disabled { opacity: .58; cursor: wait; transform: none; }
+        .viewer-export-button {
+            flex: 0 0 auto;
+            min-height: 36px;
+            padding: 6px 10px;
+            box-shadow: 0 3px 10px -10px rgba(13,103,149,.42);
+            white-space: nowrap;
+            font-size: 9.8px;
+        }
+        .viewer-export-button::before {
+            content: "";
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            margin-right: 6px;
+            border-radius: 2px;
+            background: var(--viewer-accent-yellow);
+            box-shadow: 0 0 0 1px rgba(13,103,149,.12);
+            vertical-align: 1px;
+        }
+        .viewer-table-copy-button {
+            min-height: 31px;
+            padding: 5px 8px;
+            font-size: 9.5px;
+            white-space: nowrap;
+        }
+        .viewer-table-copy-button.copy-success {
+            border-color: rgba(22,163,74,.28);
+            background: #f0fdf4;
+            color: #166534;
+        }
+        .viewer-table-copy-button.copy-error,
+        .viewer-export-button.export-error {
+            border-color: rgba(220,38,38,.24);
+            background: #fff5f5;
+            color: #b91c1c;
+        }
 </style>
 </head>
 <body>
@@ -4221,6 +4285,7 @@
                     <span class="analysis-chart-toggle-knob" aria-hidden="true"></span>
                 </button>
             </div>
+            <button id="viewerExcelExportBtn" type="button" class="viewer-export-button" title="現在表示中の分析表をExcelに出力">Excel出力</button>
             <div id="viewerBasicColumnAxisNote" class="basic-column-axis-note viewer-global-analysis-note">各分析表を年代別に比較します。</div>
         </section>
 
@@ -4780,7 +4845,7 @@
 
 
 const VIEWER_UI_RELEASE =
-    "2026.09.13-viewer-ui-v30.21-age-bound-picker";
+    "2026.09.13-viewer-ui-v30.22-export-and-title-polish";
 const VIEWER_SIDEBAR_STATE_KEY =
     "validApplicationAnalysis.viewerSidebarCollapsed.v1";
 
@@ -4808,11 +4873,52 @@ const BASIC_ANALYSIS_SHORT_LABELS =
         "monthly-salary": "月給",
         "annual-salary": "年収",
         "text-length": "原稿文字数",
-        "main-image": "メイン画像",
+        "main-image": "画像有無",
         "image-count": "画像枚数",
-        "job-video": "動画",
+        "job-video": "動画有無",
         "indeed-tag-count": "タグ数"
     });
+
+const BASIC_ANALYSIS_DISPLAY_TITLES =
+    Object.freeze({
+        "status": "対応状況別応募傾向",
+        "month": "月別応募傾向",
+        "media": "媒体別応募傾向",
+        "enterprise": "企業ID別応募傾向",
+        "name-script": "氏名文字種区分別応募傾向",
+        "residence": "居住都道府県別応募傾向",
+        "job-category": "職種別応募傾向",
+        "employment": "雇用形態別応募傾向",
+        "job-location-name": "求人勤務地名称別応募傾向",
+        "job-prefecture": "勤務地都道府県別応募傾向",
+        "prefecture-match": "勤務地・居住都道府県一致別応募傾向",
+        "job-keyword": "仕事名KW別応募傾向",
+        "job-full-keyword": "仕事名フルKW別応募傾向",
+        "recruit-background": "募集背景別応募傾向",
+        "month-day": "月内応募日別応募傾向",
+        "weekday": "曜日別応募傾向",
+        "hour": "時間帯別応募傾向",
+        "hourly-salary": "時給下限別応募傾向",
+        "daily-salary": "日給下限別応募傾向",
+        "monthly-salary": "月給下限別応募傾向",
+        "annual-salary": "年収下限別応募傾向",
+        "text-length": "求人原稿文字数別応募傾向",
+        "main-image": "画像有無別応募傾向",
+        "image-count": "画像枚数別応募傾向",
+        "job-video": "動画有無別応募傾向",
+        "indeed-tag-count": "Indeed求人タグ数別応募傾向"
+    });
+
+function viewerBasicDisplayTitle(table) {
+    const id = String(table?.id || "");
+    if (BASIC_ANALYSIS_DISPLAY_TITLES[id]) {
+        return BASIC_ANALYSIS_DISPLAY_TITLES[id];
+    }
+    const label = String(table?.label || "").trim();
+    if (!label) return "応募傾向";
+    if (/応募傾向$/.test(label)) return label;
+    return /別$/.test(label) ? `${label}応募傾向` : `${label}別応募傾向`;
+}
 
 const BASIC_ANALYSIS_GROUPS =
     Object.freeze([
@@ -5134,7 +5240,7 @@ function renderBasicSidebarNavigation(
                             <button
                                 type="button"
                                 data-target="analysis-${escapeHtml(table.id)}"
-                                title="${escapeHtml(table.label)}"
+                                title="${escapeHtml(viewerBasicDisplayTitle(table))}"
                             >${escapeHtml(viewerBasicShortLabel(table))}</button>
                         `)
                         .join("");
@@ -8595,7 +8701,7 @@ function renderCrossTable(table, core) {
         <section id="analysis-${escapeHtml(table.id)}" class="card section">
             <div class="section-head">
                 <div>
-                    <h2>${escapeHtml(table.label)}</h2>
+                    <h2>${escapeHtml(viewerBasicDisplayTitle(table))}</h2>
                     <div class="section-note">
                         集計ベース：${escapeHtml(table.baseLabel)} ${core.formatNumber(agg.baseTotal)}件${table.conditionText ? ` ／ ${escapeHtml(table.conditionText)}` : ""}${isAgeAxis ? "" : ` ／ 基本列：${escapeHtml(columnAxisLabel)}`}${basicTableAgeFilterSuffix()}
                     </div>
@@ -8606,7 +8712,7 @@ function renderCrossTable(table, core) {
             </div>
             ${analysisChartPanelHtml(
                 table.id,
-                table.label,
+                viewerBasicDisplayTitle(table),
                 analysisChartRowsFromGroups(agg.groups, { recentLabels, monthLabels: monthMode ? columnLabels : [] }),
                 {
                     mode: monthMode ? "month" : "target",
@@ -8686,7 +8792,7 @@ function renderBasicDistributionTable(table, core) {
         <section id="analysis-${escapeHtml(table.id)}" class="card section">
             <div class="section-head">
                 <div>
-                    <h2>${escapeHtml(table.label)}</h2>
+                    <h2>${escapeHtml(viewerBasicDisplayTitle(table))}</h2>
                     <div class="section-note">
                         集計ベース：${escapeHtml(table.baseLabel)} ${core.formatNumber(agg.baseTotal)}件${table.conditionText ? ` ／ ${escapeHtml(table.conditionText)}` : ""} ／ 基本列自身のため構成比表示${basicTableAgeFilterSuffix()}
                     </div>
@@ -8697,7 +8803,7 @@ function renderBasicDistributionTable(table, core) {
             </div>
             ${analysisChartPanelHtml(
                 table.id,
-                table.label,
+                viewerBasicDisplayTitle(table),
                 analysisChartRowsFromGroups(agg.groups),
                 {
                     mode: monthMode ? "month" : "target",
@@ -9739,6 +9845,7 @@ function renderCustomResult(result, core) {
     const meta = document.getElementById("customMeta");
     const output = document.getElementById("customResult");
     message?.classList.add("hidden"); meta?.classList.add("hidden"); if (output) output.innerHTML = "";
+    refreshTableCopyActions(document.getElementById("reportMain"));
     if (!result.ok) {
         const messages = { AXIS_REQUIRED:"行軸1と列軸を選択してください。", DUPLICATE_AXIS:"同じ分析軸を複数の行・列へ重複指定することはできません。", NO_DATA:"現在の条件では集計対象データがありません。", TOO_MANY_COLUMNS:`列軸のカテゴリが ${result.columnCount || 0} 種類あります。100種類を超えるため表示できません。別の列軸を選択してください。` };
         if (message) { message.textContent = messages[result.reason] || "カスタム分析を表示できません。"; message.classList.remove("hidden"); }
@@ -9759,6 +9866,7 @@ function renderCustomResult(result, core) {
     bindCustomPivotImageFallbacks(output);
     applyCustomPivotStickyGeometry(result,output);
     enhanceReportTables(output);
+    refreshTableCopyActions(document.getElementById("reportMain"));
 }
 function bindCustomAnalysisControls() {
     ["customRowAxis1","customRowAxis2","customRowAxis3","customColAxis"].forEach(id => {
@@ -9785,6 +9893,7 @@ function initializeCustomAnalysis(data, viewerResult, core) {
         if (message) { message.textContent = "カスタム分析には、分析レポート表示設定でONになっている分析軸が2種類以上必要です。"; message.classList.remove("hidden"); }
         document.getElementById("customMeta")?.classList.add("hidden");
         const output = document.getElementById("customResult"); if (output) output.innerHTML = "";
+        refreshTableCopyActions(document.getElementById("reportMain"));
         return;
     }
     ["customRowAxis1","customRowAxis2","customRowAxis3","customColAxis"].map(id => document.getElementById(id)).forEach(control => { if (control) control.disabled = false; });
@@ -9794,6 +9903,668 @@ function initializeCustomAnalysis(data, viewerResult, core) {
     runCustomAnalysisNow();
 }
 
+
+
+/* =========================================================
+   Viewer UI v30.22
+   Table copy + dependency-free XLSX export
+   ========================================================= */
+function viewerExportNormalizeText(value) {
+    return String(value ?? "")
+        .replace(/\u00a0/g, " ")
+        .replace(/[\t\r\n]+/g, " ")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+}
+
+function viewerExportCellText(cell) {
+    if (!cell) return "";
+
+    const pivotAxis = String(cell.dataset?.pivotAxis || "");
+    if (
+        pivotAxis === "TOP画像ファイル名" ||
+        cell.querySelector?.(".top-image-detail-cell")
+    ) {
+        return viewerExportNormalizeText(
+            cell.dataset?.sortValue ||
+            cell.dataset?.pivotValue ||
+            "TOP画像なし"
+        );
+    }
+
+    const detailMain = cell.querySelector?.(".detail-header-main");
+    if (detailMain) {
+        const detailSub = cell.querySelector(".detail-header-sub");
+        return viewerExportNormalizeText(
+            `${detailMain.textContent || ""}${detailSub?.textContent || ""}`
+        );
+    }
+
+    const targetMain = cell.querySelector?.(".target-header-main");
+    if (targetMain) {
+        const targetAge = viewerExportNormalizeText(
+            cell.querySelector(".target-header-age")?.textContent || ""
+        );
+        const main = viewerExportNormalizeText(targetMain.textContent || "");
+        return targetAge ? `${main}（${targetAge}）` : main;
+    }
+
+    const clone = cell.cloneNode(true);
+    clone.querySelectorAll(
+        ".table-sort-indicator,[aria-hidden='true'],script,style"
+    ).forEach(element => element.remove());
+
+    return viewerExportNormalizeText(clone.textContent || "");
+}
+
+function viewerExtractTableRows(table) {
+    if (!table) return [];
+
+    return Array.from(table.rows || []).map(row => {
+        const values = [];
+        Array.from(row.cells || []).forEach(cell => {
+            values.push(viewerExportCellText(cell));
+            const span = Math.max(1, Number(cell.colSpan || 1));
+            for (let i = 1; i < span; i += 1) values.push("");
+        });
+
+        let kind = "normal";
+        if (row.closest("thead")) kind = "header";
+        else if (row.classList.contains("total-row")) kind = "total";
+        else if (row.classList.contains("forecast-row")) kind = "forecast";
+        else if (row.classList.contains("composition-row")) kind = "composition";
+
+        return { values, kind };
+    });
+}
+
+function viewerRowsToTsv(rows) {
+    return rows
+        .map(row => row.values.map(value => viewerExportNormalizeText(value)).join("\t"))
+        .join("\n");
+}
+
+async function viewerWriteClipboardText(text) {
+    if (navigator.clipboard?.writeText) {
+        try {
+            await navigator.clipboard.writeText(text);
+            return;
+        } catch (_) {}
+    }
+
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    textarea.style.top = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const ok = document.execCommand("copy");
+    textarea.remove();
+    if (!ok) throw new Error("clipboard copy failed");
+}
+
+function viewerSetTransientButtonState(button, text, className = "", duration = 1400) {
+    if (!button) return;
+    const original = button.dataset.defaultLabel || button.textContent || "";
+    button.dataset.defaultLabel = original;
+    button.textContent = text;
+    button.classList.remove("copy-success", "copy-error", "export-error");
+    if (className) button.classList.add(className);
+    window.setTimeout(() => {
+        if (!document.body.contains(button)) return;
+        button.textContent = button.dataset.defaultLabel || original;
+        button.classList.remove("copy-success", "copy-error", "export-error");
+    }, duration);
+}
+
+async function viewerCopyTableFromSection(section, button) {
+    const table = section?.querySelector(".table-wrap table, #customResult table, table");
+    if (!table) return;
+
+    const rows = viewerExtractTableRows(table);
+    if (!rows.length) return;
+
+    try {
+        button.disabled = true;
+        await viewerWriteClipboardText(viewerRowsToTsv(rows));
+        viewerSetTransientButtonState(button, "コピーしました", "copy-success");
+    } catch (error) {
+        console.error("table copy failed", error);
+        viewerSetTransientButtonState(button, "コピー失敗", "copy-error", 1800);
+    } finally {
+        button.disabled = false;
+    }
+}
+
+function refreshTableCopyActions(root = document.getElementById("reportMain")) {
+    if (!root) return;
+
+    root.querySelectorAll("section.card.section").forEach(section => {
+        const head = section.querySelector(":scope > .section-head");
+        if (!head) return;
+
+        const table = section.querySelector(".table-wrap table, #customResult table");
+        let button = head.querySelector(".viewer-table-copy-button");
+
+        if (!table || section.classList.contains("hidden")) {
+            button?.remove();
+            return;
+        }
+
+        let actions = head.querySelector(":scope > .section-head-actions");
+        if (!actions) {
+            actions = document.createElement("div");
+            actions.className = "section-head-actions";
+            head.appendChild(actions);
+        }
+
+        if (!button) {
+            button = document.createElement("button");
+            button.type = "button";
+            button.className = "viewer-table-copy-button";
+            button.textContent = "表をコピー";
+            button.dataset.defaultLabel = "表をコピー";
+            button.title = "この表をExcelやGoogle Sheetsへ貼り付けられる形式でコピー";
+            button.addEventListener("click", () => viewerCopyTableFromSection(section, button));
+            actions.appendChild(button);
+        }
+    });
+}
+
+function viewerXmlEscape(value) {
+    return String(value ?? "")
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&apos;");
+}
+
+function viewerExcelColumnName(index) {
+    let value = Number(index) + 1;
+    let out = "";
+    while (value > 0) {
+        const remainder = (value - 1) % 26;
+        out = String.fromCharCode(65 + remainder) + out;
+        value = Math.floor((value - 1) / 26);
+    }
+    return out;
+}
+
+function viewerExcelApproxWidth(value) {
+    const text = String(value ?? "");
+    let width = 0;
+    for (const char of text) {
+        width += char.charCodeAt(0) > 255 ? 1.8 : 1;
+    }
+    return Math.min(40, Math.max(8, width + 2));
+}
+
+function viewerExcelParsedValue(value) {
+    const text = viewerExportNormalizeText(value);
+    if (!text || text === "—") return { type:"string", value:text };
+
+    const percent = text.match(/^([-+]?\d+(?:\.\d+)?)%$/);
+    if (percent) {
+        return { type:"percent", value:Number(percent[1]) / 100 };
+    }
+
+    const compact = text.replace(/,/g, "");
+    if (/^[-+]?\d+(?:\.\d+)?$/.test(compact)) {
+        const number = Number(compact);
+        if (Number.isFinite(number)) {
+            return {
+                type:Number.isInteger(number) ? "integer" : "decimal",
+                value:number
+            };
+        }
+    }
+
+    return { type:"string", value:text };
+}
+
+function viewerExcelStyleIndex(rowKind, parsedType) {
+    if (rowKind === "header") return 1;
+    if (rowKind === "total") {
+        if (parsedType === "integer") return 7;
+        if (parsedType === "decimal") return 8;
+        if (parsedType === "percent") return 9;
+        return 6;
+    }
+    if (rowKind === "forecast") {
+        if (parsedType === "integer") return 13;
+        if (parsedType === "decimal") return 14;
+        if (parsedType === "percent") return 15;
+        return 12;
+    }
+    if (parsedType === "integer") return 3;
+    if (parsedType === "decimal") return 4;
+    if (parsedType === "percent") return 5;
+    return 2;
+}
+
+function viewerBuildWorksheetXml(sheet) {
+    const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
+    const columnCount = Math.max(1, ...rows.map(row => row.values?.length || 0));
+    const widths = Array.from({ length:columnCount }, (_, columnIndex) => {
+        let width = 8;
+        rows.forEach(row => {
+            width = Math.max(width, viewerExcelApproxWidth(row.values?.[columnIndex] || ""));
+        });
+        return Math.min(columnIndex === 0 ? 38 : 26, width);
+    });
+
+    const rowXml = rows.map((row, rowIndex) => {
+        const cells = Array.from({ length:columnCount }, (_, columnIndex) => {
+            const ref = `${viewerExcelColumnName(columnIndex)}${rowIndex + 1}`;
+            const parsed = viewerExcelParsedValue(row.values?.[columnIndex] ?? "");
+            const style = sheet.metaSheet
+                ? ((row.kind || "normal") === "header" ? 1 : (columnIndex === 0 ? 10 : 11))
+                : viewerExcelStyleIndex(row.kind || "normal", parsed.type);
+
+            if (parsed.type === "integer" || parsed.type === "decimal" || parsed.type === "percent") {
+                return `<c r="${ref}" s="${style}"><v>${parsed.value}</v></c>`;
+            }
+
+            return `<c r="${ref}" t="inlineStr" s="${style}"><is><t xml:space="preserve">${viewerXmlEscape(parsed.value)}</t></is></c>`;
+        }).join("");
+        return `<row r="${rowIndex + 1}">${cells}</row>`;
+    }).join("");
+
+    const colsXml = widths.map((width, index) =>
+        `<col min="${index + 1}" max="${index + 1}" width="${width.toFixed(2)}" customWidth="1"/>`
+    ).join("");
+
+    const endRef = `${viewerExcelColumnName(columnCount - 1)}${Math.max(1, rows.length)}`;
+    const freezeXml = rows.length > 1 && !sheet.metaSheet
+        ? '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>'
+        : "";
+    const autoFilterXml = rows.length > 1 && !sheet.metaSheet
+        ? `<autoFilter ref="A1:${endRef}"/>`
+        : "";
+
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+        `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
+        `<dimension ref="A1:${endRef}"/>` +
+        `<sheetViews><sheetView workbookViewId="0">${freezeXml}</sheetView></sheetViews>` +
+        `<sheetFormatPr defaultRowHeight="15"/>` +
+        `<cols>${colsXml}</cols>` +
+        `<sheetData>${rowXml}</sheetData>` +
+        `${autoFilterXml}` +
+        `</worksheet>`;
+}
+
+function viewerXlsxStylesXml() {
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="3">
+    <font><sz val="11"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><color rgb="FF173043"/><sz val="11"/><name val="Calibri"/><family val="2"/></font>
+  </fonts>
+  <fills count="5">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF148ECC"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFEAF6FC"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFCFEE6"/><bgColor indexed="64"/></patternFill></fill>
+  </fills>
+  <borders count="2">
+    <border><left/><right/><top/><bottom/><diagonal/></border>
+    <border><left style="thin"><color rgb="FFD8E5EC"/></left><right style="thin"><color rgb="FFD8E5EC"/></right><top style="thin"><color rgb="FFD8E5EC"/></top><bottom style="thin"><color rgb="FFD8E5EC"/></bottom><diagonal/></border>
+  </borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="16">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFill="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="3" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>
+    <xf numFmtId="4" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>
+    <xf numFmtId="10" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>
+    <xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFill="1" applyFont="1" applyBorder="1"/>
+    <xf numFmtId="3" fontId="2" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1"/>
+    <xf numFmtId="4" fontId="2" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1"/>
+    <xf numFmtId="10" fontId="2" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1"/>
+    <xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFill="1" applyFont="1" applyBorder="1"/>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="4" borderId="1" xfId="0" applyFill="1" applyFont="1" applyBorder="1"/>
+    <xf numFmtId="3" fontId="2" fillId="4" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1"/>
+    <xf numFmtId="4" fontId="2" fillId="4" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1"/>
+    <xf numFmtId="10" fontId="2" fillId="4" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyFont="1" applyBorder="1"/>
+  </cellXfs>
+  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+}
+
+function viewerSanitizeSheetName(value, fallback = "分析") {
+    const raw = viewerExportNormalizeText(value)
+        .replace(/[\\\/\?\*\[\]:]/g, "_")
+        .replace(/^'+|'+$/g, "") || fallback;
+    return raw.slice(0, 31);
+}
+
+function viewerUniqueSheetNames(sheets) {
+    const used = new Set();
+    return sheets.map((sheet, index) => {
+        const base = viewerSanitizeSheetName(sheet.name, `分析${index + 1}`);
+        let name = base;
+        let suffix = 2;
+        while (used.has(name)) {
+            const tail = `_${suffix}`;
+            name = `${base.slice(0, Math.max(1, 31 - tail.length))}${tail}`;
+            suffix += 1;
+        }
+        used.add(name);
+        return { ...sheet, name };
+    });
+}
+
+function viewerXlsxContentTypesXml(sheetCount) {
+    const sheetOverrides = Array.from({ length:sheetCount }, (_, index) =>
+        `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`
+    ).join("");
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+        `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+        `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+        `<Default Extension="xml" ContentType="application/xml"/>` +
+        `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
+        `<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>` +
+        sheetOverrides +
+        `</Types>`;
+}
+
+function viewerXlsxRootRelsXml() {
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+        `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>` +
+        `</Relationships>`;
+}
+
+function viewerXlsxWorkbookXml(sheets) {
+    const nodes = sheets.map((sheet, index) =>
+        `<sheet name="${viewerXmlEscape(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`
+    ).join("");
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+        `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+        `<bookViews><workbookView xWindow="0" yWindow="0" windowWidth="22000" windowHeight="14000"/></bookViews>` +
+        `<sheets>${nodes}</sheets>` +
+        `</workbook>`;
+}
+
+function viewerXlsxWorkbookRelsXml(sheetCount) {
+    const sheetRels = Array.from({ length:sheetCount }, (_, index) =>
+        `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`
+    ).join("");
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+        sheetRels +
+        `<Relationship Id="rId${sheetCount + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>` +
+        `</Relationships>`;
+}
+
+let viewerCrcTable = null;
+function viewerGetCrcTable() {
+    if (viewerCrcTable) return viewerCrcTable;
+    viewerCrcTable = new Uint32Array(256);
+    for (let n = 0; n < 256; n += 1) {
+        let c = n;
+        for (let k = 0; k < 8; k += 1) {
+            c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        }
+        viewerCrcTable[n] = c >>> 0;
+    }
+    return viewerCrcTable;
+}
+
+function viewerCrc32(bytes) {
+    const table = viewerGetCrcTable();
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i += 1) {
+        crc = table[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    }
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function viewerDosDateTime(date = new Date()) {
+    const year = Math.max(1980, date.getFullYear());
+    const time = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+    const day = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+    return { time, day };
+}
+
+function viewerZipHeader(size, crc, nameLength, offset, central = false) {
+    const bytes = new Uint8Array(central ? 46 : 30);
+    const view = new DataView(bytes.buffer);
+    if (central) {
+        view.setUint32(0, 0x02014b50, true);
+        view.setUint16(4, 20, true);
+        view.setUint16(6, 20, true);
+        view.setUint16(8, 0x0800, true);
+        view.setUint16(10, 0, true);
+        const dt = viewerDosDateTime();
+        view.setUint16(12, dt.time, true);
+        view.setUint16(14, dt.day, true);
+        view.setUint32(16, crc, true);
+        view.setUint32(20, size, true);
+        view.setUint32(24, size, true);
+        view.setUint16(28, nameLength, true);
+        view.setUint16(30, 0, true);
+        view.setUint16(32, 0, true);
+        view.setUint16(34, 0, true);
+        view.setUint16(36, 0, true);
+        view.setUint32(38, 0, true);
+        view.setUint32(42, offset, true);
+    } else {
+        view.setUint32(0, 0x04034b50, true);
+        view.setUint16(4, 20, true);
+        view.setUint16(6, 0x0800, true);
+        view.setUint16(8, 0, true);
+        const dt = viewerDosDateTime();
+        view.setUint16(10, dt.time, true);
+        view.setUint16(12, dt.day, true);
+        view.setUint32(14, crc, true);
+        view.setUint32(18, size, true);
+        view.setUint32(22, size, true);
+        view.setUint16(26, nameLength, true);
+        view.setUint16(28, 0, true);
+    }
+    return bytes;
+}
+
+function viewerZipEndRecord(entryCount, centralSize, centralOffset) {
+    const bytes = new Uint8Array(22);
+    const view = new DataView(bytes.buffer);
+    view.setUint32(0, 0x06054b50, true);
+    view.setUint16(4, 0, true);
+    view.setUint16(6, 0, true);
+    view.setUint16(8, entryCount, true);
+    view.setUint16(10, entryCount, true);
+    view.setUint32(12, centralSize, true);
+    view.setUint32(16, centralOffset, true);
+    view.setUint16(20, 0, true);
+    return bytes;
+}
+
+function viewerCreateStoredZip(files) {
+    const encoder = new TextEncoder();
+    const localChunks = [];
+    const centralChunks = [];
+    const entries = [];
+    let offset = 0;
+
+    Object.entries(files).forEach(([name, content]) => {
+        const nameBytes = encoder.encode(name);
+        const dataBytes = content instanceof Uint8Array ? content : encoder.encode(String(content));
+        const crc = viewerCrc32(dataBytes);
+        const header = viewerZipHeader(dataBytes.length, crc, nameBytes.length, offset, false);
+        localChunks.push(header, nameBytes, dataBytes);
+        entries.push({ nameBytes, dataBytes, crc, offset });
+        offset += header.length + nameBytes.length + dataBytes.length;
+    });
+
+    const centralOffset = offset;
+    entries.forEach(entry => {
+        const header = viewerZipHeader(entry.dataBytes.length, entry.crc, entry.nameBytes.length, entry.offset, true);
+        centralChunks.push(header, entry.nameBytes);
+        offset += header.length + entry.nameBytes.length;
+    });
+
+    const centralSize = offset - centralOffset;
+    const end = viewerZipEndRecord(entries.length, centralSize, centralOffset);
+    return new Blob([...localChunks, ...centralChunks, end], {
+        type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    });
+}
+
+function viewerBuildXlsxBlob(inputSheets) {
+    const sheets = viewerUniqueSheetNames(inputSheets);
+    const files = {
+        "[Content_Types].xml": viewerXlsxContentTypesXml(sheets.length),
+        "_rels/.rels": viewerXlsxRootRelsXml(),
+        "xl/workbook.xml": viewerXlsxWorkbookXml(sheets),
+        "xl/_rels/workbook.xml.rels": viewerXlsxWorkbookRelsXml(sheets.length),
+        "xl/styles.xml": viewerXlsxStylesXml()
+    };
+
+    sheets.forEach((sheet, index) => {
+        files[`xl/worksheets/sheet${index + 1}.xml`] = viewerBuildWorksheetXml(sheet);
+    });
+
+    return viewerCreateStoredZip(files);
+}
+
+function viewerExportConditionRows() {
+    const reportName = viewerExportNormalizeText(
+        document.getElementById("shareTargetName")?.textContent ||
+        document.getElementById("reportTitle")?.textContent ||
+        "有効応募分析レポート"
+    );
+    const now = new Date();
+    const exportedAt = now.toLocaleString("ja-JP", { hour12:false });
+    return [
+        { values:["項目", "現在の分析条件"], kind:"header" },
+        { values:["分析対象", reportName], kind:"normal" },
+        { values:["出力日時", exportedAt], kind:"normal" },
+        { values:["集計期間", periodSummaryLabel()], kind:"normal" },
+        { values:["集計対象年齢", globalAgeFilterSummaryLabel()], kind:"normal" },
+        { values:["基本表示", currentViewerBasicColumnAxis === "month" ? "応募年月別" : "年代別"], kind:"normal" },
+        { values:["ターゲット年齢", targetAgeSummaryLabel()], kind:"normal" },
+        { values:["グラフ表示", currentViewerAnalysisChartsEnabled ? "ON" : "OFF"], kind:"normal" },
+        { values:["出力ルール", "現在表示中の分析表と現在のソート順を反映"], kind:"normal" }
+    ];
+}
+
+function viewerExportKpiRows() {
+    const value = id => viewerExportNormalizeText(document.getElementById(id)?.textContent || "");
+    return [
+        { values:["指標", "値", "補足"], kind:"header" },
+        { values:["分析対象応募数", value("kpiTotal"), value("kpiTotalLabel")], kind:"normal" },
+        { values:["ターゲット応募数", value("kpiTarget"), value("kpiTargetLabel")], kind:"normal" },
+        { values:["ターゲット率", value("kpiTargetRate"), "分析対象応募に占める割合"], kind:"normal" },
+        { values:["求人データ突合率", value("kpiMatchedRate"), value("kpiMatched")], kind:"normal" }
+    ];
+}
+
+function viewerVisibleTableSections() {
+    return Array.from(document.querySelectorAll("#reportMain section.card.section"))
+        .filter(section => !section.classList.contains("hidden"))
+        .map(section => ({
+            section,
+            table:section.querySelector(".table-wrap table, #customResult table")
+        }))
+        .filter(item => item.table);
+}
+
+function viewerCollectExportSheets() {
+    const sheets = [
+        { name:"00_分析条件", rows:viewerExportConditionRows(), metaSheet:true },
+        { name:"01_主要指標", rows:viewerExportKpiRows(), metaSheet:false }
+    ];
+
+    let sequence = 2;
+    viewerVisibleTableSections().forEach(({ section, table }) => {
+        const title = viewerExportNormalizeText(
+            section.querySelector(":scope > .section-head h2")?.textContent ||
+            section.querySelector("h2")?.textContent ||
+            `分析${sequence}`
+        );
+        const rows = viewerExtractTableRows(table);
+        if (!rows.length) return;
+        sheets.push({
+            name:`${String(sequence).padStart(2, "0")}_${title}`,
+            rows,
+            metaSheet:false
+        });
+        sequence += 1;
+    });
+
+    return sheets;
+}
+
+function viewerSafeFileName(value) {
+    return viewerExportNormalizeText(value)
+        .replace(/[\\/:*?"<>|]/g, "_")
+        .replace(/\s+/g, "_")
+        .slice(0, 80) || "有効応募分析";
+}
+
+function viewerDownloadBlob(blob, fileName) {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function viewerExportCurrentAnalysisToExcel(button) {
+    if (!currentViewerData) return;
+    const defaultLabel = button?.dataset?.defaultLabel || "Excel出力";
+    try {
+        if (button) {
+            button.dataset.defaultLabel = defaultLabel;
+            button.disabled = true;
+            button.textContent = "作成中...";
+        }
+
+        await new Promise(resolve => requestAnimationFrame(() => resolve()));
+        const sheets = viewerCollectExportSheets();
+        const blob = viewerBuildXlsxBlob(sheets);
+        const now = new Date();
+        const stamp = [
+            now.getFullYear(),
+            String(now.getMonth() + 1).padStart(2, "0"),
+            String(now.getDate()).padStart(2, "0")
+        ].join("") + "_" + [
+            String(now.getHours()).padStart(2, "0"),
+            String(now.getMinutes()).padStart(2, "0")
+        ].join("");
+        const reportName = viewerSafeFileName(
+            document.getElementById("shareTargetName")?.textContent || "有効応募分析"
+        );
+        viewerDownloadBlob(blob, `${reportName}_分析レポート_${stamp}.xlsx`);
+        viewerSetTransientButtonState(button, "出力しました", "", 1600);
+    } catch (error) {
+        console.error("excel export failed", error);
+        viewerSetTransientButtonState(button, "出力失敗", "export-error", 1900);
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+function initializeViewerExportControls() {
+    const excelButton = document.getElementById("viewerExcelExportBtn");
+    if (excelButton && excelButton.dataset.bound !== "1") {
+        excelButton.dataset.bound = "1";
+        excelButton.dataset.defaultLabel = "Excel出力";
+        excelButton.addEventListener("click", () => viewerExportCurrentAnalysisToExcel(excelButton));
+    }
+}
 
 
 let currentViewerData =
@@ -11834,6 +12605,7 @@ function renderReport(data) {
     refreshDetailSidebarNavigation();
     initializeAnalysisChartPanels(document.getElementById("reportMain"));
     enhanceReportTables(document.getElementById("reportMain"));
+    refreshTableCopyActions(document.getElementById("reportMain"));
     requestAnimationFrame(refreshViewerSidebarObserver);
 
     stopViewerLoadingTimer();
@@ -13429,6 +14201,7 @@ function stopViewerLoadingTimer() {
             .addEventListener("click", loadReport);
 
         initializeViewerDesktopUx();
+        initializeViewerExportControls();
         loadReport();
     </script>
 </body>
