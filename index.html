@@ -1178,7 +1178,7 @@
         // 求人CSVはJOIN用Mapとは別に全行を保持する。
         // 同一仕事番号の重複行も残し、画像URL解決候補・将来の参照用に使用する。
         let globalJobSnapshot = [];
-        // Cloudflare Workerで解決した、生成Sheet用「32_画像マスタ」の初期値。
+        // Cloudflare Workerで解決した、生成Sheet用「41_画像マスタ」の初期値。
         let globalImageMasterInitial = [];
         let globalImageLookupStats = {
             targetCount: 0,
@@ -9612,7 +9612,7 @@ function suggestManagedReportName() {
 
     if (!suggested) {
         setManagedReportStatus(
-            "先に33_企業IDマスタの表示名を入力してください。",
+            "先に42_企業IDマスタの表示名を入力してください。",
             "warning"
         );
         return;

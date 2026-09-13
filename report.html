@@ -64,33 +64,41 @@
             align-items: center;
             justify-content: space-between;
             gap: 16px;
-            background: #fffbeb;
-            border: 1px solid #fde68a;
+            background: linear-gradient(90deg, #f6fbfe 0%, #ffffff 78%, #fdffe9 100%);
+            border: 1px solid #cfe4ee;
+            border-left: 4px solid #148ecc;
             border-radius: 14px;
             padding: 13px 15px;
             margin-bottom: 14px;
         }
         .share-guard-label {
-            color: #92400e;
+            color: #0d6795;
             font-size: 11px;
             font-weight: 800;
             margin-bottom: 3px;
         }
         .share-guard-name {
-            color: #78350f;
+            color: #123047;
             font-size: 16px;
             font-weight: 850;
             overflow-wrap: anywhere;
         }
         .share-ok {
             flex: 0 0 auto;
-            background: #ecfdf5;
-            color: #047857;
-            border: 1px solid #a7f3d0;
             border-radius: 999px;
             padding: 5px 9px;
             font-size: 10px;
             font-weight: 800;
+        }
+        .share-ok.share-status-saving {
+            background: #fff7ed;
+            color: #9a3412;
+            border: 1px solid #fed7aa;
+        }
+        .share-ok.share-status-error {
+            background: #fef2f2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
         }
         .share-warning {
             background: #fef2f2;
@@ -1422,6 +1430,79 @@
             min-height: 42px;
         }
 
+        .age-bound-picker {
+            display: grid;
+            gap: 18px;
+        }
+
+        .age-bound-section {
+            display: grid;
+            gap: 9px;
+            padding: 12px;
+            border: 1px solid rgba(20,142,204,.12);
+            border-radius: 12px;
+            background: #fbfdfe;
+        }
+
+        .age-bound-section-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .age-bound-title {
+            color: var(--viewer-brand-blue-dark);
+            font-size: 12px;
+            font-weight: 850;
+        }
+
+        .age-bound-help {
+            color: var(--viewer-text-secondary);
+            font-size: 9.5px;
+            line-height: 1.5;
+            text-align: right;
+        }
+
+        .age-bound-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 7px;
+        }
+
+        .age-bound-button {
+            min-height: 38px;
+            border: 1px solid rgba(20,142,204,.12);
+            border-radius: 9px;
+            background: #fff;
+            color: #40596a;
+            cursor: pointer;
+            font-size: 10.5px;
+            font-weight: 700;
+        }
+
+        .age-bound-button:hover:not(:disabled) {
+            border-color: var(--viewer-border-strong);
+            background: var(--viewer-brand-blue-soft);
+            color: var(--viewer-brand-blue-dark);
+        }
+
+        .age-bound-button.selected {
+            border-color: var(--viewer-brand-blue);
+            background: var(--viewer-brand-blue);
+            color: #fff;
+            box-shadow: inset 0 -2px 0 rgba(238,255,22,.78);
+        }
+
+        .age-bound-button.custom-value:not(.selected) {
+            border-style: dashed;
+        }
+
+        .age-bound-button:disabled {
+            opacity: .32;
+            cursor: not-allowed;
+        }
+
         .range-accent {
             display: inline-block;
             width: 7px;
@@ -1451,9 +1532,18 @@
                 grid-template-columns: repeat(3, minmax(68px, 1fr));
             }
 
-            .age-band-grid {
+            .age-band-grid,
+            .age-bound-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
+
+            .age-bound-section-head {
+                align-items: flex-start;
+                flex-direction: column;
+                gap: 3px;
+            }
+
+            .age-bound-help { text-align: left; }
         }
 
     
@@ -3858,7 +3948,7 @@
 
 
         /* =========================================================
-           Viewer UI v30.20
+           Viewer UI v30.21
            Chart theme: data-first palette / branded interaction
            ========================================================= */
         :root {
@@ -4145,17 +4235,16 @@
 
         <div class="share-guard">
             <div>
-                <div class="share-guard-label">共有先確認</div>
+                <div class="share-guard-label">分析対象</div>
                 <div id="shareTargetName" class="share-guard-name">確認中...</div>
             </div>
-            <div id="shareReadyBadge" class="share-ok">企業様共有用</div>
+            <div id="shareReadyBadge" class="share-ok hidden"></div>
         </div>
 
         <div id="shareNameWarning" class="share-warning hidden"></div>
 
         <div id="viewerDataSourceNotice" class="notice">
-            このページは閲覧専用です。保存済みデータをブラウザ内で集計しています。
-            期間・年齢は分析レポート上の共通フィルターで自由に絞り込めます。
+            期間や年齢を切り替えながら、自由に分析できます。画面上で変更した条件は元データや保存済みの設定には影響しません。
         </div>
 
 
@@ -4329,7 +4418,7 @@
             <div class="viewer-modal-head">
                 <div>
                     <div id="viewerTargetAgeModalTitle" class="viewer-modal-title">ターゲット年齢を選択</div>
-                    <div id="viewerAgeModalNote" class="viewer-modal-note">5歳刻みで1点目を選び、次にもう1点を選択します。前後どちら向きにも選べます。</div>
+                    <div id="viewerAgeModalNote" class="viewer-modal-note">下限と上限をそれぞれ選択します。上限は35歳・39歳など、よく使う境界から選べます。</div>
                 </div>
                 <button type="button" class="viewer-modal-close" data-close-modal="viewerTargetAgeModal" aria-label="閉じる">×</button>
             </div>
@@ -4691,7 +4780,7 @@
 
 
 const VIEWER_UI_RELEASE =
-    "2026.09.13-viewer-ui-v30.20-report-settings";
+    "2026.09.13-viewer-ui-v30.21-age-bound-picker";
 const VIEWER_SIDEBAR_STATE_KEY =
     "validApplicationAnalysis.viewerSidebarCollapsed.v1";
 
@@ -9740,21 +9829,43 @@ let currentViewerBasicColumnAxis = "age";
 let viewerTargetAgeTouched =
     false;
 
-const VIEWER_AGE_BANDS =
+const VIEWER_AGE_MIN_OPTIONS =
     Object.freeze([
-        { min: 15, max: 19, label: "15～19" },
-        { min: 20, max: 24, label: "20～24" },
-        { min: 25, max: 29, label: "25～29" },
-        { min: 30, max: 34, label: "30～34" },
-        { min: 35, max: 39, label: "35～39" },
-        { min: 40, max: 44, label: "40～44" },
-        { min: 45, max: 49, label: "45～49" },
-        { min: 50, max: 54, label: "50～54" },
-        { min: 55, max: 59, label: "55～59" },
-        { min: 60, max: 64, label: "60～64" },
-        { min: 65, max: 69, label: "65～69" },
-        { min: 70, max: 74, label: "70～74" },
-        { min: 75, max: null, label: "75歳～" }
+        { value: "", label: "制限なし" },
+        { value: 15, label: "15歳～" },
+        { value: 20, label: "20歳～" },
+        { value: 25, label: "25歳～" },
+        { value: 30, label: "30歳～" },
+        { value: 35, label: "35歳～" },
+        { value: 40, label: "40歳～" },
+        { value: 45, label: "45歳～" },
+        { value: 50, label: "50歳～" },
+        { value: 55, label: "55歳～" },
+        { value: 60, label: "60歳～" },
+        { value: 65, label: "65歳～" },
+        { value: 70, label: "70歳～" },
+        { value: 75, label: "75歳～" },
+        { value: 80, label: "80歳～" }
+    ]);
+
+const VIEWER_AGE_MAX_OPTIONS =
+    Object.freeze([
+        { value: "", label: "制限なし" },
+        { value: 19, label: "～19歳" },
+        { value: 25, label: "～25歳" },
+        { value: 29, label: "～29歳" },
+        { value: 35, label: "～35歳" },
+        { value: 39, label: "～39歳" },
+        { value: 45, label: "～45歳" },
+        { value: 49, label: "～49歳" },
+        { value: 55, label: "～55歳" },
+        { value: 59, label: "～59歳" },
+        { value: 65, label: "～65歳" },
+        { value: 69, label: "～69歳" },
+        { value: 75, label: "～75歳" },
+        { value: 79, label: "～79歳" },
+        { value: 85, label: "～85歳" },
+        { value: 89, label: "～89歳" }
     ]);
 
 let viewerPeriodPickerState = {
@@ -9767,10 +9878,8 @@ let viewerPeriodPickerState = {
 };
 
 let viewerAgePickerState = {
-    phase: "start",
-    startIndex: null,
-    endIndex: null,
-    hoverIndex: null
+    min: "",
+    max: ""
 };
 
 let viewerAgePickerContext = "target";
@@ -10827,166 +10936,120 @@ function setCurrentViewerPeriod(
     );
 }
 
+function normalizeAgePickerBound(value) {
+    const number = viewerOptionalNumber(value);
+    return number === null ? "" : Math.trunc(number);
+}
+
+function agePickerSummaryLabel(state = viewerAgePickerState) {
+    const min = normalizeAgePickerBound(state?.min);
+    const max = normalizeAgePickerBound(state?.max);
+
+    if (min === "" && max === "") return "全年齢";
+    if (min !== "" && max !== "") return `${min}～${max}歳`;
+    if (min !== "") return `${min}歳以上`;
+    return `${max}歳以下`;
+}
+
+function agePickerOptionsWithCurrent(options, currentValue, kind) {
+    const current = normalizeAgePickerBound(currentValue);
+    const list = options.map(item => ({ ...item }));
+
+    if (
+        current !== "" &&
+        !list.some(item => normalizeAgePickerBound(item.value) === current)
+    ) {
+        list.push({
+            value: current,
+            label: kind === "min" ? `${current}歳～` : `～${current}歳`,
+            custom: true
+        });
+    }
+
+    return list;
+}
+
+function renderAgeBoundButtons(kind, options, selectedValue, otherValue) {
+    const selected = normalizeAgePickerBound(selectedValue);
+    const other = normalizeAgePickerBound(otherValue);
+
+    return options.map(option => {
+        const value = normalizeAgePickerBound(option.value);
+        const isSelected = value === selected;
+        const invalid =
+            value !== "" &&
+            other !== "" &&
+            (
+                kind === "min"
+                    ? value > other
+                    : value < other
+            );
+
+        return `
+            <button
+                type="button"
+                class="age-bound-button ${isSelected ? "selected" : ""} ${option.custom ? "custom-value" : ""}"
+                data-age-bound="${kind}"
+                data-age-bound-value="${value === "" ? "none" : value}"
+                ${invalid ? "disabled" : ""}
+            >${escapeHtml(option.label)}</button>
+        `;
+    }).join("");
+}
+
 function renderAgePicker() {
-    const body =
-        document.getElementById(
-            "viewerAgePickerBody"
-        );
-
-    const status =
-        document.getElementById(
-            "viewerAgePickStatus"
-        );
-
-    const apply =
-        document.getElementById(
-            "viewerAgeApplyBtn"
-        );
+    const body = document.getElementById("viewerAgePickerBody");
+    const status = document.getElementById("viewerAgePickStatus");
+    const apply = document.getElementById("viewerAgeApplyBtn");
 
     if (!body) return;
 
-    const state =
-        viewerAgePickerState;
-
-    const effectiveEnd = state.endIndex !== null ? state.endIndex : (state.phase === "end" && state.hoverIndex !== null ? state.hoverIndex : null);
-    const rangeLow = state.startIndex !== null && effectiveEnd !== null ? Math.min(state.startIndex, effectiveEnd) : state.startIndex;
-    const rangeHigh = state.startIndex !== null && effectiveEnd !== null ? Math.max(state.startIndex, effectiveEnd) : effectiveEnd;
+    const state = viewerAgePickerState;
+    const minOptions = agePickerOptionsWithCurrent(
+        VIEWER_AGE_MIN_OPTIONS,
+        state.min,
+        "min"
+    );
+    const maxOptions = agePickerOptionsWithCurrent(
+        VIEWER_AGE_MAX_OPTIONS,
+        state.max,
+        "max"
+    );
 
     body.innerHTML = `
-        <div class="age-band-grid">
-            ${VIEWER_AGE_BANDS.map((band, index) => {
-                const classes = [];
-
-                if (
-                    state.startIndex !==
-                        null &&
-                    (
-                        index ===
-                            state.startIndex ||
-                        (
-                            effectiveEnd !==
-                                null &&
-                            index ===
-                                effectiveEnd
-                        )
-                    )
-                ) {
-                    classes.push(
-                        "range-edge"
-                    );
-                }
-
-                if (
-                    state.startIndex !==
-                        null &&
-                    effectiveEnd !==
-                        null &&
-                    index >=
-                        rangeLow &&
-                    index <=
-                        rangeHigh
-                ) {
-                    classes.push(
-                        state.endIndex !==
-                            null
-                            ? "in-range"
-                            : "preview"
-                    );
-                }
-
-                return `
-                    <button
-                        type="button"
-                        class="age-band-button ${classes.join(" ")}"
-                        data-age-band="${index}"
-                    >${escapeHtml(band.label)}</button>
-                `;
-            }).join("")}
+        <div class="age-bound-picker">
+            <section class="age-bound-section">
+                <div class="age-bound-section-head">
+                    <div class="age-bound-title">下限</div>
+                    <div class="age-bound-help">この年齢以上を集計</div>
+                </div>
+                <div class="age-bound-grid">
+                    ${renderAgeBoundButtons("min", minOptions, state.min, state.max)}
+                </div>
+            </section>
+            <section class="age-bound-section">
+                <div class="age-bound-section-head">
+                    <div class="age-bound-title">上限</div>
+                    <div class="age-bound-help">「～35歳」と「～39歳」のような実務でよく使う境界を選べます</div>
+                </div>
+                <div class="age-bound-grid age-bound-grid-max">
+                    ${renderAgeBoundButtons("max", maxOptions, state.max, state.min)}
+                </div>
+            </section>
         </div>
     `;
 
+    const min = normalizeAgePickerBound(state.min);
+    const max = normalizeAgePickerBound(state.max);
+    const invalid = min !== "" && max !== "" && min > max;
+
     if (status) {
-        if (
-            state.startIndex ===
-            null
-        ) {
-            status.innerHTML =
-                '<span class="range-accent"></span>1点目の年齢帯を選んでください。';
-        } else if (
-            state.endIndex ===
-            null
-        ) {
-            status.innerHTML =
-                `<span class="range-accent"></span>1点目：${escapeHtml(VIEWER_AGE_BANDS[state.startIndex].label)} ／ もう1点を選んでください。`;
-        } else {
-            status.innerHTML =
-                `<span class="range-accent"></span>${escapeHtml(VIEWER_AGE_BANDS[state.startIndex].label)} ～ ${escapeHtml(VIEWER_AGE_BANDS[state.endIndex].label)}`;
-        }
+        status.innerHTML = invalid
+            ? '<span class="range-accent"></span>下限は上限以下になるように選択してください。'
+            : `<span class="range-accent"></span>現在の指定：${escapeHtml(agePickerSummaryLabel(state))}`;
     }
 
-    if (apply) {
-        apply.disabled =
-            state.startIndex ===
-                null ||
-            state.endIndex ===
-                null;
-    }
-}
-
-function ageBandIndexForMin(
-    value
-) {
-    const number =
-        viewerOptionalNumber(
-            value
-        );
-
-    if (
-        number === null
-    ) {
-        return null;
-    }
-
-    return VIEWER_AGE_BANDS
-        .findIndex(
-            band =>
-                number >=
-                    band.min &&
-                (
-                    band.max ===
-                        null ||
-                    number <=
-                        band.max
-                )
-        );
-}
-
-function ageBandIndexForMax(
-    value
-) {
-    const number =
-        viewerOptionalNumber(
-            value
-        );
-
-    if (
-        number === null
-    ) {
-        return null;
-    }
-
-    return VIEWER_AGE_BANDS
-        .findIndex(
-            band =>
-                number >=
-                    band.min &&
-                (
-                    band.max ===
-                        null ||
-                    number <=
-                        band.max
-                )
-        );
+    if (apply) apply.disabled = invalid;
 }
 
 function agePickerSourceRange(context) {
@@ -10996,7 +11059,10 @@ function agePickerSourceRange(context) {
             max: currentViewerGlobalAgeFilter.max
         };
     }
-    return { min: currentViewerTargetAge.min, max: currentViewerTargetAge.max };
+    return {
+        min: currentViewerTargetAge.min,
+        max: currentViewerTargetAge.max
+    };
 }
 
 function configureAgePickerModal(context) {
@@ -11006,11 +11072,11 @@ function configureAgePickerModal(context) {
 
     if (context === "filter") {
         if (title) title.textContent = "集計対象年齢を選択";
-        if (note) note.textContent = "この年齢範囲が分析レポート全体の共通フィルターになります。KPI・応募進捗・基本分析・詳細分析・カスタム分析のすべてを同じ母集団で集計します。";
+        if (note) note.textContent = "下限と上限をそれぞれ選択します。この年齢範囲が分析レポート全体の共通フィルターになります。";
         if (apply) apply.textContent = "この年齢範囲で全体を絞り込む";
     } else {
         if (title) title.textContent = "ターゲット年齢を選択";
-        if (note) note.textContent = "共通フィルターで絞り込んだ応募の中から、ターゲット応募数・ターゲット率として評価する年齢範囲を指定します。";
+        if (note) note.textContent = "下限と上限をそれぞれ選択します。上限は35歳・39歳など、よく使う境界から選べます。";
         if (apply) apply.textContent = "このターゲット年齢を適用";
     }
 }
@@ -11019,14 +11085,10 @@ function openAgePicker(context = "target") {
     viewerAgePickerContext = context === "filter" ? "filter" : "target";
     configureAgePickerModal(viewerAgePickerContext);
     const range = agePickerSourceRange(viewerAgePickerContext);
-    let startIndex = ageBandIndexForMin(range.min);
-    let endIndex = ageBandIndexForMax(range.max);
-    if (startIndex !== null && startIndex < 0) startIndex = null;
-    if (endIndex !== null && endIndex < 0) endIndex = null;
-    if (startIndex !== null && endIndex === null && String(range.max ?? "").trim() === "") {
-        endIndex = VIEWER_AGE_BANDS.length - 1;
-    }
-    viewerAgePickerState = { phase:"start", startIndex, endIndex, hoverIndex:null };
+    viewerAgePickerState = {
+        min: normalizeAgePickerBound(range.min),
+        max: normalizeAgePickerBound(range.max)
+    };
     openViewerModal("viewerTargetAgeModal");
     renderAgePicker();
 }
@@ -11285,37 +11347,19 @@ function initializeViewerAnalysisPickers() {
 
             const ageReset = event.target.closest("[data-age-reset]");
             if (ageReset) {
-                viewerAgePickerState = { phase:"start", startIndex:null, endIndex:null, hoverIndex:null };
+                viewerAgePickerState = { min:"", max:"" };
                 renderAgePicker();
                 return;
             }
 
-            const age =
-                event.target.closest(
-                    "[data-age-band]"
-                );
+            const ageBound = event.target.closest("[data-age-bound]");
+            if (ageBound && !ageBound.disabled) {
+                const kind = ageBound.dataset.ageBound;
+                const rawValue = ageBound.dataset.ageBoundValue;
+                const value = rawValue === "none" ? "" : Number(rawValue);
 
-            if (age) {
-                const index =
-                    Number(
-                        age.dataset
-                            .ageBand
-                    );
-
-                if (viewerAgePickerState.phase !== "end" || viewerAgePickerState.startIndex === null) {
-                    viewerAgePickerState.startIndex = index;
-                    viewerAgePickerState.endIndex = null;
-                    viewerAgePickerState.phase = "end";
-                } else {
-                    const point1 = viewerAgePickerState.startIndex;
-                    viewerAgePickerState.startIndex = Math.min(point1, index);
-                    viewerAgePickerState.endIndex = Math.max(point1, index);
-                    viewerAgePickerState.phase = "done";
-                }
-
-                viewerAgePickerState
-                    .hoverIndex =
-                    null;
+                if (kind === "min") viewerAgePickerState.min = value;
+                if (kind === "max") viewerAgePickerState.max = value;
 
                 renderAgePicker();
                 return;
@@ -11420,40 +11464,6 @@ function initializeViewerAnalysisPickers() {
                 return;
             }
 
-            const age =
-                event.target.closest(
-                    "[data-age-band]"
-                );
-
-            if (
-                age &&
-                viewerAgePickerState
-                    .phase ===
-                    "end" &&
-                viewerAgePickerState
-                    .startIndex !==
-                    null
-            ) {
-                const index =
-                    Number(
-                        age.dataset
-                            .ageBand
-                    );
-
-                const nextHover = index;
-
-                if (
-                    viewerAgePickerState
-                        .hoverIndex !==
-                    nextHover
-                ) {
-                    viewerAgePickerState
-                        .hoverIndex =
-                        nextHover;
-
-                    renderAgePicker();
-                }
-            }
         }
     );
 
@@ -11489,32 +11499,16 @@ function initializeViewerAnalysisPickers() {
     )?.addEventListener(
         "click",
         () => {
-            const state =
-                viewerAgePickerState;
+            const state = viewerAgePickerState;
+            const min = normalizeAgePickerBound(state.min);
+            const max = normalizeAgePickerBound(state.max);
 
-            if (
-                state.startIndex ===
-                    null ||
-                state.endIndex ===
-                    null
-            ) {
-                return;
-            }
-
-            const startBand =
-                VIEWER_AGE_BANDS[
-                    state.startIndex
-                ];
-
-            const endBand =
-                VIEWER_AGE_BANDS[
-                    state.endIndex
-                ];
+            if (min !== "" && max !== "" && min > max) return;
 
             if (viewerAgePickerContext === "filter") {
-                currentViewerGlobalAgeFilter = { min:startBand.min, max:endBand.max ?? "" };
+                currentViewerGlobalAgeFilter = { min, max };
             } else {
-                currentViewerTargetAge = { min:startBand.min, max:endBand.max ?? "" };
+                currentViewerTargetAge = { min, max };
                 viewerTargetAgeTouched = true;
             }
             closeViewerModal("viewerTargetAgeModal");
@@ -12444,18 +12438,32 @@ function setFastHandoffBanner(
     }
 
     if (shareBadge) {
-        shareBadge.textContent =
-            state === "ready"
-                ? "企業様共有用"
-                : state === "error"
+        shareBadge.classList.remove(
+            "share-status-saving",
+            "share-status-error"
+        );
+
+        if (state === "ready") {
+            shareBadge.classList.add("hidden");
+            shareBadge.textContent = "";
+        } else {
+            shareBadge.classList.remove("hidden");
+            shareBadge.textContent =
+                state === "error"
                     ? "保存失敗・共有不可"
                     : "保存中・共有不可";
+            shareBadge.classList.add(
+                state === "error"
+                    ? "share-status-error"
+                    : "share-status-saving"
+            );
+        }
     }
 
     if (sourceNotice) {
         sourceNotice.textContent =
             state === "ready"
-                ? "このページは閲覧専用です。保存済みデータと個社設定を反映しています。期間は分析レポート上で自由に絞り込めます。"
+                ? "期間や年齢を切り替えながら、自由に分析できます。画面上で変更した条件は元データや保存済みの設定には影響しません。"
                 : state === "error"
                     ? "このページは現在、このブラウザ内の一時データを表示しています。保存に失敗しているため、このURLは企業共有には使用できません。"
                     : "このページは現在、ブラウザ内の最新データを先に集計しています。個社管理シートへの保存と設定の同期はバックグラウンドで続いています。";
