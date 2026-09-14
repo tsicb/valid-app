@@ -423,17 +423,17 @@
 
     <section id="individualMode" class="individual hidden">
         <a class="individual-back" href="./viewer-admin.html">← 検索へ戻る</a>
-        <div class="eyebrow">ANALYSIS REPORT CONTROL</div>
-        <h2 id="individualTitle" class="section-title" style="margin-top:5px;">分析レポート管理</h2>
+        <div class="eyebrow">SHARING SETTINGS</div>
+        <h2 id="individualTitle" class="section-title" style="margin-top:5px;">分析レポートの共有設定</h2>
         <div class="sub">
-            共有URLの確認・コピーと、閲覧停止・再開・URL再発行を行います。
+            共有URLの確認・コピー、閲覧停止・再開、共有URL再発行を行います。
         </div>
 
         <div id="individualLoading" class="management-loading hidden" aria-live="polite" aria-busy="true">
             <div class="management-loading-main">
                 <span id="individualLoadingSpinner" class="management-spinner" aria-hidden="true"></span>
                 <div>
-                    <strong id="individualLoadingTitle" class="management-loading-title">管理情報を読み込んでいます</strong>
+                    <strong id="individualLoadingTitle" class="management-loading-title">共有設定を読み込んでいます</strong>
                     <span id="individualLoadingDetail" class="management-loading-detail">共有URLと閲覧状態を確認しています。そのままお待ちください。</span>
                 </div>
             </div>
@@ -466,7 +466,7 @@
         </div>
     </section>
 
-    <div class="footer">有効応募分析｜分析レポート管理 / 2026.09.14-pages-v25-recent-loading-ux</div>
+    <div class="footer">有効応募分析｜分析レポート管理 / 2026.09.14-pages-v26-share-settings-folders</div>
 </main>
 
 <script>
@@ -795,7 +795,7 @@ function reportCardHtml(
                         : `<a class="button secondary js-manage-report"
                               href="${escapeHtml(manageUrl(report))}"
                               data-report-name="${escapeHtml(name)}">
-                               管理
+                               共有設定
                            </a>`
                 }
             </div>
@@ -1159,8 +1159,8 @@ function showIndividualLoading(reportName = "") {
     if (title) {
         title.textContent =
             reportName
-                ? `${reportName} の管理情報を読み込んでいます`
-                : "管理情報を読み込んでいます";
+                ? `${reportName} の共有設定を読み込んでいます`
+                : "共有設定を読み込んでいます";
     }
 
     const detail =
@@ -1209,7 +1209,7 @@ function showIndividualLoadError(message) {
     if (error) {
         error.textContent =
             message ||
-            "管理情報を読み込めませんでした。";
+            "共有設定を読み込めませんでした。";
         error.classList.remove(
             "hidden"
         );
@@ -1419,7 +1419,7 @@ async function loadIndividual() {
         pendingManageReportName
     );
     setStatus(
-        "分析レポートの管理情報を読み込んでいます..."
+        "分析レポートの共有設定を読み込んでいます..."
     );
 
     try {
@@ -1484,12 +1484,12 @@ function loadCurrentMode() {
         document.getElementById(
             "pageTitle"
         ).textContent =
-            "分析レポート管理";
+            "分析レポートの共有設定";
 
         document.getElementById(
             "pageSub"
         ).textContent =
-            "この企業の共有URL確認・閲覧状態・URL再発行を管理します。";
+            "この企業の共有URL確認・閲覧停止／再開・URL再発行を行います。";
 
         showIndividualLoading(
             pendingManageReportName

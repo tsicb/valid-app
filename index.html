@@ -74,7 +74,7 @@
             z-index: 40 !important;
         }
     
-/* v30.25: progressive access + compact management + disclosure UX */
+/* v30.26: auto naming + destination folder + share settings UX */
 .vaa-management-menu {
     position: relative;
 }
@@ -906,7 +906,7 @@
                     </div>
 
                     <div id="newReportIdentityBlock" class="vaa-identity-card rounded-xl border p-4">
-                        <div class="vaa-identity-title text-xs font-extrabold">新規作成時の表示名</div>
+                        <div class="vaa-identity-title text-xs font-extrabold">新規作成時の設定</div>
                         <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
                                 <label for="newCompanyDisplayNameInput" class="block text-[11px] font-bold text-gray-600 mb-1">
@@ -918,34 +918,38 @@
                                     maxlength="100"
                                     autocomplete="off"
                                     placeholder="例：株式会社○○"
-                                    class="w-full border border-gray-300 rounded-lg p-2.5 text-xs bg-white focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                    class="w-full border border-gray-300 rounded-lg p-2.5 text-xs bg-white focus:outline-none focus:border-[#148ecc] focus:ring-2 focus:ring-sky-100"
                                 >
                                 <div class="mt-1 text-[10px] text-gray-500">
-                                    「様」または「御中」が無い場合は「様」を自動付与します。
+                                    個社管理シート名は企業表示名から自動作成します。「様」または「御中」が無い場合は「様」を自動付与します。
                                 </div>
                             </div>
 
                             <div>
-                                <div class="mb-1 flex items-center justify-between gap-2">
-                                    <label for="newReportNameInput" class="text-[11px] font-bold text-gray-600">
-                                        分析レポート名 <span class="font-normal text-gray-400">（任意）</span>
-                                    </label>
-                                    <button
-                                        id="suggestNewReportNameBtn"
-                                        type="button"
-                                        class="rounded-md border border-indigo-200 bg-white px-2 py-1 text-[9px] font-extrabold text-indigo-700 hover:bg-indigo-50"
-                                    >
-                                        企業表示名から入力
-                                    </button>
-                                </div>
-                                <input
-                                    id="newReportNameInput"
-                                    type="text"
-                                    maxlength="120"
-                                    autocomplete="off"
-                                    placeholder="例：株式会社○○様_有効応募分析"
-                                    class="w-full border border-gray-300 rounded-lg p-2.5 text-xs bg-white focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                <label for="newOutputFolderSelect" class="block text-[11px] font-bold text-gray-600 mb-1">
+                                    保存先フォルダ <span class="font-normal text-gray-400">（任意）</span>
+                                </label>
+                                <select
+                                    id="newOutputFolderSelect"
+                                    class="w-full border border-gray-300 rounded-lg p-2.5 text-xs bg-white focus:outline-none focus:border-[#148ecc] focus:ring-2 focus:ring-sky-100"
                                 >
+                                    <option value="">共通フォルダ直下</option>
+                                    <option value="__new__">＋ 新しいフォルダを作成</option>
+                                </select>
+                                <div id="newOutputFolderNameWrap" class="hidden mt-2">
+                                    <label for="newOutputFolderNameInput" class="block text-[10px] font-bold text-gray-500 mb-1">新規フォルダ名</label>
+                                    <input
+                                        id="newOutputFolderNameInput"
+                                        type="text"
+                                        maxlength="80"
+                                        autocomplete="off"
+                                        placeholder="例：山田担当"
+                                        class="w-full border border-gray-300 rounded-lg p-2.5 text-xs bg-white focus:outline-none focus:border-[#148ecc] focus:ring-2 focus:ring-sky-100"
+                                    >
+                                </div>
+                                <div class="mt-1 text-[10px] text-gray-500">
+                                    共通フォルダ直下、またはその直下の1階層だけを選べます。既存フォルダと同名ならそのフォルダを使用します。
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1268,6 +1272,8 @@
         // Google Sheets API連携状態
         const SHEETS_API_URL = "https://script.google.com/macros/s/AKfycbwS_-ptDyhVk5yrNtRB8I32WUJen-xdjKUtp-Rf7Dbdhhg4V9Vw3gneD9K7ErZgP_Y/exec";
         const SHEETS_OUTPUT_FOLDER_URL = "https://drive.google.com/drive/folders/1izieBYn1U40y0sMkK2H5WzoILA1blYNb";
+        let globalCreateOutputFolders = [];
+
         const SHEETS_ACCESS_KEY_DOC_URL = "https://docs.google.com/document/d/1c5u4HqoHo5LQRPrXjbWWUJI00BPjTv0Ekk2VA6KtYIQ/edit";
         const SHEETS_ACCESS_KEY_STORAGE_KEY = "validApplicationAnalysis.sheetsAccessKey";
         const SHEETS_LAST_RESULT_STORAGE_KEY = "validApplicationAnalysis.thinV1.lastSheetResult";
@@ -1704,8 +1710,8 @@ function setEtlInputsLocked(locked) {
         "closeExistingTargetPanelBtn",
         "existingSheetUrlInput",
         "newCompanyDisplayNameInput",
-        "newReportNameInput",
-        "suggestNewReportNameBtn",
+        "newOutputFolderSelect",
+        "newOutputFolderNameInput",
         "etlAutoOpenViewerCheckbox"
     ].forEach(
         id => {
@@ -3041,12 +3047,14 @@ function buildSheetsPayloadV3(accessKey = "", requestId = "", targetSpreadsheetU
                 : normalizeCompanyDisplayNameForUi(
                     document.getElementById("newCompanyDisplayNameInput")?.value
                 ),
-        reportName:
+        outputFolderId:
             normalizeString(targetSpreadsheetUrl)
                 ? ""
-                : normalizeString(
-                    document.getElementById("newReportNameInput")?.value
-                ),
+                : getSelectedCreateOutputFolderId(),
+        outputFolderName:
+            normalizeString(targetSpreadsheetUrl)
+                ? ""
+                : getSelectedCreateOutputFolderName(),
         initialSettings: {
             analysisStartDate: "",
             analysisEndDate: "",
@@ -3389,6 +3397,60 @@ function openSheetsSettingsAndFocus() {
     );
 }
 
+function renderCreateOutputFolderOptions(folders = []) {
+    globalCreateOutputFolders = Array.isArray(folders)
+        ? folders
+            .map(folder => ({
+                id: normalizeString(folder?.id),
+                name: normalizeString(folder?.name)
+            }))
+            .filter(folder => folder.id && folder.name)
+        : [];
+
+    const select = document.getElementById("newOutputFolderSelect");
+    if (!select) return;
+
+    const previous = normalizeString(select.value);
+    select.innerHTML = [
+        '<option value="">共通フォルダ直下</option>',
+        ...globalCreateOutputFolders.map(folder =>
+            `<option value="${escapeHtml(folder.id)}">${escapeHtml(folder.name)}</option>`
+        ),
+        '<option value="__new__">＋ 新しいフォルダを作成</option>'
+    ].join("");
+
+    const canRestore = previous && (
+        previous === "__new__" ||
+        globalCreateOutputFolders.some(folder => folder.id === previous)
+    );
+    select.value = canRestore ? previous : "";
+    updateCreateOutputFolderUi();
+}
+
+function updateCreateOutputFolderUi() {
+    const select = document.getElementById("newOutputFolderSelect");
+    const wrap = document.getElementById("newOutputFolderNameWrap");
+    if (!select || !wrap) return;
+    wrap.classList.toggle("hidden", select.value !== "__new__");
+}
+
+function getSelectedCreateOutputFolderId() {
+    const value = normalizeString(
+        document.getElementById("newOutputFolderSelect")?.value
+    );
+    return value && value !== "__new__" ? value : "";
+}
+
+function getSelectedCreateOutputFolderName() {
+    const selectValue = normalizeString(
+        document.getElementById("newOutputFolderSelect")?.value
+    );
+    if (selectValue !== "__new__") return "";
+    return normalizeString(
+        document.getElementById("newOutputFolderNameInput")?.value
+    );
+}
+
 async function verifyStoredAccessKey() {
     const accessKey =
         getStoredSheetsAccessKey();
@@ -3463,6 +3525,10 @@ async function verifyStoredAccessKey() {
 
             throw error;
         }
+
+        renderCreateOutputFolderOptions(
+            data.outputFolders || []
+        );
 
         setAccessKeyUiState(
             "ok",
@@ -3918,7 +3984,7 @@ function mapSheetsApiError(data) {
         TARGET_INVALID:
             "更新先のGoogle Sheetsを確認できませんでした。出力フォルダ内の有効応募分析レポートを指定してください。",
         TARGET_OUTSIDE_OUTPUT_FOLDER:
-            "更新先が個社管理シートフォルダ内にありません。更新できるのは「個社管理シート一覧」内のSheetだけです。",
+            "更新先が個社管理シートの管理フォルダ内にありません。共通フォルダ直下またはその直下1階層のSheetを指定してください。",
         TARGET_WORKBOOK_INVALID:
             "更新先は有効応募分析レポートとして確認できませんでした。別のSheet URLを指定してください。",
         TARGET_STORAGE_LAYOUT_UNSUPPORTED:
@@ -3933,6 +3999,8 @@ function mapSheetsApiError(data) {
             "システム診断の実行中にエラーが発生しました。",
         MANAGE_SAVE_ERROR:
             "設定・マスタの保存中にエラーが発生しました。",
+        OUTPUT_FOLDER_INVALID:
+            "保存先フォルダを確認してください。共通フォルダ直下またはその直下1階層を指定できます。",
         REPORT_NAME_REQUIRED:
             "分析レポート名を入力してください。",
         IMAGE_RETRY_ERROR:
@@ -6062,13 +6130,9 @@ function buildFastViewerPreviewData({
         targetSpreadsheetId
             ? "有効応募分析（更新中）"
             : (
-                normalizeString(
-                    document.getElementById(
-                        "newReportNameInput"
-                    )?.value
-                ) ||
-                companyDisplayName ||
-                "有効応募分析（保存中）"
+                companyDisplayName
+                    ? `${companyDisplayName}_有効応募分析`
+                    : "有効応募分析（保存中）"
             );
 
     return {
@@ -6360,6 +6424,31 @@ async function createGoogleSpreadsheet({
 
         openSheetsSettingsAndFocus();
         return null;
+    }
+
+    if (!targetSpreadsheetId) {
+        const folderSelectValue = normalizeString(
+            document.getElementById("newOutputFolderSelect")?.value
+        );
+        const newFolderName = getSelectedCreateOutputFolderName();
+
+        if (folderSelectValue === "__new__" && !newFolderName) {
+            setSheetsCreateStatus(
+                "新しく作成する保存先フォルダ名を入力してください。",
+                "warning"
+            );
+            document.getElementById("newOutputFolderNameInput")?.focus();
+            return null;
+        }
+
+        if (/[\\/]/.test(newFolderName)) {
+            setSheetsCreateStatus(
+                "保存先フォルダ名に / または \\ は使用できません。",
+                "warning"
+            );
+            document.getElementById("newOutputFolderNameInput")?.focus();
+            return null;
+        }
     }
 
     const jobFileCount =
@@ -9814,34 +9903,6 @@ function applyManagedEnterpriseBulkName() {
     }
 }
 
-function suggestNewReportName() {
-    const company =
-        normalizeCompanyDisplayNameForUi(
-            document.getElementById(
-                "newCompanyDisplayNameInput"
-            )?.value
-        );
-
-    if (!company) {
-        setSheetsCreateStatus(
-            "先に企業表示名を入力してください。",
-            "warning"
-        );
-        return;
-    }
-
-    const reportInput =
-        document.getElementById(
-            "newReportNameInput"
-        );
-
-    if (reportInput) {
-        reportInput.value =
-            `${company}_有効応募分析`;
-
-        reportInput.focus();
-    }
-}
 
 function collectManagedSettings() {
     const result = {};
@@ -10164,6 +10225,10 @@ document
         openSheetsSettingsAndFocus
     );
 
+document
+    .getElementById("newOutputFolderSelect")
+    ?.addEventListener("change", updateCreateOutputFolderUi);
+
 verifyStoredAccessKey();
 
 const managedReportListSearch =
@@ -10181,11 +10246,6 @@ const managedApplyEnterpriseBulkNameBtn =
         "managedApplyEnterpriseBulkNameBtn"
     );
 
-const suggestNewReportNameBtn =
-    document.getElementById(
-        "suggestNewReportNameBtn"
-    );
-
 if (managedSuggestReportNameBtn) {
     managedSuggestReportNameBtn.addEventListener(
         "click",
@@ -10197,13 +10257,6 @@ if (managedApplyEnterpriseBulkNameBtn) {
     managedApplyEnterpriseBulkNameBtn.addEventListener(
         "click",
         applyManagedEnterpriseBulkName
-    );
-}
-
-if (suggestNewReportNameBtn) {
-    suggestNewReportNameBtn.addEventListener(
-        "click",
-        suggestNewReportName
     );
 }
 
