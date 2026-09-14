@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="vaa-ui-version" content="2026.09.14-etl-ux-v24">
+    <meta name="vaa-ui-version" content="2026.09.14-etl-ux-v25">
     <title>有効応募分析｜データ作成・更新</title>
     <!-- 有効応募分析：データ作成・更新 favicon -->
     <link rel="icon" type="image/svg+xml" href="./assets/favicon-index.svg?v=20260914">
@@ -74,7 +74,7 @@
             z-index: 40 !important;
         }
     
-/* v30.26: auto naming + destination folder + share settings UX */
+/* v30.27: resilient access-key verification + internal-only key guidance */
 .vaa-management-menu {
     position: relative;
 }
@@ -745,11 +745,14 @@
                                 確認中
                             </span>
                         </div>
-                        <div id="accessKeyStatusText" class="mt-1 text-[11px] leading-relaxed text-slate-600">
+                        <div id="accessKeyStatusText" aria-live="polite" class="mt-1 text-[11px] leading-relaxed text-slate-600">
                             保存済みのアクセスキーを確認しています。
                         </div>
                     </div>
                     <div class="flex flex-wrap gap-2">
+                        <button id="retryAccessKeyBtn" type="button" class="hidden rounded-lg border border-[#148ecc]/30 bg-white px-3 py-2 text-xs font-extrabold text-[#0d6795] hover:bg-[#edf8fd] disabled:cursor-wait disabled:opacity-60">
+                            再接続
+                        </button>
                         <button id="changeAccessKeyBtn" type="button" class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
                             キーを入力・変更
                         </button>
@@ -759,7 +762,7 @@
                             rel="noopener noreferrer"
                             class="rounded-lg border border-indigo-200 bg-white px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50"
                         >
-                            キー確認
+                            キーを確認
                         </a>
                     </div>
                 </div>
@@ -781,10 +784,17 @@
                             保存して接続確認
                         </button>
                     </div>
-                    <div id="sheetsConnectionSettingsStatus" class="hidden mt-2 text-xs rounded-lg p-2.5"></div>
-                    <p class="mt-2 text-[10px] text-slate-500">
-                        アクセスキーはこのブラウザ内だけに保存し、個社管理シートへは保存しません。
-                    </p>
+                    <div id="sheetsConnectionSettingsStatus" aria-live="polite" class="hidden mt-2 text-xs rounded-lg p-2.5"></div>
+                </div>
+
+                <div role="note" class="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-white/80 px-3 py-2.5">
+                    <span class="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-amber-400" aria-hidden="true"></span>
+                    <div class="min-w-0">
+                        <div class="text-[10px] font-extrabold text-amber-900">社内専用・社外共有不可</div>
+                        <p class="mt-0.5 text-[10px] leading-relaxed text-slate-600">
+                            アクセスキーは社外へ共有・転送しないでください。このブラウザ内にのみ保存され、個社管理シートや分析レポートには保存されません。
+                        </p>
+                    </div>
                 </div>
             </section>
 
@@ -1127,7 +1137,9 @@
                         <div class="rounded-xl border border-slate-200 p-3">
                             <div class="text-[11px] font-extrabold text-slate-900">4. アクセスキーについて</div>
                             <p class="mt-1 text-[10px] leading-relaxed text-slate-500">
-                                データ作成・更新や管理機能を利用するための社内用キーです。一度確認できればブラウザ内に保存され、個社管理シートには保存されません。
+                                データ作成・更新や管理機能を利用するための社内専用キーです。
+                                <span class="font-extrabold text-amber-800">企業担当者など社外の方へ共有・転送しないでください。</span>
+                                一度保存するとこのブラウザ内に保持されますが、個社管理シートや分析レポートには保存されません。
                             </p>
                         </div>
 
@@ -1276,6 +1288,7 @@
 
         const SHEETS_ACCESS_KEY_DOC_URL = "https://docs.google.com/document/d/1c5u4HqoHo5LQRPrXjbWWUJI00BPjTv0Ekk2VA6KtYIQ/edit";
         const SHEETS_ACCESS_KEY_STORAGE_KEY = "validApplicationAnalysis.sheetsAccessKey";
+        const SHEETS_ACCESS_KEY_LAST_SUCCESS_STORAGE_KEY = "validApplicationAnalysis.sheetsAccessKeyLastSuccessAt";
         const SHEETS_LAST_RESULT_STORAGE_KEY = "validApplicationAnalysis.thinV1.lastSheetResult";
         const SHEETS_UPDATE_TARGET_STORAGE_KEY = "validApplicationAnalysis.thinV1.updateTargetUrl";
         const VIEWER_AUTO_OPEN_STORAGE_KEY = "validApplicationAnalysis.viewerAutoOpen";
@@ -1293,6 +1306,8 @@ const SHEETS_MAX_AUTO_RESUME_ROUNDS = 12;
         let globalUnifiedRunInFlight = false;
         let globalTargetFromSheetPortal = false;
         let globalAccessKeyVerified = false;
+        let globalAccessKeyUiState = "unknown";
+        let globalAccessKeyVerifyInFlight = false;
         let globalPerformanceTrace = {};
 
 function getEtlDebugMode() {
@@ -3187,6 +3202,126 @@ function getStoredSheetsAccessKey() {
     }
 }
 
+function getStoredAccessKeyLastSuccessAt() {
+    try {
+        return normalizeString(
+            localStorage.getItem(
+                SHEETS_ACCESS_KEY_LAST_SUCCESS_STORAGE_KEY
+            )
+        );
+    } catch (_) {
+        return "";
+    }
+}
+
+function rememberAccessKeySuccessNow() {
+    try {
+        localStorage.setItem(
+            SHEETS_ACCESS_KEY_LAST_SUCCESS_STORAGE_KEY,
+            new Date().toISOString()
+        );
+    } catch (_) {}
+}
+
+function formatAccessKeyLastSuccessForUi() {
+    const raw = getStoredAccessKeyLastSuccessAt();
+    if (!raw) return "";
+
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return "";
+
+    try {
+        return new Intl.DateTimeFormat(
+            "ja-JP",
+            {
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: false
+            }
+        ).format(date);
+    } catch (_) {
+        return raw;
+    }
+}
+
+function sleepAccessKeyRetry(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fetchAccessKeyAuthCheck(accessKey) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+        () => controller.abort(),
+        30000
+    );
+
+    try {
+        const response = await fetch(
+            SHEETS_API_URL,
+            {
+                method: "POST",
+                mode: "cors",
+                credentials: "omit",
+                headers: {
+                    "Content-Type": "text/plain;charset=UTF-8"
+                },
+                body: JSON.stringify({
+                    action: "manageAuthCheck",
+                    schemaVersion: SHEETS_SCHEMA_VERSION,
+                    pagesVersion: SHEETS_APP_VERSION,
+                    accessKey
+                }),
+                signal: controller.signal
+            }
+        );
+
+        if (!response.ok) {
+            const error = new Error(
+                `接続確認に失敗しました（HTTP ${response.status}）。`
+            );
+            error.code = `HTTP_${response.status}`;
+            throw error;
+        }
+
+        const text = await response.text();
+        let data;
+
+        try {
+            data = JSON.parse(text);
+        } catch (_) {
+            const error = new Error(
+                "API応答を確認できませんでした。"
+            );
+            error.code = "INVALID_RESPONSE";
+            throw error;
+        }
+
+        if (!data?.ok) {
+            const error = new Error(
+                mapSheetsApiError(data)
+            );
+            error.code = data?.code || "API_ERROR";
+            throw error;
+        }
+
+        return data;
+    } catch (error) {
+        if (error?.name === "AbortError") {
+            const timeoutError = new Error(
+                "接続確認がタイムアウトしました。"
+            );
+            timeoutError.code = "NETWORK_TIMEOUT";
+            throw timeoutError;
+        }
+        throw error;
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
 function getStoredUpdateTargetUrl() {
     try {
         return normalizeString(localStorage.getItem(SHEETS_UPDATE_TARGET_STORAGE_KEY));
@@ -3255,7 +3390,23 @@ function setAccessKeyUiState(
             badge:
                 "rounded-full border border-red-300 bg-red-100 px-2 py-0.5 text-[10px] font-extrabold text-red-800",
             label:
-                "要確認"
+                "キー要確認"
+        },
+        incompatible: {
+            card:
+                "mb-6 rounded-2xl border border-rose-200 bg-rose-50/60 p-4",
+            badge:
+                "rounded-full border border-rose-300 bg-rose-100 px-2 py-0.5 text-[10px] font-extrabold text-rose-800",
+            label:
+                "システム要確認"
+        },
+        offline: {
+            card:
+                "mb-6 rounded-2xl border border-amber-200 bg-amber-50/50 p-4",
+            badge:
+                "rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-extrabold text-amber-800",
+            label:
+                "再接続待ち"
         },
         unknown: {
             card:
@@ -3302,10 +3453,27 @@ function setAccessKeyUiState(
         entry.classList.toggle(
             "hidden",
             state === "ok" ||
-            state === "checking"
+            state === "checking" ||
+            state === "offline" ||
+            state === "incompatible"
         );
     }
 
+    const retryBtn =
+        document.getElementById(
+            "retryAccessKeyBtn"
+        );
+
+    if (retryBtn) {
+        retryBtn.classList.toggle(
+            "hidden",
+            state !== "offline"
+        );
+        retryBtn.disabled =
+            state === "checking";
+    }
+
+    globalAccessKeyUiState = state;
     globalAccessKeyVerified =
         state === "ok";
 
@@ -3451,128 +3619,110 @@ function getSelectedCreateOutputFolderName() {
     );
 }
 
-async function verifyStoredAccessKey() {
-    const accessKey =
-        getStoredSheetsAccessKey();
+async function verifyStoredAccessKey(options = {}) {
+    if (globalAccessKeyVerifyInFlight) {
+        return globalAccessKeyVerified;
+    }
+
+    const accessKey = getStoredSheetsAccessKey();
 
     if (!accessKey) {
-        setAccessKeyUiState(
-            "missing"
-        );
+        setAccessKeyUiState("missing");
         return false;
     }
 
-    setAccessKeyUiState(
-        "checking",
-        "保存済みアクセスキーを中央APIで確認しています。"
-    );
+    const manual = Boolean(options?.manual);
+    const retryDelays = [0, 1200, 3000];
+    globalAccessKeyVerifyInFlight = true;
+
+    const retryBtn = document.getElementById("retryAccessKeyBtn");
+    if (retryBtn) retryBtn.disabled = true;
 
     try {
-        const response =
-            await fetch(
-                SHEETS_API_URL,
-                {
-                    method:
-                        "POST",
-                    mode:
-                        "cors",
-                    credentials:
-                        "omit",
-                    headers: {
-                        "Content-Type":
-                            "text/plain;charset=UTF-8"
-                    },
-                    body:
-                        JSON.stringify({
-                            action:
-                                "manageAuthCheck",
-                            schemaVersion:
-                                SHEETS_SCHEMA_VERSION,
-                            pagesVersion:
-                                SHEETS_APP_VERSION,
-                            accessKey
-                        })
+        for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {
+            if (retryDelays[attempt] > 0) {
+                setAccessKeyUiState(
+                    "checking",
+                    `接続を再確認しています…（${attempt + 1}/${retryDelays.length}）`
+                );
+                await sleepAccessKeyRetry(retryDelays[attempt]);
+            } else {
+                setAccessKeyUiState(
+                    "checking",
+                    manual
+                        ? "保存済みアクセスキーで再接続しています。"
+                        : "保存済みアクセスキーを中央APIで確認しています。"
+                );
+            }
+
+            try {
+                const data = await fetchAccessKeyAuthCheck(accessKey);
+
+                renderCreateOutputFolderOptions(
+                    data.outputFolders || []
+                );
+
+                rememberAccessKeySuccessNow();
+
+                setAccessKeyUiState(
+                    "ok",
+                    "アクセスキーを確認しました。データ作成・更新を開始できます。"
+                );
+
+                const input = document.getElementById(
+                    "sheetsAccessKeyInput"
+                );
+                if (input) input.value = "";
+
+                return true;
+            } catch (error) {
+                const code = normalizeString(error?.code);
+
+                if (code === "AUTH_INVALID") {
+                    setAccessKeyUiState(
+                        "invalid",
+                        "アクセスキーが正しくありません。社内で案内されているキーを確認し、入力し直してください。"
+                    );
+                    return false;
                 }
-            );
 
-        const text =
-            await response.text();
+                if (
+                    code === "SCHEMA_MISMATCH" ||
+                    code === "PAGES_VERSION_MISMATCH" ||
+                    code === "CONFIG_ERROR"
+                ) {
+                    setAccessKeyUiState(
+                        "incompatible",
+                        error?.message ||
+                        "システム側の設定を確認してください。"
+                    );
+                    return false;
+                }
 
-        let data;
+                if (attempt < retryDelays.length - 1) {
+                    continue;
+                }
 
-        try {
-            data =
-                JSON.parse(
-                    text
+                const lastSuccess =
+                    formatAccessKeyLastSuccessForUi();
+                const suffix = lastSuccess
+                    ? ` 前回の接続成功：${lastSuccess}`
+                    : "";
+
+                setAccessKeyUiState(
+                    "offline",
+                    "アクセスキーは保存されていますが、一時的に接続確認できませんでした。再接続をお試しください。" + suffix
                 );
-        } catch (_) {
-            throw new Error(
-                "API応答を確認できませんでした。"
-            );
+                return false;
+            }
         }
-
-        if (!data?.ok) {
-            const error =
-                new Error(
-                    mapSheetsApiError(
-                        data
-                    )
-                );
-
-            error.code =
-                data?.code ||
-                "";
-
-            throw error;
-        }
-
-        renderCreateOutputFolderOptions(
-            data.outputFolders || []
-        );
-
-        setAccessKeyUiState(
-            "ok",
-            "アクセスキーを確認しました。データ作成・更新を開始できます。"
-        );
-
-        const input =
-            document.getElementById(
-                "sheetsAccessKeyInput"
-            );
-
-        if (input) {
-            input.value = "";
-        }
-
-        return true;
-
-    } catch (error) {
-        const code =
-            normalizeString(
-                error?.code
-            );
-
-        if (
-            code === "AUTH_INVALID" ||
-            code === "SCHEMA_MISMATCH" ||
-            code ===
-                "PAGES_VERSION_MISMATCH"
-        ) {
-            setAccessKeyUiState(
-                "invalid",
-                error?.message ||
-                "アクセスキーを確認できませんでした。"
-            );
-
-            return false;
-        }
-
-        setAccessKeyUiState(
-            "unknown",
-            "アクセスキーは保存済みですが、中央APIへ接続確認できませんでした。通信状態を確認して再度お試しください。"
-        );
 
         return false;
+    } finally {
+        globalAccessKeyVerifyInFlight = false;
+        if (retryBtn) {
+            retryBtn.disabled = false;
+        }
     }
 }
 
@@ -3608,10 +3758,19 @@ function saveSheetsConnectionSettings() {
     }
 
     try {
+        const previousAccessKey =
+            getStoredSheetsAccessKey();
+
         localStorage.setItem(
             SHEETS_ACCESS_KEY_STORAGE_KEY,
             accessKey
         );
+
+        if (previousAccessKey && previousAccessKey !== accessKey) {
+            localStorage.removeItem(
+                SHEETS_ACCESS_KEY_LAST_SUCCESS_STORAGE_KEY
+            );
+        }
 
     } catch (error) {
         if (statusEl) {
@@ -3641,15 +3800,28 @@ function saveSheetsConnectionSettings() {
         ok => {
             if (!statusEl) return;
 
-            statusEl.className =
-                ok
-                    ? "text-xs rounded-lg p-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200"
-                    : "text-xs rounded-lg p-2.5 bg-red-50 text-red-700 border border-red-200";
+            if (ok) {
+                statusEl.className =
+                    "text-xs rounded-lg p-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200";
+                statusEl.textContent =
+                    "アクセスキーを確認しました。";
+                return;
+            }
 
+            if (globalAccessKeyUiState === "offline") {
+                statusEl.className =
+                    "text-xs rounded-lg p-2.5 bg-amber-50 text-amber-800 border border-amber-200";
+                statusEl.textContent =
+                    "キーは保存しましたが、接続確認が一時的に完了しませんでした。再接続をお試しください。";
+                return;
+            }
+
+            statusEl.className =
+                "text-xs rounded-lg p-2.5 bg-red-50 text-red-700 border border-red-200";
             statusEl.textContent =
-                ok
-                    ? "アクセスキーを確認しました。"
-                    : "アクセスキーを確認できませんでした。";
+                globalAccessKeyUiState === "invalid"
+                    ? "アクセスキーを確認してください。"
+                    : "システム側の接続設定を確認してください。";
         }
     );
 
@@ -6827,6 +6999,15 @@ if (saveSheetsConnectionBtn) {
     saveSheetsConnectionBtn.addEventListener(
         "click",
         saveSheetsConnectionSettings
+    );
+}
+
+const retryAccessKeyBtn =
+    document.getElementById("retryAccessKeyBtn");
+if (retryAccessKeyBtn) {
+    retryAccessKeyBtn.addEventListener(
+        "click",
+        () => verifyStoredAccessKey({ manual: true })
     );
 }
 
