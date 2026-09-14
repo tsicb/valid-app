@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="vaa-ui-version" content="2026.09.02-etl-theme-v20">
+    <meta name="vaa-ui-version" content="2026.09.14-etl-ux-v24">
     <title>有効応募分析｜データ作成・更新</title>
     <!-- 有効応募分析：データ作成・更新 favicon -->
     <link rel="icon" type="image/svg+xml" href="./assets/favicon-index.svg?v=20260914">
@@ -73,7 +73,76 @@
         .custom-table thead .sticky-col-1 {
             z-index: 40 !important;
         }
-    </style>
+    
+/* v30.24: progressive access + compact management */
+.vaa-management-menu {
+    position: relative;
+}
+.vaa-management-menu > summary {
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+}
+.vaa-management-menu > summary::-webkit-details-marker {
+    display: none;
+}
+.vaa-management-menu[open] > summary {
+    border-color: rgba(20,142,204,.36);
+    background: rgba(20,142,204,.08);
+    color: #0d6795;
+}
+.vaa-management-menu-panel {
+    position: absolute;
+    z-index: 60;
+    top: calc(100% + 8px);
+    right: 0;
+    width: min(310px, calc(100vw - 32px));
+    padding: 8px;
+    border: 1px solid rgba(20,142,204,.18);
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 18px 44px -24px rgba(15,23,42,.42);
+}
+.vaa-management-menu-link {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 10px 11px;
+    border-radius: 10px;
+    color: #0f172a;
+    text-decoration: none;
+}
+.vaa-management-menu-link:hover {
+    background: rgba(20,142,204,.07);
+}
+.vaa-management-menu-link strong {
+    font-size: 12px;
+    color: #0d6795;
+}
+.vaa-management-menu-link span {
+    font-size: 10px;
+    line-height: 1.5;
+    color: #64748b;
+}
+.etl-auth-workspace.etl-auth-reveal {
+    animation: etlAuthReveal .22s ease-out both;
+}
+@keyframes etlAuthReveal {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+#accessKeyCard[data-access-state="ok"] {
+    padding-top: 12px;
+    padding-bottom: 12px;
+}
+@media (max-width: 640px) {
+    .vaa-management-menu-panel {
+        right: auto;
+        left: 0;
+    }
+}
+
+</style>
 
 <style>
 @keyframes etlProcessingFlow {
@@ -629,25 +698,31 @@
                         </p>
                     </div>
 
-                    <nav class="flex shrink-0 flex-wrap gap-2" aria-label="管理メニュー">
+                    <nav class="flex shrink-0 flex-wrap items-start gap-2" aria-label="ページ操作">
                         <a
                             id="openSheetFolderLink"
                             href="https://drive.google.com/drive/folders/1izieBYn1U40y0sMkK2H5WzoILA1blYNb"
                             target="_blank"
                             rel="noopener noreferrer"
-                            class="vaa-nav-link"
+                            class="vaa-nav-link etl-auth-only hidden"
                         >
                             個社管理シート一覧
                         </a>
-                        <a
-                            id="openViewerAdminLink"
-                            href="./viewer-admin.html"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="vaa-nav-link vaa-nav-link--report"
-                        >
-                            分析レポート一覧・管理
-                        </a>
+                        <details id="etlManagementMenu" class="vaa-management-menu etl-auth-only hidden">
+                            <summary class="vaa-nav-link">管理</summary>
+                            <div class="vaa-management-menu-panel">
+                                <a
+                                    id="openViewerAdminLink"
+                                    href="./viewer-admin.html"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class="vaa-management-menu-link"
+                                >
+                                    <strong>分析レポート管理</strong>
+                                    <span>企業を検索し、共有URLを確認・再発行</span>
+                                </a>
+                            </div>
+                        </details>
                         <button
                             id="openEtlHelpBtn"
                             type="button"
@@ -716,7 +791,7 @@
             <div
                 id="workflowModeSelector"
                 data-mode="create"
-                class="workflow-mode-card mb-6 rounded-2xl p-4 md:p-5"
+                class="workflow-mode-card etl-auth-workspace hidden mb-6 rounded-2xl p-4 md:p-5"
             >
                 <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div class="min-w-0">
@@ -759,7 +834,7 @@
                 </div>
             </div>
 
-            <div id="workflowModeEtlPanel">
+            <div id="workflowModeEtlPanel" class="etl-auth-workspace hidden">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
                     <div class="vaa-file-card vaa-file-card--application p-5 rounded-2xl relative">
                         
@@ -1056,7 +1131,7 @@
                             <div class="text-[11px] font-extrabold text-slate-900">5. 分析レポートの共有URLを止める・再発行するのは？</div>
                             <p class="mt-1 text-[10px] leading-relaxed text-slate-500">
                                 誤送信や共有先の変更などで、今の共有URLを使えなくしたいときに停止します。
-                                新しい共有URLへ切り替えたい場合は再発行します。「分析レポート一覧・管理」から操作できます。
+                                新しい共有URLへ切り替えたい場合は再発行します。「分析レポート管理」から操作できます。
                             </p>
                         </div>
                     </div>
@@ -3226,6 +3301,60 @@ function setAccessKeyUiState(
     globalAccessKeyVerified =
         state === "ok";
 
+    if (card) {
+        card.dataset.accessState = state;
+    }
+
+    const authorized =
+        state === "ok";
+
+    document
+        .querySelectorAll(
+            ".etl-auth-workspace"
+        )
+        .forEach(element => {
+            const wasHidden =
+                element.classList.contains(
+                    "hidden"
+                );
+
+            element.classList.toggle(
+                "hidden",
+                !authorized
+            );
+
+            if (authorized && wasHidden) {
+                element.classList.remove(
+                    "etl-auth-reveal"
+                );
+                void element.offsetWidth;
+                element.classList.add(
+                    "etl-auth-reveal"
+                );
+            }
+        });
+
+    document
+        .querySelectorAll(
+            ".etl-auth-only"
+        )
+        .forEach(element => {
+            element.classList.toggle(
+                "hidden",
+                !authorized
+            );
+        });
+
+    if (!authorized) {
+        document
+            .getElementById(
+                "etlManagementMenu"
+            )
+            ?.removeAttribute(
+                "open"
+            );
+    }
+
     if (runBtn) {
         runBtn.disabled =
             state !== "ok";
@@ -3337,7 +3466,7 @@ async function verifyStoredAccessKey() {
 
         setAccessKeyUiState(
             "ok",
-            `接続OK / API ${data.apiVersion || ""}`
+            "アクセスキーを確認しました。データ作成・更新を開始できます。"
         );
 
         const input =
@@ -5460,7 +5589,7 @@ function openViewerInReservedTab(
         writeReservedViewerTab(
             tab,
             "分析レポートURLを取得できませんでした",
-            "反映処理は完了しています。「分析レポート一覧・管理」から分析レポートを開いてください。",
+            "反映処理は完了しています。「分析レポート管理」から分析レポートを開いてください。",
             "warning"
         );
         return false;
@@ -6757,11 +6886,13 @@ function setWorkflowMode(
 
     etlPanel?.classList.toggle(
         "hidden",
+        !globalAccessKeyVerified ||
         nextMode !== "etl"
     );
 
     managePanel?.classList.toggle(
         "hidden",
+        !globalAccessKeyVerified ||
         nextMode !== "manage"
     );
 
