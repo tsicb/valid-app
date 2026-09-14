@@ -74,7 +74,7 @@
             z-index: 40 !important;
         }
     
-/* v30.29: auth workspace reveal */
+/* v30.30: auth workspace reveal / compact verified state */
 .etl-auth-workspace.etl-auth-reveal {
     animation: etlAuthReveal .22s ease-out both;
 }
@@ -725,7 +725,7 @@
                     <div id="sheetsConnectionSettingsStatus" aria-live="polite" class="hidden mt-2 text-xs rounded-lg p-2.5"></div>
                 </div>
 
-                <div role="note" class="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-white/80 px-3 py-2.5">
+                <div id="accessKeySecurityNote" role="note" class="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-white/80 px-3 py-2.5">
                     <span class="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-amber-400" aria-hidden="true"></span>
                     <div class="min-w-0">
                         <div class="text-[10px] font-extrabold text-amber-900">社内専用・社外共有不可</div>
@@ -751,7 +751,7 @@
                         </div>
 
                         <div id="sheetsCreateTitle" class="mt-2 text-base font-extrabold text-slate-950">
-                            新しい企業の分析データを作成します
+                            新しい企業のデータを保存します
                         </div>
 
                         <div id="existingSheetModeNote" class="mt-1 text-[11px] leading-relaxed text-slate-600">
@@ -766,19 +766,10 @@
                         </div>
                     </div>
 
-                    <button
-                        id="toggleExistingTargetBtn"
-                        type="button"
-                        class="workflow-mode-action shrink-0 rounded-xl px-3 py-2 text-[11px] font-extrabold shadow-sm"
-                        aria-controls="existingSheetTargetPanel"
-                        aria-expanded="false"
-                    >
-                        既存企業のデータを更新する場合
-                    </button>
                 </div>
 
                 <div class="mt-3 text-[10px] leading-relaxed text-slate-500">
-                    既存企業は、個社管理シートの「CSVデータ更新はこちら」から開くと更新先が自動指定されます。
+                    既存企業の更新は、対象の個社管理シートにある「データを作成・更新」から開いてください。更新先は自動指定されます。
                 </div>
             </div>
 
@@ -816,42 +807,8 @@
                 </div>
 
                 <section class="vaa-section-panel mb-5 rounded-2xl border p-4">
-                    <div
-                        id="existingSheetTargetPanel"
-                        class="hidden rounded-xl border border-[#148ecc]/20 bg-[#edf8fd] p-3"
-                    >
-                        <div class="flex items-start justify-between gap-3">
-                            <div>
-                                <div class="text-[11px] font-extrabold text-[#0d6795]">
-                                    既存企業のデータを更新する
-                                </div>
-                                <div class="mt-1 text-[10px] leading-relaxed text-slate-500">
-                                    通常は個社管理シートから開けば自動入力されます。別の既存シートを指定したい場合だけ、ここへURLを貼り付けてください。
-                                </div>
-                            </div>
-                            <button
-                                id="closeExistingTargetPanelBtn"
-                                type="button"
-                                class="shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-extrabold text-slate-500 hover:bg-slate-50"
-                            >
-                                閉じる
-                            </button>
-                        </div>
-
-                        <div class="mt-3">
-                            <label for="existingSheetUrlInput" class="block text-[11px] font-bold text-slate-600 mb-1">
-                                更新先の個社管理シートURL
-                            </label>
-                            <input
-                                id="existingSheetUrlInput"
-                                type="url"
-                                inputmode="url"
-                                autocomplete="off"
-                                placeholder="https://docs.google.com/spreadsheets/d/..."
-                                class="border border-gray-300 p-2.5 rounded-lg w-full text-xs bg-white focus:outline-none focus:border-[#148ecc] focus:ring-2 focus:ring-sky-100"
-                            >
-                        </div>
-                    </div>
+                    <!-- 更新先は個社管理シートからの導線で内部指定する。手動URL入力は通常UIから廃止。 -->
+                    <input id="existingSheetUrlInput" type="hidden" value="">
 
                     <div id="newReportIdentityBlock" class="vaa-identity-card rounded-xl border p-4">
                         <div class="vaa-identity-title text-xs font-extrabold">新規作成時の設定</div>
@@ -978,7 +935,7 @@
                 </section>
 
                 <button id="runBtn" class="vaa-primary-action w-full text-white py-4 rounded-2xl font-extrabold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-lg md:text-xl">
-                    <span id="runBtnLabel" class="tracking-wide">分析データを作成して分析レポートを作る</span>
+                    <span id="runBtnLabel" class="tracking-wide">データを保存して分析レポートを作る</span>
                 </button>
 
                 <div id="message" class="mt-5 text-center text-sm font-semibold p-4 rounded-xl hidden"></div>
@@ -2354,6 +2311,15 @@ async function parseCSV(
             return value === null || value === undefined ? "" : String(value).trim();
         }
 
+        function escapeHtml(value) {
+            return String(value ?? "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/\"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
         function getJobImageFileName(row) {
             return normalizeString(row?.["メイン画像データファイルタイトル"]);
         }
@@ -3403,6 +3369,11 @@ function setAccessKeyUiState(
             "accessKeyEntryArea"
         );
 
+    const securityNote =
+        document.getElementById(
+            "accessKeySecurityNote"
+        );
+
     const runBtn =
         document.getElementById(
             "runBtn"
@@ -3411,7 +3382,7 @@ function setAccessKeyUiState(
     const styles = {
         ok: {
             card:
-                "mb-6 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4",
+                "mb-4 rounded-2xl border border-emerald-200 bg-emerald-50/60 px-4 py-3",
             badge:
                 "rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold text-emerald-800",
             label:
@@ -3505,6 +3476,13 @@ function setAccessKeyUiState(
             state === "checking" ||
             state === "offline" ||
             state === "incompatible"
+        );
+    }
+
+    if (securityNote) {
+        securityNote.classList.toggle(
+            "hidden",
+            state === "ok"
         );
     }
 
@@ -3746,14 +3724,27 @@ async function loadCreateOutputFolders(options = {}) {
             : [];
 
         renderCreateOutputFolderOptions(folders);
-        setCreateOutputFolderStatus(
-            "",
-            ""
-        );
+        if (folders.length) {
+            setCreateOutputFolderStatus(
+                "",
+                ""
+            );
+        } else {
+            setCreateOutputFolderStatus(
+                "ok",
+                "既存の1階層フォルダはありません。共通フォルダ直下、または新しいフォルダを選べます。"
+            );
+        }
     } catch (error) {
         const code = normalizeString(error?.code);
 
+        renderCreateOutputFolderOptions([]);
+
         if (code === "AUTH_INVALID") {
+            setCreateOutputFolderStatus(
+                "error",
+                "アクセスキーを確認できなかったため、既存フォルダ一覧を取得できませんでした。キーを確認してください。"
+            );
             setAccessKeyUiState(
                 "invalid",
                 "アクセスキーの有効性を再確認できませんでした。キーを確認してください。"
@@ -3766,14 +3757,13 @@ async function loadCreateOutputFolders(options = {}) {
             code === "PAGES_VERSION_MISMATCH" ||
             code === "CONFIG_ERROR"
         ) {
-            setAccessKeyUiState(
-                "incompatible",
-                error?.message || "システム側の設定を確認してください。"
+            setCreateOutputFolderStatus(
+                "error",
+                "既存フォルダ一覧を取得できませんでした。中央APIの公開版を確認してください。共通フォルダ直下への保存、または新規フォルダ作成は利用できます。"
             );
             return;
         }
 
-        renderCreateOutputFolderOptions([]);
         setCreateOutputFolderStatus(
             "error",
             "既存フォルダ一覧を取得できませんでした。共通フォルダ直下への保存、または新規フォルダ作成はそのまま利用できます。"
@@ -4143,10 +4133,10 @@ function updateSheetsOperationUi() {
             "新規作成モード";
 
         title.textContent =
-            "新しい企業の分析データを作成します";
+            "新しい企業のデータを保存します";
 
         runLabel.textContent =
-            "分析データを作成して分析レポートを作る";
+            "データを保存して分析レポートを作る";
 
         note.className =
             "mt-1 text-[11px] leading-relaxed text-slate-600";
@@ -4187,7 +4177,7 @@ function updateSheetsOperationUi() {
             "mt-1 text-[11px] leading-relaxed text-red-600";
 
         note.textContent =
-            "GoogleスプレッドシートのURLを正しく貼り付けてください。";
+            "個社管理シートから「データを作成・更新」を開き直してください。";
 
         targetBanner
             ?.classList
@@ -4214,10 +4204,10 @@ function updateSheetsOperationUi() {
         "既存更新モード";
 
     title.textContent =
-        "この企業の分析データを更新します";
+        "この企業のデータを更新します";
 
     runLabel.textContent =
-        "分析データを作成して分析レポートを更新";
+        "データを保存して分析レポートを更新";
 
     note.className =
         "mt-1 text-[11px] leading-relaxed text-slate-700";
@@ -4362,7 +4352,7 @@ function mapSheetsApiError(data) {
         PAGES_VERSION_MISMATCH:
             "ETL Pagesと中央APIのバージョンが一致していません。GASとGitHub Pagesを同じ配布版へ更新してください。",
         NO_APPLICATION_DATA:
-            "応募データがありません。先に分析データを作成してください。",
+            "応募データがありません。先にデータを保存してください。",
         INVALID_PAYLOAD:
             "Google Sheetsへ送るデータの形式に問題があります。",
         INVALID_DATASET:
@@ -6879,8 +6869,8 @@ async function createGoogleSpreadsheet({
         suppliedViewerTab ||
         reserveViewerTab(
             targetSpreadsheetId
-                ? "既存企業の分析データを更新しています。保存完了後、このタブで分析レポートを読み込みます。"
-                : "新しい企業の分析データを作成しています。保存完了後、このタブで分析レポートを読み込みます。"
+                ? "既存企業のデータを更新しています。完了後、このタブで分析レポートを読み込みます。"
+                : "新しい企業のデータを保存しています。完了後、このタブで分析レポートを読み込みます。"
         );
 
     const runBtn =
@@ -7099,7 +7089,7 @@ async function createGoogleSpreadsheet({
                 data.operationMode
             ).toUpperCase() ===
                 "UPDATE"
-                ? "既存企業の分析データ更新が完了しました。"
+                ? "既存企業のデータ更新が完了しました。"
                 : "個社管理シートと分析レポートの作成が完了しました。",
             "success"
         );
@@ -7422,7 +7412,7 @@ function setWorkflowMode(
         quickStep2.textContent =
             nextMode === "manage"
                 ? "設定・共有内容を変更"
-                : "分析データを作成";
+                : "データを保存";
     }
 
     if (quickStep3) {
@@ -10998,17 +10988,6 @@ document
 
             updateSheetsOperationUi();
 
-            if (globalExistingTargetPanelExpanded) {
-                setTimeout(
-                    () =>
-                        document
-                            .getElementById(
-                                "existingSheetUrlInput"
-                            )
-                            ?.focus(),
-                    0
-                );
-            }
         }
     );
 
@@ -11330,7 +11309,7 @@ const viewerTab =
             : "CSVを処理し、新しい分析レポートを準備しています。"
     );
 
-            msgEl.innerHTML = "<span class='flex items-center justify-center'><svg class='animate-spin w-5 h-5 mr-2' xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24'><circle class='opacity-25' cx='12' cy='12' r='10' stroke='currentColor' stroke-width='4'></circle><path class='opacity-75' fill='currentColor' d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'></path></svg> CSVを読み込み、分析データを作成しています...</span>";
+            msgEl.innerHTML = "<span class='flex items-center justify-center'><svg class='animate-spin w-5 h-5 mr-2' xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24'><circle class='opacity-25' cx='12' cy='12' r='10' stroke='currentColor' stroke-width='4'></circle><path class='opacity-75' fill='currentColor' d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'></path></svg> CSVを読み込み、保存するデータを作成しています...</span>";
             msgEl.className = "mt-6 text-center text-sm font-bold text-blue-600 bg-blue-50 p-4 rounded-xl border border-blue-100 block";
             document.getElementById('resultArea').classList.add('hidden');
 
@@ -11625,7 +11604,7 @@ const viewerTab =
 
 msgEl.innerHTML = `
             <div class="flex flex-col items-center">
-                <span class="text-base font-extrabold">分析データを作成しました。分析レポートへ反映しています...</span>
+                <span class="text-base font-extrabold">データを保存しました。分析レポートへ反映しています...</span>
                 <span class="mt-1 text-sm text-slate-600">
                     ${globalFinalData.length.toLocaleString()}応募 ／ 求人突合 ${matchCount.toLocaleString()}応募（${joinRate}%）
                 </span>
@@ -11773,7 +11752,7 @@ msgEl.innerHTML = `
     
 
 // -----------------------------------------------------------------------------
-// v30.29: 分析レポート検索モーダル / 既存企業の共有設定
+// v30.30: index UX整理 / 分析レポート検索モーダル / 既存企業の共有設定
 // -----------------------------------------------------------------------------
 const VAA_RECENT_REPORTS_STORAGE_KEY = "validApplicationAnalysis.recentReports.v1";
 var vaaReportFinderReports = [];
