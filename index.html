@@ -916,11 +916,12 @@
                                     この企業の分析レポートについて、共有URLの確認・閲覧停止／再開・URL再発行を行います。
                                 </div>
                             </div>
-                            <button id="loadShareSettingsBtn" type="button" class="shrink-0 rounded-xl border border-[#148ecc]/30 bg-white px-3 py-2 text-[11px] font-extrabold text-[#0d6795] hover:bg-[#edf8fd]">
+                            <button id="loadShareSettingsBtn" type="button" aria-expanded="false" aria-controls="shareSettingsBody" class="shrink-0 rounded-xl border border-[#148ecc]/30 bg-white px-3 py-2 text-[11px] font-extrabold text-[#0d6795] hover:bg-[#edf8fd]">
                                 共有設定を表示
                             </button>
                         </div>
 
+                        <div id="shareSettingsBody" class="hidden">
                         <div id="shareSettingsLoading" class="hidden mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3" role="status" aria-live="polite">
                             <div class="flex items-center gap-3">
                                 <span class="inline-block h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-sky-200 border-t-[#148ecc]"></span>
@@ -956,6 +957,7 @@
                             <div class="mt-3 border-t border-slate-200 pt-3">
                                 <button id="rotateShareViewerBtn" type="button" class="rounded-lg border border-red-200 bg-white px-3 py-2 text-[10px] font-extrabold text-red-700 hover:bg-red-50">共有URLを再発行</button>
                             </div>
+                        </div>
                         </div>
                     </section>
 
@@ -11816,6 +11818,7 @@ function vaaRememberRecentReport(report) {
             viewerUrl,
             enterpriseLabel: normalizeString(report?.enterpriseLabel),
             fileName: normalizeString(report?.fileName),
+            reportName: normalizeString(report?.reportName || report?.fileName),
             viewerEnabled: report?.viewerEnabled !== false,
             lastDataUpdateAt: normalizeString(report?.lastDataUpdateAt),
             applicationCount: Number(report?.applicationCount || 0),
@@ -11832,6 +11835,7 @@ function vaaRememberRecentReport(report) {
 function vaaReportDisplayName(report) {
     return normalizeString(report?.enterpriseLabel) ||
         normalizeString(report?.fileName) ||
+        normalizeString(report?.reportName) ||
         "有効応募分析";
 }
 
@@ -11839,6 +11843,7 @@ function vaaReportSearchText(report) {
     return [
         report?.enterpriseLabel,
         report?.fileName,
+        report?.reportName,
         report?.spreadsheetId
     ].map(value => normalizeString(value).toLocaleLowerCase("ja")).join("\n");
 }
@@ -11867,6 +11872,7 @@ function vaaReportFinderCardHtml(report) {
         report?.lastDataUpdateAt || report?.lastSettingsSaveAt
     );
     const canOpen = enabled && !!viewerUrl;
+    const canCopy = !!viewerUrl;
 
     return `
         <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" data-finder-sheet-id="${manageEscapeHtml(report?.spreadsheetId || "")}">
@@ -11883,7 +11889,7 @@ function vaaReportFinderCardHtml(report) {
             </div>
             <div class="mt-4 flex flex-wrap gap-2">
                 <a href="${canOpen ? manageEscapeHtml(viewerUrl) : "#"}" target="_blank" rel="noopener noreferrer" class="vaa-finder-open inline-flex items-center rounded-xl px-3 py-2 text-[10px] font-extrabold ${canOpen ? "bg-[#148ecc] text-white hover:bg-[#0d6795]" : "pointer-events-none bg-slate-100 text-slate-400"}" data-sheet-id="${manageEscapeHtml(report?.spreadsheetId || "")}">分析レポートを開く</a>
-                <button type="button" class="vaa-finder-copy rounded-xl border border-[#148ecc]/25 bg-white px-3 py-2 text-[10px] font-extrabold text-[#0d6795] hover:bg-[#edf8fd] disabled:cursor-not-allowed disabled:opacity-45" data-url="${manageEscapeHtml(viewerUrl)}" data-sheet-id="${manageEscapeHtml(report?.spreadsheetId || "")}" ${canOpen ? "" : "disabled"}>URLをコピー</button>
+                <button type="button" class="vaa-finder-copy rounded-xl border border-[#148ecc]/25 bg-white px-3 py-2 text-[10px] font-extrabold text-[#0d6795] hover:bg-[#edf8fd] disabled:cursor-not-allowed disabled:opacity-45" data-url="${manageEscapeHtml(viewerUrl)}" data-sheet-id="${manageEscapeHtml(report?.spreadsheetId || "")}" ${canCopy ? "" : "disabled"}>URLをコピー</button>
             </div>
         </article>
     `;
@@ -12021,6 +12027,19 @@ function vaaCurrentUpdateSheetId() {
     );
 }
 
+function vaaSetShareSettingsExpanded(expanded) {
+    const body = document.getElementById("shareSettingsBody");
+    const button = document.getElementById("loadShareSettingsBtn");
+    if (!body || !button) return;
+    const open = !!expanded;
+    body.classList.toggle("hidden", !open);
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+    if (!vaaShareSettingsBusy) {
+        button.disabled = false;
+        button.textContent = open ? "共有設定を閉じる" : "共有設定を表示";
+    }
+}
+
 function vaaResetShareSettings() {
     vaaShareSettingsState = null;
     vaaShareSettingsSheetId = "";
@@ -12030,8 +12049,8 @@ function vaaResetShareSettings() {
     const btn = document.getElementById("loadShareSettingsBtn");
     if (btn) {
         btn.disabled = false;
-        btn.textContent = "共有設定を表示";
     }
+    vaaSetShareSettingsExpanded(false);
 }
 
 function vaaSyncShareSettingsVisibility(rawValue = "", sheetId = "") {
@@ -12081,8 +12100,8 @@ function vaaRenderShareSettings(data) {
     const load = document.getElementById("loadShareSettingsBtn");
     if (load) {
         load.disabled = false;
-        load.textContent = "再読み込み";
     }
+    vaaSetShareSettingsExpanded(true);
     vaaRememberRecentReport({
         spreadsheetId: metadata.spreadsheetId,
         viewerUrl: url,
@@ -12104,6 +12123,7 @@ async function vaaLoadShareSettings() {
 
     vaaShareSettingsBusy = true;
     vaaShareSettingsSheetId = id;
+    vaaSetShareSettingsExpanded(true);
     document.getElementById("shareSettingsContent")?.classList.add("hidden");
     document.getElementById("shareSettingsError")?.classList.add("hidden");
     document.getElementById("shareSettingsLoading")?.classList.remove("hidden");
@@ -12126,10 +12146,10 @@ async function vaaLoadShareSettings() {
         errorBox?.classList.remove("hidden");
         if (load) {
             load.disabled = false;
-            load.textContent = "共有設定を表示";
         }
     } finally {
         vaaShareSettingsBusy = false;
+        vaaSetShareSettingsExpanded(true);
     }
 }
 
@@ -12293,7 +12313,15 @@ document.getElementById("reportFinderInput")?.addEventListener("input", vaaRende
 document.getElementById("reloadReportFinderBtn")?.addEventListener("click", () => vaaLoadReportFinderList({ force: true }));
 
 // Share settings events
-document.getElementById("loadShareSettingsBtn")?.addEventListener("click", vaaLoadShareSettings);
+document.getElementById("loadShareSettingsBtn")?.addEventListener("click", () => {
+    const body = document.getElementById("shareSettingsBody");
+    const expanded = body && !body.classList.contains("hidden");
+    if (expanded) {
+        vaaSetShareSettingsExpanded(false);
+        return;
+    }
+    vaaLoadShareSettings();
+});
 document.getElementById("retryShareSettingsBtn")?.addEventListener("click", vaaLoadShareSettings);
 document.getElementById("copyShareViewerUrlBtn")?.addEventListener("click", event => {
     vaaCopyText(vaaShareSettingsState?.metadata?.viewerUrl, event.currentTarget);
