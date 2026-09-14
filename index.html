@@ -74,7 +74,7 @@
             z-index: 40 !important;
         }
     
-/* v30.27: resilient access-key verification + internal-only key guidance */
+/* v30.28: split auth verification from Drive folder discovery */
 .vaa-management-menu {
     position: relative;
 }
@@ -957,6 +957,12 @@
                                         class="w-full border border-gray-300 rounded-lg p-2.5 text-xs bg-white focus:outline-none focus:border-[#148ecc] focus:ring-2 focus:ring-sky-100"
                                     >
                                 </div>
+                                <div
+                                    id="newOutputFolderStatus"
+                                    class="hidden mt-2 rounded-lg border px-2.5 py-2 text-[10px]"
+                                    role="status"
+                                    aria-live="polite"
+                                ></div>
                                 <div class="mt-1 text-[10px] text-gray-500">
                                     共通フォルダ直下、またはその直下の1階層だけを選べます。既存フォルダと同名ならそのフォルダを使用します。
                                 </div>
@@ -1285,6 +1291,7 @@
         const SHEETS_API_URL = "https://script.google.com/macros/s/AKfycbwS_-ptDyhVk5yrNtRB8I32WUJen-xdjKUtp-Rf7Dbdhhg4V9Vw3gneD9K7ErZgP_Y/exec";
         const SHEETS_OUTPUT_FOLDER_URL = "https://drive.google.com/drive/folders/1izieBYn1U40y0sMkK2H5WzoILA1blYNb";
         let globalCreateOutputFolders = [];
+        let globalCreateOutputFoldersLoading = false;
 
         const SHEETS_ACCESS_KEY_DOC_URL = "https://docs.google.com/document/d/1c5u4HqoHo5LQRPrXjbWWUJI00BPjTv0Ekk2VA6KtYIQ/edit";
         const SHEETS_ACCESS_KEY_STORAGE_KEY = "validApplicationAnalysis.sheetsAccessKey";
@@ -3565,6 +3572,181 @@ function openSheetsSettingsAndFocus() {
     );
 }
 
+function setCreateOutputFolderStatus(state, message = "") {
+    const status = document.getElementById("newOutputFolderStatus");
+    if (!status) return;
+
+    if (!message) {
+        status.className = "hidden mt-2 rounded-lg border px-2.5 py-2 text-[10px]";
+        status.textContent = "";
+        return;
+    }
+
+    const stateClass = {
+        loading: "border-sky-200 bg-sky-50 text-sky-800",
+        error: "border-amber-200 bg-amber-50 text-amber-900",
+        ok: "border-emerald-200 bg-emerald-50 text-emerald-800"
+    }[state] || "border-slate-200 bg-slate-50 text-slate-700";
+
+    status.className = `mt-2 rounded-lg border px-2.5 py-2 text-[10px] ${stateClass}`;
+
+    if (state === "error") {
+        status.innerHTML = `
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <span>${escapeHtml(message)}</span>
+                <button
+                    type="button"
+                    id="retryOutputFoldersBtn"
+                    class="shrink-0 rounded-md border border-amber-300 bg-white px-2 py-1 font-bold text-amber-900 hover:bg-amber-100"
+                >再取得</button>
+            </div>
+        `;
+        document.getElementById("retryOutputFoldersBtn")?.addEventListener(
+            "click",
+            () => loadCreateOutputFolders({ manual: true })
+        );
+        return;
+    }
+
+    status.textContent = message;
+}
+
+async function fetchCreateOutputFolders(accessKey) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+        () => controller.abort(),
+        30000
+    );
+
+    try {
+        const response = await fetch(
+            SHEETS_API_URL,
+            {
+                method: "POST",
+                mode: "cors",
+                credentials: "omit",
+                headers: {
+                    "Content-Type": "text/plain;charset=UTF-8"
+                },
+                body: JSON.stringify({
+                    action: "manageListOutputFolders",
+                    schemaVersion: SHEETS_SCHEMA_VERSION,
+                    pagesVersion: SHEETS_APP_VERSION,
+                    accessKey
+                }),
+                signal: controller.signal
+            }
+        );
+
+        if (!response.ok) {
+            const error = new Error(
+                `保存先フォルダ一覧の取得に失敗しました（HTTP ${response.status}）。`
+            );
+            error.code = `HTTP_${response.status}`;
+            throw error;
+        }
+
+        const text = await response.text();
+        let data;
+
+        try {
+            data = JSON.parse(text);
+        } catch (_) {
+            const error = new Error(
+                "保存先フォルダ一覧のAPI応答を確認できませんでした。"
+            );
+            error.code = "INVALID_RESPONSE";
+            throw error;
+        }
+
+        if (!data?.ok) {
+            const error = new Error(
+                mapSheetsApiError(data)
+            );
+            error.code = data?.code || "OUTPUT_FOLDER_LIST_ERROR";
+            throw error;
+        }
+
+        return data;
+    } catch (error) {
+        if (error?.name === "AbortError") {
+            const timeoutError = new Error(
+                "保存先フォルダ一覧の取得がタイムアウトしました。"
+            );
+            timeoutError.code = "NETWORK_TIMEOUT";
+            throw timeoutError;
+        }
+        throw error;
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+async function loadCreateOutputFolders(options = {}) {
+    if (globalCreateOutputFoldersLoading) return;
+
+    const accessKey = getStoredSheetsAccessKey();
+    if (!accessKey || !globalAccessKeyVerified) {
+        renderCreateOutputFolderOptions([]);
+        setCreateOutputFolderStatus(
+            "",
+            ""
+        );
+        return;
+    }
+
+    globalCreateOutputFoldersLoading = true;
+    setCreateOutputFolderStatus(
+        "loading",
+        options?.manual
+            ? "保存先フォルダ一覧を再取得しています…"
+            : "保存先フォルダ一覧を読み込んでいます…"
+    );
+
+    try {
+        const data = await fetchCreateOutputFolders(accessKey);
+        const folders = Array.isArray(data?.outputFolders)
+            ? data.outputFolders
+            : [];
+
+        renderCreateOutputFolderOptions(folders);
+        setCreateOutputFolderStatus(
+            "",
+            ""
+        );
+    } catch (error) {
+        const code = normalizeString(error?.code);
+
+        if (code === "AUTH_INVALID") {
+            setAccessKeyUiState(
+                "invalid",
+                "アクセスキーの有効性を再確認できませんでした。キーを確認してください。"
+            );
+            return;
+        }
+
+        if (
+            code === "SCHEMA_MISMATCH" ||
+            code === "PAGES_VERSION_MISMATCH" ||
+            code === "CONFIG_ERROR"
+        ) {
+            setAccessKeyUiState(
+                "incompatible",
+                error?.message || "システム側の設定を確認してください。"
+            );
+            return;
+        }
+
+        renderCreateOutputFolderOptions([]);
+        setCreateOutputFolderStatus(
+            "error",
+            "既存フォルダ一覧を取得できませんでした。共通フォルダ直下への保存、または新規フォルダ作成はそのまま利用できます。"
+        );
+    } finally {
+        globalCreateOutputFoldersLoading = false;
+    }
+}
+
 function renderCreateOutputFolderOptions(folders = []) {
     globalCreateOutputFolders = Array.isArray(folders)
         ? folders
@@ -3658,16 +3840,16 @@ async function verifyStoredAccessKey(options = {}) {
             try {
                 const data = await fetchAccessKeyAuthCheck(accessKey);
 
-                renderCreateOutputFolderOptions(
-                    data.outputFolders || []
-                );
-
                 rememberAccessKeySuccessNow();
 
                 setAccessKeyUiState(
                     "ok",
                     "アクセスキーを確認しました。データ作成・更新を開始できます。"
                 );
+
+                // 認証確認とDriveの保存先一覧取得は分離する。
+                // ここは待たずに本体UIを表示し、保存先候補だけ別通信で読み込む。
+                void loadCreateOutputFolders();
 
                 const input = document.getElementById(
                     "sheetsAccessKeyInput"
@@ -4173,6 +4355,8 @@ function mapSheetsApiError(data) {
             "設定・マスタの保存中にエラーが発生しました。",
         OUTPUT_FOLDER_INVALID:
             "保存先フォルダを確認してください。共通フォルダ直下またはその直下1階層を指定できます。",
+        OUTPUT_FOLDER_LIST_ERROR:
+            "既存の保存先フォルダ一覧を取得できませんでした。共通フォルダ直下への保存、または新規フォルダ作成は利用できます。",
         REPORT_NAME_REQUIRED:
             "分析レポート名を入力してください。",
         IMAGE_RETRY_ERROR:
