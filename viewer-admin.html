@@ -343,6 +343,37 @@
         .more-actions-panel button:last-child { margin-bottom:0; }
         .search-wrap input:focus { border-color:var(--blue);box-shadow:0 0 0 3px rgba(20,142,204,.12);outline:none; }
 
+        .management-loading {
+            margin-top:16px;
+            padding:16px;
+            border:1px solid rgba(20,142,204,.18);
+            border-radius:14px;
+            background:linear-gradient(135deg,#f8fcfe,#fff 72%,#fdffe9);
+        }
+        .management-loading-main { display:flex;gap:12px;align-items:center; }
+        .management-spinner {
+            width:24px;height:24px;flex:0 0 auto;border-radius:999px;
+            border:3px solid rgba(20,142,204,.18);border-top-color:var(--blue);
+            animation:managementSpin .8s linear infinite;
+        }
+        .management-loading-title { display:block;font-size:12px;font-weight:900;color:#0f172a; }
+        .management-loading-detail { display:block;margin-top:3px;font-size:10px;line-height:1.55;color:#64748b; }
+        .management-progress {
+            position:relative;height:6px;margin-top:13px;overflow:hidden;border-radius:999px;background:#e8f1f5;
+        }
+        .management-progress::after {
+            content:"";position:absolute;inset:0 auto 0 -32%;width:32%;border-radius:inherit;
+            background:linear-gradient(90deg,transparent,rgba(20,142,204,.85),rgba(238,255,22,.82),transparent);
+            animation:managementFlow 1.15s ease-in-out infinite;
+        }
+        .management-load-error {
+            margin-top:10px;padding:10px 11px;border-radius:10px;background:#fef2f2;color:#b91c1c;
+            font-size:10px;line-height:1.6;font-weight:750;
+        }
+        .recent-note { color:#64748b;font-size:10px;line-height:1.55;margin-top:3px; }
+        @keyframes managementSpin { to { transform:rotate(360deg); } }
+        @keyframes managementFlow { from { left:-34%; } to { left:102%; } }
+
     </style>
 </head>
 <body>
@@ -381,11 +412,11 @@
     <div id="listMode" class="hidden">
         <section class="section">
             <div class="section-head">
-                <h2 id="allTitle" class="section-title">分析レポートを検索</h2>
+                <h2 id="allTitle" class="section-title">最近使った分析レポート</h2>
                 <div id="allCount" class="section-note"></div>
             </div>
             <div id="allGrid" class="grid">
-                <div class="empty" style="grid-column:1/-1;">企業名または分析レポート名を入力してください。</div>
+                <div class="empty" style="grid-column:1/-1;">最近使った分析レポートはまだありません。上の検索欄から企業を検索してください。</div>
             </div>
         </section>
     </div>
@@ -398,29 +429,44 @@
             共有URLの確認・コピーと、閲覧停止・再開・URL再発行を行います。
         </div>
 
-        <div class="meta">
-            <div class="key">分析レポート名</div>
-            <div id="reportName">-</div>
-            <div class="key">閲覧状態</div>
-            <div id="viewerState">-</div>
-            <div class="key">共有URL</div>
-            <div id="viewerUrl" class="viewer-url">-</div>
+        <div id="individualLoading" class="management-loading hidden" aria-live="polite" aria-busy="true">
+            <div class="management-loading-main">
+                <span id="individualLoadingSpinner" class="management-spinner" aria-hidden="true"></span>
+                <div>
+                    <strong id="individualLoadingTitle" class="management-loading-title">管理情報を読み込んでいます</strong>
+                    <span id="individualLoadingDetail" class="management-loading-detail">共有URLと閲覧状態を確認しています。そのままお待ちください。</span>
+                </div>
+            </div>
+            <div id="individualLoadingProgress" class="management-progress"></div>
+            <div id="individualLoadError" class="management-load-error hidden"></div>
+            <button id="retryIndividualBtn" type="button" class="secondary hidden" style="margin-top:10px;">再試行</button>
         </div>
 
-        <div class="report-actions">
-            <a id="openViewerBtn" class="button primary" href="#" target="_blank" rel="noopener noreferrer">分析レポートを開く</a>
-            <button id="copyViewerBtn" type="button">URLをコピー</button>
-            <details class="more-actions">
-                <summary class="button secondary">その他</summary>
-                <div class="more-actions-panel">
-                    <button id="toggleViewerBtn" type="button" class="warning">閲覧を停止</button>
-                    <button id="rotateViewerBtn" type="button" class="danger">共有URLを再発行</button>
-                </div>
-            </details>
+        <div id="individualContent" class="hidden">
+            <div class="meta">
+                <div class="key">分析レポート名</div>
+                <div id="reportName">-</div>
+                <div class="key">閲覧状態</div>
+                <div id="viewerState">-</div>
+                <div class="key">共有URL</div>
+                <div id="viewerUrl" class="viewer-url">-</div>
+            </div>
+
+            <div class="report-actions">
+                <a id="openViewerBtn" class="button primary" href="#" target="_blank" rel="noopener noreferrer">分析レポートを開く</a>
+                <button id="copyViewerBtn" type="button">URLをコピー</button>
+                <details class="more-actions">
+                    <summary class="button secondary">その他</summary>
+                    <div class="more-actions-panel">
+                        <button id="toggleViewerBtn" type="button" class="warning">閲覧を停止</button>
+                        <button id="rotateViewerBtn" type="button" class="danger">共有URLを再発行</button>
+                    </div>
+                </details>
+            </div>
         </div>
     </section>
 
-    <div class="footer">有効応募分析｜分析レポート管理 / 2026.09.14-pages-v24-search-focused</div>
+    <div class="footer">有効応募分析｜分析レポート管理 / 2026.09.14-pages-v25-recent-loading-ux</div>
 </main>
 
 <script>
@@ -439,6 +485,7 @@ let currentState = null;
 let allReports = [];
 let busy = false;
 let showAllReports = false;
+let pendingManageReportName = "";
 
 function s(value) {
     return value === null || value === undefined
@@ -667,7 +714,8 @@ function manageUrl(report) {
 function reportCardHtml(
     report,
     {
-        recent = false
+        recent = false,
+        compact = false
     } = {}
 ) {
     const name =
@@ -741,10 +789,15 @@ function reportCardHtml(
                         ${enabled && viewerUrl ? "" : "disabled"}>
                     URLをコピー
                 </button>
-                <a class="button secondary"
-                   href="${escapeHtml(manageUrl(report))}">
-                    管理
-                </a>
+                ${
+                    compact
+                        ? ""
+                        : `<a class="button secondary js-manage-report"
+                              href="${escapeHtml(manageUrl(report))}"
+                              data-report-name="${escapeHtml(name)}">
+                               管理
+                           </a>`
+                }
             </div>
         </article>
     `;
@@ -809,6 +862,23 @@ function bindReportOpenEvents(container) {
                 }
             );
         });
+
+    container
+        ?.querySelectorAll(
+            ".js-manage-report"
+        )
+        .forEach(link => {
+            link.addEventListener(
+                "click",
+                () => {
+                    pendingManageReportName =
+                        s(link.dataset.reportName);
+                    showIndividualLoading(
+                        pendingManageReportName
+                    );
+                }
+            );
+        });
 }
 
 function renderCardGrid(
@@ -867,32 +937,61 @@ function renderListMode() {
             )
             : [];
 
+    if (!query) {
+        const recentReports =
+            allReports
+                .map(report => ({
+                    report,
+                    rank: recentRank(report)
+                }))
+                .filter(item => !!item.rank)
+                .sort((a,b) =>
+                    a.rank.index -
+                    b.rank.index
+                )
+                .slice(0,5)
+                .map(item => item.report);
+
+        document.getElementById(
+            "allTitle"
+        ).textContent =
+            "最近使った分析レポート";
+
+        document.getElementById(
+            "allCount"
+        ).textContent =
+            recentReports.length
+                ? `${recentReports.length}件`
+                : "";
+
+        if (recentReports.length) {
+            renderCardGrid(
+                "allGrid",
+                recentReports,
+                { recent:true, compact:true }
+            );
+        } else {
+            const grid =
+                document.getElementById(
+                    "allGrid"
+                );
+            if (grid) {
+                grid.innerHTML =
+                    '<div class="empty" style="grid-column:1/-1;">最近使った分析レポートはまだありません。上の検索欄から企業を検索してください。</div>';
+            }
+        }
+        return;
+    }
+
     document.getElementById(
         "allTitle"
     ).textContent =
-        query
-            ? "検索結果"
-            : "分析レポートを検索";
+        "検索結果";
 
     document.getElementById(
         "allCount"
     ).textContent =
-        query
-            ? `${matches.length.toLocaleString()}件`
-            : "";
-
-    const grid =
-        document.getElementById(
-            "allGrid"
-        );
-
-    if (!query) {
-        if (grid) {
-            grid.innerHTML =
-                '<div class="empty" style="grid-column:1/-1;">企業名または分析レポート名を入力してください。</div>';
-        }
-        return;
-    }
+        `${matches.length.toLocaleString()}件`;
 
     renderCardGrid(
         "allGrid",
@@ -995,6 +1094,131 @@ async function callApi(
     return data;
 }
 
+function closeAdminDisclosureMenus() {
+    document
+        .querySelectorAll('details.more-actions[open]')
+        .forEach(details => details.removeAttribute('open'));
+}
+
+function showIndividualLoading(reportName = "") {
+    const mode =
+        document.getElementById(
+            "individualMode"
+        );
+    const loading =
+        document.getElementById(
+            "individualLoading"
+        );
+    const content =
+        document.getElementById(
+            "individualContent"
+        );
+    const spinner =
+        document.getElementById(
+            "individualLoadingSpinner"
+        );
+    const progress =
+        document.getElementById(
+            "individualLoadingProgress"
+        );
+    const error =
+        document.getElementById(
+            "individualLoadError"
+        );
+    const retry =
+        document.getElementById(
+            "retryIndividualBtn"
+        );
+
+    mode?.classList.remove(
+        "hidden"
+    );
+    loading?.classList.remove(
+        "hidden"
+    );
+    content?.classList.add(
+        "hidden"
+    );
+    spinner?.classList.remove(
+        "hidden"
+    );
+    progress?.classList.remove(
+        "hidden"
+    );
+    error?.classList.add(
+        "hidden"
+    );
+    retry?.classList.add(
+        "hidden"
+    );
+
+    const title =
+        document.getElementById(
+            "individualLoadingTitle"
+        );
+    if (title) {
+        title.textContent =
+            reportName
+                ? `${reportName} の管理情報を読み込んでいます`
+                : "管理情報を読み込んでいます";
+    }
+
+    const detail =
+        document.getElementById(
+            "individualLoadingDetail"
+        );
+    if (detail) {
+        detail.textContent =
+            "共有URLと閲覧状態を確認しています。そのままお待ちください。";
+    }
+
+    closeAdminDisclosureMenus();
+}
+
+function showIndividualLoadError(message) {
+    const loading =
+        document.getElementById(
+            "individualLoading"
+        );
+    const spinner =
+        document.getElementById(
+            "individualLoadingSpinner"
+        );
+    const progress =
+        document.getElementById(
+            "individualLoadingProgress"
+        );
+    const error =
+        document.getElementById(
+            "individualLoadError"
+        );
+    const retry =
+        document.getElementById(
+            "retryIndividualBtn"
+        );
+
+    loading?.classList.remove(
+        "hidden"
+    );
+    spinner?.classList.add(
+        "hidden"
+    );
+    progress?.classList.add(
+        "hidden"
+    );
+    if (error) {
+        error.textContent =
+            message ||
+            "管理情報を読み込めませんでした。";
+        error.classList.remove(
+            "hidden"
+        );
+    }
+    retry?.classList.remove(
+        "hidden"
+    );
+}
+
 function renderIndividual(data) {
     currentState = data;
 
@@ -1057,6 +1281,18 @@ function renderIndividual(data) {
     ).classList.remove(
         "hidden"
     );
+
+    document.getElementById(
+        "individualLoading"
+    )?.classList.add(
+        "hidden"
+    );
+    document.getElementById(
+        "individualContent"
+    )?.classList.remove(
+        "hidden"
+    );
+    pendingManageReportName = "";
 
     rememberRecent({
         spreadsheetId:
@@ -1179,8 +1415,11 @@ async function loadIndividual() {
     }
 
     setBusy(true);
+    showIndividualLoading(
+        pendingManageReportName
+    );
     setStatus(
-        "分析レポート情報を読み込んでいます..."
+        "分析レポートの管理情報を読み込んでいます..."
     );
 
     try {
@@ -1204,6 +1443,10 @@ async function loadIndividual() {
             );
         }
 
+        showIndividualLoadError(
+            error?.message ||
+            String(error)
+        );
         setStatus(
             error?.message ||
             String(error),
@@ -1248,6 +1491,9 @@ function loadCurrentMode() {
         ).textContent =
             "この企業の共有URL確認・閲覧状態・URL再発行を管理します。";
 
+        showIndividualLoading(
+            pendingManageReportName
+        );
         loadIndividual();
     } else {
         document.getElementById(
@@ -1489,6 +1735,55 @@ document
             }
         }
     );
+
+document
+    .getElementById(
+        "retryIndividualBtn"
+    )
+    .addEventListener(
+        "click",
+        loadIndividual
+    );
+
+document.addEventListener(
+    "click",
+    event => {
+        document
+            .querySelectorAll(
+                "details.more-actions[open]"
+            )
+            .forEach(details => {
+                if (!details.contains(event.target)) {
+                    details.removeAttribute(
+                        "open"
+                    );
+                }
+            });
+
+        const action =
+            event.target.closest(
+                ".more-actions-panel button, .more-actions-panel a"
+            );
+        if (action) {
+            action
+                .closest(
+                    "details.more-actions"
+                )
+                ?.removeAttribute(
+                    "open"
+                );
+        }
+    }
+);
+
+document.addEventListener(
+    "keydown",
+    event => {
+        if (event.key === "Escape") {
+            closeAdminDisclosureMenus();
+        }
+    }
+);
 
 window.addEventListener(
     "hashchange",

@@ -74,7 +74,7 @@
             z-index: 40 !important;
         }
     
-/* v30.24: progressive access + compact management */
+/* v30.25: progressive access + compact management + disclosure UX */
 .vaa-management-menu {
     position: relative;
 }
@@ -11308,6 +11308,38 @@ msgEl.innerHTML = `
             a.href = window.URL.createObjectURL(blob);
             a.download = 'etl_result.csv';
             a.click();
+        });
+
+        // ==========================================
+        // 管理メニュー共通挙動
+        // ==========================================
+        function closeIndexManagementMenu() {
+            document
+                .querySelectorAll('details.vaa-management-menu[open]')
+                .forEach(details => details.removeAttribute('open'));
+        }
+
+        document.addEventListener('click', event => {
+            const openMenus = Array.from(
+                document.querySelectorAll('details.vaa-management-menu[open]')
+            );
+
+            openMenus.forEach(details => {
+                if (!details.contains(event.target)) {
+                    details.removeAttribute('open');
+                }
+            });
+
+            const action = event.target.closest('.vaa-management-menu-panel a, .vaa-management-menu-panel button');
+            if (action) {
+                action.closest('details.vaa-management-menu')?.removeAttribute('open');
+            }
+        });
+
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                closeIndexManagementMenu();
+            }
         });
 
         // ==========================================
