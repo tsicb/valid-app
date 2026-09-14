@@ -74,56 +74,7 @@
             z-index: 40 !important;
         }
     
-/* v30.28: split auth verification from Drive folder discovery */
-.vaa-management-menu {
-    position: relative;
-}
-.vaa-management-menu > summary {
-    list-style: none;
-    cursor: pointer;
-    user-select: none;
-}
-.vaa-management-menu > summary::-webkit-details-marker {
-    display: none;
-}
-.vaa-management-menu[open] > summary {
-    border-color: rgba(20,142,204,.36);
-    background: rgba(20,142,204,.08);
-    color: #0d6795;
-}
-.vaa-management-menu-panel {
-    position: absolute;
-    z-index: 60;
-    top: calc(100% + 8px);
-    right: 0;
-    width: min(310px, calc(100vw - 32px));
-    padding: 8px;
-    border: 1px solid rgba(20,142,204,.18);
-    border-radius: 14px;
-    background: #fff;
-    box-shadow: 0 18px 44px -24px rgba(15,23,42,.42);
-}
-.vaa-management-menu-link {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    padding: 10px 11px;
-    border-radius: 10px;
-    color: #0f172a;
-    text-decoration: none;
-}
-.vaa-management-menu-link:hover {
-    background: rgba(20,142,204,.07);
-}
-.vaa-management-menu-link strong {
-    font-size: 12px;
-    color: #0d6795;
-}
-.vaa-management-menu-link span {
-    font-size: 10px;
-    line-height: 1.5;
-    color: #64748b;
-}
+/* v30.29: auth workspace reveal */
 .etl-auth-workspace.etl-auth-reveal {
     animation: etlAuthReveal .22s ease-out both;
 }
@@ -135,13 +86,6 @@
     padding-top: 12px;
     padding-bottom: 12px;
 }
-@media (max-width: 640px) {
-    .vaa-management-menu-panel {
-        right: auto;
-        left: 0;
-    }
-}
-
 </style>
 
 <style>
@@ -708,21 +652,15 @@
                         >
                             個社管理シート一覧
                         </a>
-                        <details id="etlManagementMenu" class="vaa-management-menu etl-auth-only hidden">
-                            <summary class="vaa-nav-link">管理</summary>
-                            <div class="vaa-management-menu-panel">
-                                <a
-                                    id="openViewerAdminLink"
-                                    href="./viewer-admin.html"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    class="vaa-management-menu-link"
-                                >
-                                    <strong>分析レポート管理</strong>
-                                    <span>企業を検索し、共有URLを確認・再発行</span>
-                                </a>
-                            </div>
-                        </details>
+                        <button
+                            id="openReportFinderBtn"
+                            type="button"
+                            class="vaa-nav-link etl-auth-only hidden"
+                            aria-haspopup="dialog"
+                            aria-controls="reportFinderModal"
+                        >
+                            分析レポートを探す
+                        </button>
                         <button
                             id="openEtlHelpBtn"
                             type="button"
@@ -970,6 +908,57 @@
                         </div>
                     </div>
 
+                    <section id="existingShareSettingsCard" class="hidden mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <div class="text-xs font-extrabold text-slate-900">分析レポート共有設定</div>
+                                <div class="mt-1 text-[10px] leading-relaxed text-slate-500">
+                                    この企業の分析レポートについて、共有URLの確認・閲覧停止／再開・URL再発行を行います。
+                                </div>
+                            </div>
+                            <button id="loadShareSettingsBtn" type="button" class="shrink-0 rounded-xl border border-[#148ecc]/30 bg-white px-3 py-2 text-[11px] font-extrabold text-[#0d6795] hover:bg-[#edf8fd]">
+                                共有設定を表示
+                            </button>
+                        </div>
+
+                        <div id="shareSettingsLoading" class="hidden mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3" role="status" aria-live="polite">
+                            <div class="flex items-center gap-3">
+                                <span class="inline-block h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-sky-200 border-t-[#148ecc]"></span>
+                                <div class="min-w-0">
+                                    <div id="shareSettingsLoadingTitle" class="text-[11px] font-extrabold text-slate-800">共有設定を読み込んでいます</div>
+                                    <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-sky-100">
+                                        <div class="h-full w-2/5 animate-pulse rounded-full bg-[#148ecc]"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="shareSettingsError" class="hidden mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10px] text-amber-900">
+                            <div id="shareSettingsErrorText">共有設定を読み込めませんでした。</div>
+                            <button id="retryShareSettingsBtn" type="button" class="mt-2 rounded-lg border border-amber-300 bg-white px-3 py-1.5 font-extrabold text-amber-900 hover:bg-amber-100">再試行</button>
+                        </div>
+
+                        <div id="shareSettingsContent" class="hidden mt-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <div class="text-[10px] font-bold text-slate-500">閲覧状態</div>
+                                    <div class="mt-1 flex items-center gap-2">
+                                        <span id="shareViewerStatusBadge" class="rounded-full px-2 py-1 text-[10px] font-extrabold"></span>
+                                        <span id="shareViewerReportName" class="text-[11px] font-extrabold text-slate-800"></span>
+                                    </div>
+                                </div>
+                                <div class="flex flex-wrap gap-2">
+                                    <button id="copyShareViewerUrlBtn" type="button" class="rounded-lg border border-[#148ecc]/30 bg-white px-3 py-2 text-[10px] font-extrabold text-[#0d6795] hover:bg-[#edf8fd]">URLをコピー</button>
+                                    <button id="toggleShareViewerBtn" type="button" class="rounded-lg border px-3 py-2 text-[10px] font-extrabold"></button>
+                                </div>
+                            </div>
+                            <div id="shareViewerUrlText" class="mt-3 break-all rounded-lg bg-white px-3 py-2 text-[10px] text-slate-500"></div>
+                            <div class="mt-3 border-t border-slate-200 pt-3">
+                                <button id="rotateShareViewerBtn" type="button" class="rounded-lg border border-red-200 bg-white px-3 py-2 text-[10px] font-extrabold text-red-700 hover:bg-red-50">共有URLを再発行</button>
+                            </div>
+                        </div>
+                    </section>
+
                     <label class="vaa-option-card mt-4 flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11px] cursor-pointer">
                         <input
                             id="etlAutoOpenViewerCheckbox"
@@ -1043,6 +1032,58 @@
         </div>
     </div>
 
+
+    <div id="reportFinderModal" class="hidden fixed inset-0 z-[10030] items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="reportFinderTitle" aria-hidden="true">
+        <div id="reportFinderBackdrop" class="absolute inset-0 bg-slate-950/45 backdrop-blur-[1px]"></div>
+        <div class="relative z-10 flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-white/80 bg-white shadow-2xl">
+            <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 md:px-6">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-[#148ecc] text-[10px] font-black text-white">R</span>
+                        <h2 id="reportFinderTitle" class="text-base font-extrabold text-slate-950">分析レポートを探す</h2>
+                    </div>
+                    <p class="mt-1 text-[10px] leading-relaxed text-slate-500">企業名・分析レポート名で検索できます。検索欄が空のときは最近使ったレポートを表示します。</p>
+                </div>
+                <button id="closeReportFinderBtn" type="button" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-sm font-black text-slate-500 hover:bg-slate-50" aria-label="分析レポート検索を閉じる">×</button>
+            </div>
+            <div class="border-b border-slate-200 bg-slate-50/70 px-5 py-4 md:px-6">
+                <div class="relative">
+                    <input id="reportFinderInput" type="search" autocomplete="off" placeholder="企業名・分析レポート名で検索" class="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 pr-10 text-sm focus:border-[#148ecc] focus:outline-none focus:ring-2 focus:ring-sky-100">
+                    <span class="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">⌕</span>
+                </div>
+                <div id="reportFinderStatus" class="mt-2 text-[10px] text-slate-500" aria-live="polite"></div>
+            </div>
+            <div class="min-h-0 flex-1 overflow-y-auto px-5 py-5 md:px-6">
+                <div class="mb-3 flex items-center justify-between gap-3">
+                    <h3 id="reportFinderListTitle" class="text-xs font-extrabold text-slate-800">最近使った分析レポート</h3>
+                    <button id="reloadReportFinderBtn" type="button" class="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-extrabold text-slate-600 hover:bg-slate-50">一覧を再取得</button>
+                </div>
+                <div id="reportFinderResults" class="grid grid-cols-1 gap-3 md:grid-cols-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="shareConfirmModal" class="hidden fixed inset-0 z-[10040] items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="shareConfirmTitle" aria-hidden="true">
+        <div id="shareConfirmBackdrop" class="absolute inset-0 bg-slate-950/45 backdrop-blur-[1px]"></div>
+        <div class="relative z-10 w-full max-w-lg overflow-hidden rounded-3xl border border-white/80 bg-white shadow-2xl">
+            <div class="px-5 py-5 md:px-6">
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <div id="shareConfirmEyebrow" class="text-[10px] font-extrabold tracking-[0.12em] text-red-600">共有設定</div>
+                        <h2 id="shareConfirmTitle" class="mt-1 text-base font-extrabold text-slate-950"></h2>
+                    </div>
+                    <button id="closeShareConfirmBtn" type="button" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-sm font-black text-slate-500 hover:bg-slate-50" aria-label="確認画面を閉じる">×</button>
+                </div>
+                <div id="shareConfirmMessage" class="mt-4 text-[11px] leading-relaxed text-slate-600"></div>
+                <div id="shareConfirmResult" class="hidden mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-[11px] text-emerald-900"></div>
+            </div>
+            <div class="flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 md:px-6">
+                <button id="shareConfirmCancelBtn" type="button" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-[11px] font-extrabold text-slate-700 hover:bg-slate-50">キャンセル</button>
+                <button id="shareConfirmCopyBtn" type="button" class="hidden rounded-xl border border-[#148ecc]/30 bg-white px-4 py-2 text-[11px] font-extrabold text-[#0d6795] hover:bg-[#edf8fd]">新しいURLをコピー</button>
+                <button id="shareConfirmExecuteBtn" type="button" class="rounded-xl bg-red-600 px-4 py-2 text-[11px] font-extrabold text-white hover:bg-red-700 disabled:cursor-wait disabled:opacity-60"></button>
+            </div>
+        </div>
+    </div>
 
     <div
         id="etlHelpModal"
@@ -1153,7 +1194,7 @@
                             <div class="text-[11px] font-extrabold text-slate-900">5. 分析レポートの共有URLを止める・再発行するのは？</div>
                             <p class="mt-1 text-[10px] leading-relaxed text-slate-500">
                                 誤送信や共有先の変更などで、今の共有URLを使えなくしたいときに停止します。
-                                新しい共有URLへ切り替えたい場合は再発行します。「分析レポート管理」から操作できます。
+                                新しい共有URLへ切り替えたい場合は再発行します。既存企業の更新モードにある「分析レポート共有設定」から操作できます。
                             </p>
                         </div>
                     </div>
@@ -3060,7 +3101,6 @@ function buildSheetsPayloadV3(accessKey = "", requestId = "", targetSpreadsheetU
         commonMasterVersion: COMMON_MASTER_VERSION,
         viewerBaseUrl: new URL("report.html", window.location.href).href.split("#")[0].split("?")[0],
         manageBaseUrl: new URL("index.html", window.location.href).href.split("#")[0].split("?")[0],
-        viewerAdminBaseUrl: new URL("viewer-admin.html", window.location.href).href.split("#")[0].split("?")[0],
         operationMode: normalizeString(targetSpreadsheetUrl) ? "update" : "create",
         targetSpreadsheetUrl: normalizeString(targetSpreadsheetUrl),
         companyDisplayName:
@@ -3528,19 +3568,13 @@ function setAccessKeyUiState(
             );
         });
 
-    if (!authorized) {
-        document
-            .getElementById(
-                "etlManagementMenu"
-            )
-            ?.removeAttribute(
-                "open"
-            );
-    }
-
     if (runBtn) {
         runBtn.disabled =
             state !== "ok";
+    }
+
+    if (authorized && typeof vaaMaybeAutoOpenShareSettings === "function") {
+        vaaMaybeAutoOpenShareSettings();
     }
 }
 
@@ -4087,6 +4121,10 @@ function updateSheetsOperationUi() {
         extractSpreadsheetIdFromUrl(
             raw
         );
+
+    if (typeof vaaSyncShareSettingsVisibility === "function") {
+        vaaSyncShareSettingsVisibility(raw, id);
+    }
 
     identityBlock
         ?.classList
@@ -6003,7 +6041,7 @@ function openViewerInReservedTab(
         writeReservedViewerTab(
             tab,
             "分析レポートは現在閲覧停止中です",
-            "反映は完了しましたが、この企業の分析レポートは閲覧停止中です。管理画面から再開できます。",
+            "反映は完了しましたが、この企業の分析レポートは閲覧停止中です。既存企業の更新モードにある共有設定から再開できます。",
             "warning"
         );
         return false;
@@ -6013,7 +6051,7 @@ function openViewerInReservedTab(
         writeReservedViewerTab(
             tab,
             "分析レポートURLを取得できませんでした",
-            "反映処理は完了しています。「分析レポート管理」から分析レポートを開いてください。",
+            "反映処理は完了しています。上部の「分析レポートを探す」から分析レポートを開いてください。",
             "warning"
         );
         return false;
@@ -9019,13 +9057,6 @@ async function postManagementAction(action, payload = {}) {
                     ).href
                         .split("#")[0]
                         .split("?")[0],
-                viewerAdminBaseUrl:
-                    new URL(
-                        "viewer-admin.html",
-                        window.location.href
-                    ).href
-                        .split("#")[0]
-                        .split("?")[0],
                 ...payload
             }),
             signal: controller.signal
@@ -11010,6 +11041,10 @@ if (existingSheetUrlInput) {
         window.location.hash.replace(/^#/, "")
     );
     const sheetFromHash = normalizeString(hashParams.get("sheet"));
+    const panelFromHash = normalizeString(hashParams.get("panel"));
+    if (panelFromHash === "sharing") {
+        vaaShareAutoOpenRequested = true;
+    }
 
 
 if (sheetFromHash) {
@@ -11729,43 +11764,568 @@ msgEl.innerHTML = `
         });
 
         // ==========================================
-        // 管理メニュー共通挙動
-        // ==========================================
-        function closeIndexManagementMenu() {
-            document
-                .querySelectorAll('details.vaa-management-menu[open]')
-                .forEach(details => details.removeAttribute('open'));
-        }
-
-        document.addEventListener('click', event => {
-            const openMenus = Array.from(
-                document.querySelectorAll('details.vaa-management-menu[open]')
-            );
-
-            openMenus.forEach(details => {
-                if (!details.contains(event.target)) {
-                    details.removeAttribute('open');
-                }
-            });
-
-            const action = event.target.closest('.vaa-management-menu-panel a, .vaa-management-menu-panel button');
-            if (action) {
-                action.closest('details.vaa-management-menu')?.removeAttribute('open');
-            }
-        });
-
-        document.addEventListener('keydown', event => {
-            if (event.key === 'Escape') {
-                closeIndexManagementMenu();
-            }
-        });
-
-        // ==========================================
         // 管理Pages lean build
         // ==========================================
         // 旧ブラウザ分析ダッシュボードは企業向け分析レポートへ正式移行済み。
         // ETL / CSV download / 分析レポート反映 / 個社管理のみを保持。
-    </script>
+    
+
+// -----------------------------------------------------------------------------
+// v30.29: 分析レポート検索モーダル / 既存企業の共有設定
+// -----------------------------------------------------------------------------
+const VAA_RECENT_REPORTS_STORAGE_KEY = "validApplicationAnalysis.recentReports.v1";
+var vaaReportFinderReports = [];
+var vaaReportFinderLoaded = false;
+var vaaReportFinderLoading = false;
+var vaaShareSettingsState = null;
+var vaaShareSettingsSheetId = "";
+var vaaShareSettingsBusy = false;
+var vaaShareConfirmMode = "";
+var vaaShareConfirmBusy = false;
+var vaaShareAutoOpenRequested = /(?:^|&)panel=sharing(?:&|$)/.test(window.location.hash.replace(/^#/, ""));
+
+function vaaReadRecentReports() {
+    try {
+        const parsed = JSON.parse(
+            localStorage.getItem(VAA_RECENT_REPORTS_STORAGE_KEY) || "[]"
+        );
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+        return [];
+    }
+}
+
+function vaaRememberRecentReport(report) {
+    const spreadsheetId = normalizeString(report?.spreadsheetId);
+    const viewerUrl = normalizeString(report?.viewerUrl);
+    if (!spreadsheetId && !viewerUrl) return;
+
+    try {
+        const current = vaaReadRecentReports();
+        const next = current.filter(item => {
+            const itemId = normalizeString(item?.spreadsheetId);
+            const itemUrl = normalizeString(item?.viewerUrl);
+            return !(
+                (spreadsheetId && itemId === spreadsheetId) ||
+                (viewerUrl && itemUrl === viewerUrl)
+            );
+        });
+
+        next.unshift({
+            spreadsheetId,
+            viewerUrl,
+            enterpriseLabel: normalizeString(report?.enterpriseLabel),
+            fileName: normalizeString(report?.fileName),
+            viewerEnabled: report?.viewerEnabled !== false,
+            lastDataUpdateAt: normalizeString(report?.lastDataUpdateAt),
+            applicationCount: Number(report?.applicationCount || 0),
+            lastUsedAt: new Date().toISOString()
+        });
+
+        localStorage.setItem(
+            VAA_RECENT_REPORTS_STORAGE_KEY,
+            JSON.stringify(next.slice(0, 30))
+        );
+    } catch (_) {}
+}
+
+function vaaReportDisplayName(report) {
+    return normalizeString(report?.enterpriseLabel) ||
+        normalizeString(report?.fileName) ||
+        "有効応募分析";
+}
+
+function vaaReportSearchText(report) {
+    return [
+        report?.enterpriseLabel,
+        report?.fileName,
+        report?.spreadsheetId
+    ].map(value => normalizeString(value).toLocaleLowerCase("ja")).join("\n");
+}
+
+function vaaFormatReportDate(value) {
+    const raw = normalizeString(value);
+    if (!raw) return "更新日時なし";
+    const date = new Date(raw);
+    if (!Number.isFinite(date.getTime())) return raw;
+    return new Intl.DateTimeFormat("ja-JP", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit"
+    }).format(date);
+}
+
+function vaaReportFinderCardHtml(report) {
+    const name = vaaReportDisplayName(report);
+    const fileName = normalizeString(report?.fileName);
+    const viewerUrl = normalizeString(report?.viewerUrl);
+    const enabled = report?.viewerEnabled !== false;
+    const appCount = Number(report?.applicationCount || 0);
+    const lastUpdated = vaaFormatReportDate(
+        report?.lastDataUpdateAt || report?.lastSettingsSaveAt
+    );
+    const canOpen = enabled && !!viewerUrl;
+
+    return `
+        <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" data-finder-sheet-id="${manageEscapeHtml(report?.spreadsheetId || "")}">
+            <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                    <div class="truncate text-sm font-extrabold text-slate-900" title="${manageEscapeHtml(name)}">${manageEscapeHtml(name)}</div>
+                    ${fileName && fileName !== name ? `<div class="mt-0.5 truncate text-[10px] text-slate-400" title="${manageEscapeHtml(fileName)}">${manageEscapeHtml(fileName)}</div>` : ""}
+                </div>
+                <span class="shrink-0 rounded-full px-2 py-1 text-[9px] font-extrabold ${enabled ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"}">${enabled ? "閲覧可" : "閲覧停止中"}</span>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-500">
+                <span>最終更新 ${manageEscapeHtml(lastUpdated)}</span>
+                <span>応募 ${appCount.toLocaleString()}件</span>
+            </div>
+            <div class="mt-4 flex flex-wrap gap-2">
+                <a href="${canOpen ? manageEscapeHtml(viewerUrl) : "#"}" target="_blank" rel="noopener noreferrer" class="vaa-finder-open inline-flex items-center rounded-xl px-3 py-2 text-[10px] font-extrabold ${canOpen ? "bg-[#148ecc] text-white hover:bg-[#0d6795]" : "pointer-events-none bg-slate-100 text-slate-400"}" data-sheet-id="${manageEscapeHtml(report?.spreadsheetId || "")}">分析レポートを開く</a>
+                <button type="button" class="vaa-finder-copy rounded-xl border border-[#148ecc]/25 bg-white px-3 py-2 text-[10px] font-extrabold text-[#0d6795] hover:bg-[#edf8fd] disabled:cursor-not-allowed disabled:opacity-45" data-url="${manageEscapeHtml(viewerUrl)}" data-sheet-id="${manageEscapeHtml(report?.spreadsheetId || "")}" ${canOpen ? "" : "disabled"}>URLをコピー</button>
+            </div>
+        </article>
+    `;
+}
+
+function vaaFinderReportById(id) {
+    const key = normalizeString(id);
+    return vaaReportFinderReports.find(item => normalizeString(item?.spreadsheetId) === key) || null;
+}
+
+function vaaBindReportFinderCards() {
+    const container = document.getElementById("reportFinderResults");
+    if (!container) return;
+
+    container.querySelectorAll(".vaa-finder-open").forEach(link => {
+        link.addEventListener("click", () => {
+            const report = vaaFinderReportById(link.dataset.sheetId) || {
+                spreadsheetId: link.dataset.sheetId,
+                viewerUrl: link.getAttribute("href") || ""
+            };
+            vaaRememberRecentReport(report);
+        });
+    });
+
+    container.querySelectorAll(".vaa-finder-copy").forEach(button => {
+        button.addEventListener("click", async () => {
+            const url = normalizeString(button.dataset.url);
+            if (!url) return;
+            try {
+                await navigator.clipboard.writeText(url);
+                const old = button.textContent;
+                button.textContent = "コピーしました";
+                setTimeout(() => { button.textContent = old; }, 1400);
+            } catch (_) {
+                window.prompt("分析レポートのURLをコピーしてください。", url);
+            }
+            const report = vaaFinderReportById(button.dataset.sheetId) || {
+                spreadsheetId: button.dataset.sheetId,
+                viewerUrl: url
+            };
+            vaaRememberRecentReport(report);
+        });
+    });
+}
+
+function vaaRenderReportFinder() {
+    const input = document.getElementById("reportFinderInput");
+    const results = document.getElementById("reportFinderResults");
+    const title = document.getElementById("reportFinderListTitle");
+    const status = document.getElementById("reportFinderStatus");
+    if (!input || !results || !title || !status) return;
+
+    const query = normalizeString(input.value).toLocaleLowerCase("ja");
+
+    if (!query) {
+        title.textContent = "最近使った分析レポート";
+        const recentRaw = vaaReadRecentReports().slice(0, 5);
+        const recent = recentRaw.map(item => {
+            const current = vaaFinderReportById(item?.spreadsheetId);
+            return current || item;
+        });
+        status.textContent = vaaReportFinderLoading
+            ? "分析レポート一覧をバックグラウンドで読み込んでいます。最近使ったレポートはすぐ開けます。"
+            : vaaReportFinderLoaded
+                ? `分析レポート ${vaaReportFinderReports.length.toLocaleString()}件を検索できます。`
+                : "最近使ったレポートを表示しています。";
+        results.innerHTML = recent.length
+            ? recent.map(vaaReportFinderCardHtml).join("")
+            : '<div class="md:col-span-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-[11px] text-slate-400">最近使った分析レポートはまだありません。企業名を入力して検索してください。</div>';
+        vaaBindReportFinderCards();
+        return;
+    }
+
+    title.textContent = "検索結果";
+    if (!vaaReportFinderLoaded) {
+        status.textContent = vaaReportFinderLoading
+            ? "分析レポート一覧を読み込んでいます…"
+            : "分析レポート一覧を読み込んでから検索します。";
+        results.innerHTML = '<div class="md:col-span-2 rounded-2xl border border-sky-200 bg-sky-50 p-6 text-center text-[11px] font-bold text-sky-800">検索データを読み込んでいます…</div>';
+        return;
+    }
+
+    const matches = vaaReportFinderReports.filter(report =>
+        vaaReportSearchText(report).includes(query)
+    ).slice(0, 50);
+    status.textContent = `${matches.length.toLocaleString()}件表示${matches.length === 50 ? "（最大50件）" : ""}`;
+    results.innerHTML = matches.length
+        ? matches.map(vaaReportFinderCardHtml).join("")
+        : '<div class="md:col-span-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-[11px] text-slate-400">該当する分析レポートはありません。</div>';
+    vaaBindReportFinderCards();
+}
+
+async function vaaLoadReportFinderList({ force = false } = {}) {
+    if (vaaReportFinderLoading || (vaaReportFinderLoaded && !force)) return;
+    vaaReportFinderLoading = true;
+    vaaRenderReportFinder();
+    try {
+        const data = await postManagementAction("manageListReports");
+        vaaReportFinderReports = Array.isArray(data?.reports) ? data.reports : [];
+        vaaReportFinderLoaded = true;
+    } catch (error) {
+        const status = document.getElementById("reportFinderStatus");
+        if (status) status.textContent = error?.message || "分析レポート一覧を取得できませんでした。";
+    } finally {
+        vaaReportFinderLoading = false;
+        vaaRenderReportFinder();
+    }
+}
+
+function vaaSetModalOpen(id, open) {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.classList.toggle("hidden", !open);
+    modal.classList.toggle("flex", open);
+    modal.setAttribute("aria-hidden", open ? "false" : "true");
+    document.documentElement.classList.toggle("overflow-hidden", open);
+}
+
+function vaaOpenReportFinder() {
+    vaaSetModalOpen("reportFinderModal", true);
+    const input = document.getElementById("reportFinderInput");
+    if (input) input.value = "";
+    vaaRenderReportFinder();
+    vaaLoadReportFinderList();
+    setTimeout(() => input?.focus(), 30);
+}
+
+function vaaCloseReportFinder() {
+    vaaSetModalOpen("reportFinderModal", false);
+}
+
+function vaaCurrentUpdateSheetId() {
+    return extractSpreadsheetIdFromUrl(
+        document.getElementById("existingSheetUrlInput")?.value || ""
+    );
+}
+
+function vaaResetShareSettings() {
+    vaaShareSettingsState = null;
+    vaaShareSettingsSheetId = "";
+    document.getElementById("shareSettingsLoading")?.classList.add("hidden");
+    document.getElementById("shareSettingsError")?.classList.add("hidden");
+    document.getElementById("shareSettingsContent")?.classList.add("hidden");
+    const btn = document.getElementById("loadShareSettingsBtn");
+    if (btn) {
+        btn.disabled = false;
+        btn.textContent = "共有設定を表示";
+    }
+}
+
+function vaaSyncShareSettingsVisibility(rawValue = "", sheetId = "") {
+    const card = document.getElementById("existingShareSettingsCard");
+    if (!card) return;
+    const id = normalizeString(sheetId) || extractSpreadsheetIdFromUrl(rawValue);
+    card.classList.toggle("hidden", !id);
+    if (!id) {
+        vaaResetShareSettings();
+        return;
+    }
+    if (vaaShareSettingsSheetId && vaaShareSettingsSheetId !== id) {
+        vaaResetShareSettings();
+    }
+}
+
+function vaaRenderShareSettings(data) {
+    vaaShareSettingsState = data;
+    vaaShareSettingsSheetId = vaaCurrentUpdateSheetId();
+    const metadata = data?.metadata || {};
+    const enabled = metadata.viewerEnabled !== false;
+    const name = normalizeString(metadata.enterpriseLabel) || normalizeString(metadata.fileName) || "対象企業";
+    const url = normalizeString(metadata.viewerUrl);
+
+    document.getElementById("shareSettingsLoading")?.classList.add("hidden");
+    document.getElementById("shareSettingsError")?.classList.add("hidden");
+    document.getElementById("shareSettingsContent")?.classList.remove("hidden");
+
+    const badge = document.getElementById("shareViewerStatusBadge");
+    if (badge) {
+        badge.textContent = enabled ? "閲覧可" : "閲覧停止中";
+        badge.className = `rounded-full px-2 py-1 text-[10px] font-extrabold ${enabled ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"}`;
+    }
+    const reportName = document.getElementById("shareViewerReportName");
+    if (reportName) reportName.textContent = name;
+    const urlText = document.getElementById("shareViewerUrlText");
+    if (urlText) urlText.textContent = url || "共有URL未設定";
+    const copy = document.getElementById("copyShareViewerUrlBtn");
+    if (copy) copy.disabled = !url;
+    const toggle = document.getElementById("toggleShareViewerBtn");
+    if (toggle) {
+        toggle.textContent = enabled ? "閲覧を停止" : "閲覧を再開";
+        toggle.className = enabled
+            ? "rounded-lg border border-amber-300 bg-white px-3 py-2 text-[10px] font-extrabold text-amber-800 hover:bg-amber-50"
+            : "rounded-lg border border-emerald-300 bg-white px-3 py-2 text-[10px] font-extrabold text-emerald-700 hover:bg-emerald-50";
+    }
+    const load = document.getElementById("loadShareSettingsBtn");
+    if (load) {
+        load.disabled = false;
+        load.textContent = "再読み込み";
+    }
+    vaaRememberRecentReport({
+        spreadsheetId: metadata.spreadsheetId,
+        viewerUrl: url,
+        enterpriseLabel: metadata.enterpriseLabel,
+        fileName: metadata.fileName,
+        viewerEnabled: enabled,
+        lastDataUpdateAt: metadata.lastDataUpdateAt,
+        applicationCount: metadata.applicationCount
+    });
+}
+
+async function vaaLoadShareSettings() {
+    if (vaaShareSettingsBusy) return;
+    const targetSpreadsheetUrl = normalizeString(
+        document.getElementById("existingSheetUrlInput")?.value
+    );
+    const id = extractSpreadsheetIdFromUrl(targetSpreadsheetUrl);
+    if (!id) return;
+
+    vaaShareSettingsBusy = true;
+    vaaShareSettingsSheetId = id;
+    document.getElementById("shareSettingsContent")?.classList.add("hidden");
+    document.getElementById("shareSettingsError")?.classList.add("hidden");
+    document.getElementById("shareSettingsLoading")?.classList.remove("hidden");
+    const load = document.getElementById("loadShareSettingsBtn");
+    if (load) {
+        load.disabled = true;
+        load.textContent = "読み込み中…";
+    }
+    const title = document.getElementById("shareSettingsLoadingTitle");
+    if (title) title.textContent = "分析レポートの共有設定を読み込んでいます";
+
+    try {
+        const data = await postManagementAction("manageLoad", { targetSpreadsheetUrl });
+        vaaRenderShareSettings(data);
+    } catch (error) {
+        document.getElementById("shareSettingsLoading")?.classList.add("hidden");
+        const errorBox = document.getElementById("shareSettingsError");
+        const errorText = document.getElementById("shareSettingsErrorText");
+        if (errorText) errorText.textContent = error?.message || "共有設定を読み込めませんでした。";
+        errorBox?.classList.remove("hidden");
+        if (load) {
+            load.disabled = false;
+            load.textContent = "共有設定を表示";
+        }
+    } finally {
+        vaaShareSettingsBusy = false;
+    }
+}
+
+async function vaaCopyText(text, button = null, successLabel = "コピーしました") {
+    const value = normalizeString(text);
+    if (!value) return false;
+    try {
+        await navigator.clipboard.writeText(value);
+        if (button) {
+            const old = button.textContent;
+            button.textContent = successLabel;
+            setTimeout(() => { button.textContent = old; }, 1400);
+        }
+        return true;
+    } catch (_) {
+        window.prompt("URLをコピーしてください。", value);
+        return false;
+    }
+}
+
+function vaaShareTargetName() {
+    const metadata = vaaShareSettingsState?.metadata || {};
+    return normalizeString(metadata.enterpriseLabel) || normalizeString(metadata.fileName) || "この企業";
+}
+
+function vaaOpenShareConfirm(mode) {
+    if (!vaaShareSettingsState || vaaShareConfirmBusy) return;
+    vaaShareConfirmMode = mode;
+    const name = vaaShareTargetName();
+    const title = document.getElementById("shareConfirmTitle");
+    const message = document.getElementById("shareConfirmMessage");
+    const execute = document.getElementById("shareConfirmExecuteBtn");
+    const cancel = document.getElementById("shareConfirmCancelBtn");
+    const copy = document.getElementById("shareConfirmCopyBtn");
+    const result = document.getElementById("shareConfirmResult");
+    if (!title || !message || !execute || !cancel || !copy || !result) return;
+
+    result.classList.add("hidden");
+    result.textContent = "";
+    copy.classList.add("hidden");
+    execute.classList.remove("hidden");
+    cancel.textContent = "キャンセル";
+    execute.disabled = false;
+
+    if (mode === "rotate") {
+        title.textContent = `${name} の共有URLを再発行しますか？`;
+        message.innerHTML = `新しい共有URLを発行します。<br><strong class="text-red-700">再発行すると、現在の共有URLは利用できなくなります。</strong><br>すでに現在のURLを企業へ共有している場合は、新しいURLをあらためて案内してください。`;
+        execute.textContent = "新しいURLを発行";
+        execute.className = "rounded-xl bg-red-600 px-4 py-2 text-[11px] font-extrabold text-white hover:bg-red-700 disabled:cursor-wait disabled:opacity-60";
+    } else if (mode === "stop") {
+        title.textContent = `${name} の分析レポートを閲覧停止しますか？`;
+        message.innerHTML = `停止中は、現在の共有URLから分析レポートを閲覧できません。<br>閲覧はあとから再開できます。`;
+        execute.textContent = "閲覧を停止";
+        execute.className = "rounded-xl bg-amber-600 px-4 py-2 text-[11px] font-extrabold text-white hover:bg-amber-700 disabled:cursor-wait disabled:opacity-60";
+    }
+    vaaSetModalOpen("shareConfirmModal", true);
+}
+
+function vaaCloseShareConfirm() {
+    if (vaaShareConfirmBusy) return;
+    vaaSetModalOpen("shareConfirmModal", false);
+    vaaShareConfirmMode = "";
+}
+
+async function vaaSetViewerEnabled(next) {
+    const targetSpreadsheetUrl = normalizeString(
+        document.getElementById("existingSheetUrlInput")?.value
+    );
+    if (!targetSpreadsheetUrl) return;
+    const data = await postManagementAction("manageViewerSetEnabled", {
+        targetSpreadsheetUrl,
+        viewerEnabled: !!next
+    });
+    vaaRenderShareSettings(data);
+}
+
+async function vaaExecuteShareConfirm() {
+    if (vaaShareConfirmBusy || !vaaShareConfirmMode) return;
+    const execute = document.getElementById("shareConfirmExecuteBtn");
+    const result = document.getElementById("shareConfirmResult");
+    const cancel = document.getElementById("shareConfirmCancelBtn");
+    const copy = document.getElementById("shareConfirmCopyBtn");
+    const targetSpreadsheetUrl = normalizeString(
+        document.getElementById("existingSheetUrlInput")?.value
+    );
+    if (!targetSpreadsheetUrl || !execute || !result || !cancel || !copy) return;
+
+    vaaShareConfirmBusy = true;
+    execute.disabled = true;
+    const originalLabel = execute.textContent;
+    execute.textContent = vaaShareConfirmMode === "rotate" ? "再発行しています…" : "停止しています…";
+
+    try {
+        if (vaaShareConfirmMode === "rotate") {
+            const data = await postManagementAction("manageViewerRotate", { targetSpreadsheetUrl });
+            vaaRenderShareSettings(data);
+            const newUrl = normalizeString(data?.metadata?.viewerUrl || vaaShareSettingsState?.metadata?.viewerUrl);
+            result.className = "mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-[11px] leading-relaxed text-emerald-900";
+            result.innerHTML = `<strong>新しい共有URLを発行しました。</strong><br>以前のURLは利用できません。企業へ共有済みの場合は、新しいURLを案内してください。`;
+            result.classList.remove("hidden");
+            execute.classList.add("hidden");
+            copy.classList.toggle("hidden", !newUrl);
+            copy.dataset.url = newUrl;
+            cancel.textContent = "閉じる";
+            vaaShareConfirmMode = "done";
+        } else if (vaaShareConfirmMode === "stop") {
+            await vaaSetViewerEnabled(false);
+            vaaShareConfirmBusy = false;
+            vaaCloseShareConfirm();
+            return;
+        }
+    } catch (error) {
+        result.className = "mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-[11px] leading-relaxed text-red-800";
+        result.textContent = error?.message || "共有設定の変更に失敗しました。";
+        result.classList.remove("hidden");
+        execute.disabled = false;
+        execute.textContent = originalLabel;
+    } finally {
+        vaaShareConfirmBusy = false;
+    }
+}
+
+async function vaaResumeViewer() {
+    if (vaaShareSettingsBusy) return;
+    vaaShareSettingsBusy = true;
+    const button = document.getElementById("toggleShareViewerBtn");
+    const old = button?.textContent || "閲覧を再開";
+    if (button) {
+        button.disabled = true;
+        button.textContent = "再開しています…";
+    }
+    try {
+        await vaaSetViewerEnabled(true);
+    } catch (error) {
+        const errorBox = document.getElementById("shareSettingsError");
+        const errorText = document.getElementById("shareSettingsErrorText");
+        if (errorText) errorText.textContent = error?.message || "閲覧を再開できませんでした。";
+        errorBox?.classList.remove("hidden");
+    } finally {
+        vaaShareSettingsBusy = false;
+        if (button) {
+            button.disabled = false;
+            if (!vaaShareSettingsState) button.textContent = old;
+        }
+    }
+}
+
+function vaaMaybeAutoOpenShareSettings() {
+    if (!globalAccessKeyVerified || !vaaShareAutoOpenRequested) return;
+    const id = vaaCurrentUpdateSheetId();
+    if (!id) return;
+    vaaShareAutoOpenRequested = false;
+    setTimeout(() => vaaLoadShareSettings(), 50);
+}
+
+// Finder events
+document.getElementById("openReportFinderBtn")?.addEventListener("click", vaaOpenReportFinder);
+document.getElementById("closeReportFinderBtn")?.addEventListener("click", vaaCloseReportFinder);
+document.getElementById("reportFinderBackdrop")?.addEventListener("click", vaaCloseReportFinder);
+document.getElementById("reportFinderInput")?.addEventListener("input", vaaRenderReportFinder);
+document.getElementById("reloadReportFinderBtn")?.addEventListener("click", () => vaaLoadReportFinderList({ force: true }));
+
+// Share settings events
+document.getElementById("loadShareSettingsBtn")?.addEventListener("click", vaaLoadShareSettings);
+document.getElementById("retryShareSettingsBtn")?.addEventListener("click", vaaLoadShareSettings);
+document.getElementById("copyShareViewerUrlBtn")?.addEventListener("click", event => {
+    vaaCopyText(vaaShareSettingsState?.metadata?.viewerUrl, event.currentTarget);
+});
+document.getElementById("toggleShareViewerBtn")?.addEventListener("click", () => {
+    const enabled = vaaShareSettingsState?.metadata?.viewerEnabled !== false;
+    if (enabled) vaaOpenShareConfirm("stop");
+    else vaaResumeViewer();
+});
+document.getElementById("rotateShareViewerBtn")?.addEventListener("click", () => vaaOpenShareConfirm("rotate"));
+
+document.getElementById("shareConfirmExecuteBtn")?.addEventListener("click", vaaExecuteShareConfirm);
+document.getElementById("shareConfirmCancelBtn")?.addEventListener("click", vaaCloseShareConfirm);
+document.getElementById("closeShareConfirmBtn")?.addEventListener("click", vaaCloseShareConfirm);
+document.getElementById("shareConfirmBackdrop")?.addEventListener("click", vaaCloseShareConfirm);
+document.getElementById("shareConfirmCopyBtn")?.addEventListener("click", event => {
+    vaaCopyText(event.currentTarget.dataset.url, event.currentTarget, "コピーしました");
+});
+
+document.addEventListener("keydown", event => {
+    if (event.key !== "Escape") return;
+    const confirmModal = document.getElementById("shareConfirmModal");
+    if (confirmModal && !confirmModal.classList.contains("hidden")) {
+        vaaCloseShareConfirm();
+        return;
+    }
+    const finder = document.getElementById("reportFinderModal");
+    if (finder && !finder.classList.contains("hidden")) {
+        vaaCloseReportFinder();
+    }
+});
+</script>
 
 <div id="etlProcessingOverlay" class="hidden fixed inset-0 z-[9999] bg-slate-950/30 backdrop-blur-[1px] items-center justify-center p-4" aria-live="polite" aria-busy="true">
         <div class="w-full max-w-xl rounded-3xl border border-white/70 bg-white p-6 shadow-2xl">
