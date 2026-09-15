@@ -74,7 +74,7 @@
             z-index: 40 !important;
         }
     
-/* v30.34: share-settings timing instrumentation / v30.33 features retained */
+/* v30.35: lightweight share-settings load / v30.34 timing retained */
 .etl-auth-workspace.etl-auth-reveal {
     animation: etlAuthReveal .22s ease-out both;
 }
@@ -12081,7 +12081,7 @@ msgEl.innerHTML = `
     
 
 // -----------------------------------------------------------------------------
-// v30.34: 共有設定manageLoad計測 / v30.33機能維持
+// v30.35: 共有設定を軽量API化 / v30.34計測UI維持
 // -----------------------------------------------------------------------------
 const VAA_RECENT_REPORTS_STORAGE_KEY = "validApplicationAnalysis.recentReports.v1";
 var vaaReportFinderReports = [];
@@ -12150,6 +12150,14 @@ function vaaRememberRecentReport(report) {
 
     try {
         const current = vaaReadRecentReports();
+        const previous = current.find(item => {
+            const itemId = normalizeString(item?.spreadsheetId);
+            const itemUrl = normalizeString(item?.viewerUrl);
+            return (
+                (spreadsheetId && itemId === spreadsheetId) ||
+                (viewerUrl && itemUrl === viewerUrl)
+            );
+        }) || {};
         const next = current.filter(item => {
             const itemId = normalizeString(item?.spreadsheetId);
             const itemUrl = normalizeString(item?.viewerUrl);
@@ -12159,15 +12167,38 @@ function vaaRememberRecentReport(report) {
             );
         });
 
+        const hasApplicationCount =
+            report &&
+            Object.prototype.hasOwnProperty.call(
+                report,
+                "applicationCount"
+            ) &&
+            report.applicationCount !== null &&
+            report.applicationCount !== undefined;
+
         next.unshift({
             spreadsheetId,
             viewerUrl,
-            enterpriseLabel: normalizeString(report?.enterpriseLabel),
-            fileName: normalizeString(report?.fileName),
-            reportName: normalizeString(report?.reportName || report?.fileName),
-            viewerEnabled: report?.viewerEnabled !== false,
-            lastDataUpdateAt: normalizeString(report?.lastDataUpdateAt),
-            applicationCount: Number(report?.applicationCount || 0),
+            enterpriseLabel:
+                normalizeString(report?.enterpriseLabel) ||
+                normalizeString(previous?.enterpriseLabel),
+            fileName:
+                normalizeString(report?.fileName) ||
+                normalizeString(previous?.fileName),
+            reportName:
+                normalizeString(report?.reportName || report?.fileName) ||
+                normalizeString(previous?.reportName),
+            viewerEnabled:
+                report?.viewerEnabled !== undefined
+                    ? report.viewerEnabled !== false
+                    : previous?.viewerEnabled !== false,
+            lastDataUpdateAt:
+                normalizeString(report?.lastDataUpdateAt) ||
+                normalizeString(previous?.lastDataUpdateAt),
+            applicationCount:
+                hasApplicationCount
+                    ? Number(report.applicationCount || 0)
+                    : Number(previous?.applicationCount || 0),
             lastUsedAt: new Date().toISOString()
         });
 
@@ -12512,6 +12543,9 @@ function vaaRenderShareSettingsDebugTiming(data, clientTotalMs = 0) {
             enterpriseLabel: "企業名取得",
             viewerUrl: "共有URL生成",
             viewerStateMetadata: "共有・更新状態取得",
+            sharingStateRead: "共有状態シート読込",
+            sharingFileName: "ファイル名取得",
+            sharingStateMetadata: "共有設定情報組み立て",
             applicationCount: "応募件数取得",
             jobAnalysisCount: "求人件数取得",
             settings: "初期設定読込",
@@ -12595,8 +12629,7 @@ function vaaRenderShareSettings(data, clientTotalMs = 0) {
         enterpriseLabel: metadata.enterpriseLabel,
         fileName: metadata.fileName,
         viewerEnabled: enabled,
-        lastDataUpdateAt: metadata.lastDataUpdateAt,
-        applicationCount: metadata.applicationCount
+        lastDataUpdateAt: metadata.lastDataUpdateAt
     });
 
     vaaRenderShareSettingsDebugTiming(data, clientTotalMs);
@@ -12629,7 +12662,7 @@ async function vaaLoadShareSettings() {
     if (title) title.textContent = "分析レポートの共有設定を読み込んでいます";
 
     try {
-        const data = await postManagementAction("manageLoad", {
+        const data = await postManagementAction("manageSharingLoad", {
             targetSpreadsheetUrl,
             debugTiming: ETL_DEBUG_MODE
         });
