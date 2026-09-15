@@ -74,7 +74,7 @@
             z-index: 40 !important;
         }
     
-/* v30.33: URL company-name removal / portal information architecture / v30.32 features retained */
+/* v30.34: share-settings timing instrumentation / v30.33 features retained */
 .etl-auth-workspace.etl-auth-reveal {
     animation: etlAuthReveal .22s ease-out both;
 }
@@ -910,6 +910,12 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+
+                        <div id="shareSettingsDebugTiming" class="hidden mt-3 rounded-xl border border-violet-200 bg-violet-50 p-3 text-[10px] text-violet-950">
+                            <div class="font-extrabold">共有設定 読み込み計測（debug=1）</div>
+                            <div class="mt-1 text-[9px] leading-relaxed text-violet-700">通常利用では表示されません。高速化前後の比較用です。</div>
+                            <pre id="shareSettingsDebugTimingText" class="mt-2 whitespace-pre-wrap font-mono text-[9px] leading-relaxed"></pre>
                         </div>
 
                         <div id="shareSettingsError" class="hidden mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10px] text-amber-900">
@@ -12075,7 +12081,7 @@ msgEl.innerHTML = `
     
 
 // -----------------------------------------------------------------------------
-// v30.33: URL企業名撤去 / 管理シート導線整理 / 3つの場所ガイド / v30.32機能維持
+// v30.34: 共有設定manageLoad計測 / v30.33機能維持
 // -----------------------------------------------------------------------------
 const VAA_RECENT_REPORTS_STORAGE_KEY = "validApplicationAnalysis.recentReports.v1";
 var vaaReportFinderReports = [];
@@ -12438,6 +12444,9 @@ function vaaResetShareSettings() {
     document.getElementById("shareSettingsLoading")?.classList.add("hidden");
     document.getElementById("shareSettingsError")?.classList.add("hidden");
     document.getElementById("shareSettingsContent")?.classList.add("hidden");
+    document.getElementById("shareSettingsDebugTiming")?.classList.add("hidden");
+    const debugText = document.getElementById("shareSettingsDebugTimingText");
+    if (debugText) debugText.textContent = "";
     const btn = document.getElementById("loadShareSettingsBtn");
     if (btn) {
         btn.disabled = false;
@@ -12459,7 +12468,92 @@ function vaaSyncShareSettingsVisibility(rawValue = "", sheetId = "") {
     }
 }
 
-function vaaRenderShareSettings(data) {
+function vaaFormatTimingMs(ms) {
+    const value = Math.max(0, Number(ms || 0));
+    return value >= 1000
+        ? `${(value / 1000).toFixed(2)}秒`
+        : `${Math.round(value)}ms`;
+}
+
+function vaaRenderShareSettingsDebugTiming(data, clientTotalMs = 0) {
+    const box = document.getElementById("shareSettingsDebugTiming");
+    const text = document.getElementById("shareSettingsDebugTimingText");
+    if (!box || !text) return;
+
+    if (!ETL_DEBUG_MODE) {
+        box.classList.add("hidden");
+        text.textContent = "";
+        return;
+    }
+
+    const timing = data?.debugTiming || null;
+    const serverTotalMs = Number(
+        timing?.totalMs ?? data?.elapsedMs ?? 0
+    );
+    const steps = Array.isArray(timing?.steps)
+        ? timing.steps
+        : [];
+    const lines = [
+        `画面待機      ${vaaFormatTimingMs(clientTotalMs)}`,
+        `API処理       ${vaaFormatTimingMs(serverTotalMs)}`,
+        `通信等の差分  ${vaaFormatTimingMs(Math.max(0, Number(clientTotalMs || 0) - serverTotalMs))}`
+    ];
+
+    if (steps.length) {
+        const labels = {
+            validateEnvelope: "認証・リクエスト確認",
+            validateTargetDriveFile: "保存先・対象ファイル確認",
+            spreadsheetOpen: "Spreadsheetを開く",
+            validateTargetWorkbook: "管理シート形式確認",
+            driveFile: "Driveファイル情報",
+            ensureAuditSheet: "運用ログシート確認",
+            viewerTelemetry: "閲覧実績取得",
+            registryUpsert: "レポートRegistry更新",
+            enterpriseLabel: "企業名取得",
+            viewerUrl: "共有URL生成",
+            viewerStateMetadata: "共有・更新状態取得",
+            applicationCount: "応募件数取得",
+            jobAnalysisCount: "求人件数取得",
+            settings: "初期設定読込",
+            keywordMaster: "仕事名KW読込",
+            enterpriseMaster: "企業IDマスタ読込",
+            imageMaster: "画像マスタ読込",
+            customAnalysis: "カスタム分析読込",
+            displaySettings: "表示項目読込",
+            auditLog: "操作履歴読込"
+        };
+        lines.push("", "API内訳");
+        steps.forEach(step => {
+            const name = normalizeString(step?.name) || "unknown";
+            const label = labels[name] || name;
+            lines.push(`${label}：${vaaFormatTimingMs(step?.ms)}`);
+        });
+        lines.push(
+            `その他：${vaaFormatTimingMs(timing?.unclassifiedMs)}`
+        );
+    } else {
+        lines.push("", "API内訳がありません。Central API計測版のデプロイを確認してください。");
+    }
+
+    text.textContent = lines.join("\n");
+    box.classList.remove("hidden");
+
+    try {
+        console.table(
+            steps.map(step => ({
+                step: step?.name || "unknown",
+                ms: Number(step?.ms || 0)
+            }))
+        );
+        console.info("[Share settings timing]", {
+            clientTotalMs,
+            elapsedMs: data?.elapsedMs,
+            debugTiming: timing
+        });
+    } catch (_) {}
+}
+
+function vaaRenderShareSettings(data, clientTotalMs = 0) {
     vaaStopShareSettingsLoadingTimer();
     vaaShareSettingsState = data;
     vaaShareSettingsSheetId = vaaCurrentUpdateSheetId();
@@ -12505,6 +12599,7 @@ function vaaRenderShareSettings(data) {
         applicationCount: metadata.applicationCount
     });
 
+    vaaRenderShareSettingsDebugTiming(data, clientTotalMs);
     updateSheetsOperationUi();
 }
 
@@ -12521,8 +12616,10 @@ async function vaaLoadShareSettings() {
     vaaSetShareSettingsExpanded(true);
     document.getElementById("shareSettingsContent")?.classList.add("hidden");
     document.getElementById("shareSettingsError")?.classList.add("hidden");
+    document.getElementById("shareSettingsDebugTiming")?.classList.add("hidden");
     document.getElementById("shareSettingsLoading")?.classList.remove("hidden");
     vaaStartShareSettingsLoadingTimer();
+    const clientStartedAt = performance.now();
     const load = document.getElementById("loadShareSettingsBtn");
     if (load) {
         load.disabled = true;
@@ -12532,8 +12629,12 @@ async function vaaLoadShareSettings() {
     if (title) title.textContent = "分析レポートの共有設定を読み込んでいます";
 
     try {
-        const data = await postManagementAction("manageLoad", { targetSpreadsheetUrl });
-        vaaRenderShareSettings(data);
+        const data = await postManagementAction("manageLoad", {
+            targetSpreadsheetUrl,
+            debugTiming: ETL_DEBUG_MODE
+        });
+        const clientTotalMs = performance.now() - clientStartedAt;
+        vaaRenderShareSettings(data, clientTotalMs);
     } catch (error) {
         vaaStopShareSettingsLoadingTimer();
         document.getElementById("shareSettingsLoading")?.classList.add("hidden");
