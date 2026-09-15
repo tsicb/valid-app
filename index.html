@@ -74,7 +74,7 @@
             z-index: 40 !important;
         }
     
-/* v30.35: lightweight share-settings load / v30.34 timing retained */
+/* v30.36: unified 3-place navigation map / v30.35 fast sharing retained */
 .etl-auth-workspace.etl-auth-reveal {
     animation: etlAuthReveal .22s ease-out both;
 }
@@ -1135,41 +1135,41 @@
                 <div id="helpGuidePanel" role="tabpanel" aria-labelledby="helpTabGuideBtn">
                     <div class="rounded-2xl border border-[#148ecc]/20 bg-[#edf8fd] p-4">
                         <div class="text-sm font-extrabold text-[#0d6795]">
-                            まずは3つの場所だけ覚えれば大丈夫です
+                            3つの場所と現在地が分かれば迷いません
                         </div>
                         <p class="mt-1 text-[11px] leading-relaxed text-slate-600">
                             有効応募分析は「データ作成・更新」「個社管理シート」「分析レポート」の3つで構成されています。
-                            企業へ共有するのは分析レポートだけです。
+                            この表では、今いる場所と次に開ける場所を同じ地図で確認できます。企業へ共有するのは分析レポートだけです。
                         </p>
 
                         <div class="mt-3 overflow-hidden rounded-xl border border-[#148ecc]/15 bg-white">
                             <table class="w-full table-fixed border-collapse text-left text-[10px] leading-relaxed">
                                 <thead class="bg-slate-50 text-slate-500">
                                     <tr>
-                                        <th class="w-[24%] border-b border-slate-200 px-2.5 py-2 font-extrabold">場所</th>
-                                        <th class="w-[38%] border-b border-slate-200 px-2.5 py-2 font-extrabold">何をする場所？</th>
-                                        <th class="w-[22%] border-b border-slate-200 px-2.5 py-2 font-extrabold">主な用途</th>
+                                        <th class="w-[23%] border-b border-slate-200 px-2.5 py-2 font-extrabold">場所</th>
+                                        <th class="w-[37%] border-b border-slate-200 px-2.5 py-2 font-extrabold">何をする場所？</th>
+                                        <th class="w-[24%] border-b border-slate-200 px-2.5 py-2 font-extrabold">開く・現在地</th>
                                         <th class="w-[16%] border-b border-slate-200 px-2.5 py-2 text-center font-extrabold">企業共有</th>
                                     </tr>
                                 </thead>
                                 <tbody class="text-slate-600">
-                                    <tr>
+                                    <tr id="helpMapDataRow" class="bg-[#edf8fd]">
                                         <td class="border-b border-slate-100 px-2.5 py-2 font-extrabold text-slate-900">データ作成・更新</td>
-                                        <td class="border-b border-slate-100 px-2.5 py-2">CSVを登録する作業画面</td>
-                                        <td class="border-b border-slate-100 px-2.5 py-2">新規作成・データ更新・共有設定</td>
-                                        <td class="border-b border-slate-100 px-2.5 py-2 text-center"><span class="rounded-full bg-slate-100 px-2 py-1 font-extrabold text-slate-500">しない</span></td>
+                                        <td class="border-b border-slate-100 px-2.5 py-2">求人・応募CSVを登録し、新規作成・既存更新を行う作業画面</td>
+                                        <td id="helpMapDataAction" class="border-b border-slate-100 px-2.5 py-2"><span class="inline-flex rounded-full bg-[#148ecc] px-2 py-1 font-extrabold text-white">現在地</span></td>
+                                        <td class="border-b border-slate-100 px-2.5 py-2 text-center"><span class="rounded-full bg-slate-100 px-2 py-1 font-extrabold text-slate-500">社内作業用</span></td>
                                     </tr>
-                                    <tr>
+                                    <tr id="helpMapSheetRow">
                                         <td class="border-b border-slate-100 px-2.5 py-2 font-extrabold text-slate-900">個社管理シート</td>
-                                        <td class="border-b border-slate-100 px-2.5 py-2">企業ごとの設定・管理場所</td>
-                                        <td class="border-b border-slate-100 px-2.5 py-2">設定・マスタ・各画面への入口</td>
-                                        <td class="border-b border-slate-100 px-2.5 py-2 text-center"><span class="rounded-full bg-slate-100 px-2 py-1 font-extrabold text-slate-500">しない</span></td>
+                                        <td class="border-b border-slate-100 px-2.5 py-2">企業ごとの設定・マスタを管理し、各画面への入口になる場所</td>
+                                        <td id="helpMapSheetAction" class="border-b border-slate-100 px-2.5 py-2 text-slate-400">作成後に利用できます</td>
+                                        <td class="border-b border-slate-100 px-2.5 py-2 text-center"><span class="rounded-full bg-slate-100 px-2 py-1 font-extrabold text-slate-500">社内管理用</span></td>
                                     </tr>
-                                    <tr>
+                                    <tr id="helpMapReportRow">
                                         <td class="px-2.5 py-2 font-extrabold text-slate-900">分析レポート</td>
-                                        <td class="px-2.5 py-2">分析結果を見る場所</td>
-                                        <td class="px-2.5 py-2">応募分析・レポート確認</td>
-                                        <td class="px-2.5 py-2 text-center"><span class="rounded-full bg-emerald-50 px-2 py-1 font-extrabold text-emerald-700">共有OK</span></td>
+                                        <td class="px-2.5 py-2">応募傾向・有効応募を確認し、分析結果を見る場所</td>
+                                        <td id="helpMapReportAction" class="px-2.5 py-2 text-slate-400">作成後に利用できます</td>
+                                        <td class="px-2.5 py-2 text-center"><span class="rounded-full bg-emerald-50 px-2 py-1 font-extrabold text-emerald-700">企業共有OK</span></td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -1526,6 +1526,8 @@ function openEtlHelpModal(tabName = "guide") {
 
     globalEtlHelpLastFocused =
         document.activeElement;
+
+    vaaUpdateHelpNavigationMap();
 
     setEtlHelpTab(
         tabName
@@ -4284,6 +4286,57 @@ function vaaCompanyHonorificLabel(rawName = "") {
     return /様$/.test(name) ? name : `${name}様`;
 }
 
+function vaaRecentReportForSheetId(spreadsheetId = "") {
+    const id = normalizeString(spreadsheetId);
+    if (!id) return null;
+    try {
+        const recent = typeof vaaReadRecentReports === "function"
+            ? vaaReadRecentReports()
+            : JSON.parse(localStorage.getItem("validApplicationAnalysis.recentReports.v1") || "[]");
+        return Array.isArray(recent)
+            ? recent.find(item => normalizeString(item?.spreadsheetId) === id) || null
+            : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+function vaaUpdateHelpNavigationMap() {
+    const sheetAction = document.getElementById("helpMapSheetAction");
+    const reportAction = document.getElementById("helpMapReportAction");
+    if (!sheetAction || !reportAction) return;
+
+    const target = normalizeString(document.getElementById("existingSheetUrlInput")?.value || "");
+    const spreadsheetId = extractSpreadsheetIdFromUrl(target);
+
+    if (!spreadsheetId) {
+        sheetAction.className = "border-b border-slate-100 px-2.5 py-2 text-slate-400";
+        sheetAction.textContent = "作成後に利用できます";
+        reportAction.className = "px-2.5 py-2 text-slate-400";
+        reportAction.textContent = "作成後に利用できます";
+        return;
+    }
+
+    const sheetUrl = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/edit`;
+    sheetAction.className = "border-b border-slate-100 px-2.5 py-2";
+    sheetAction.innerHTML = `<a href="${manageEscapeHtml(sheetUrl)}" target="_blank" rel="noopener noreferrer" class="font-extrabold text-[#0d6795] underline decoration-[#148ecc]/35 underline-offset-2 hover:text-[#148ecc]">個社管理シートを開く</a>`;
+
+    const recent = vaaRecentReportForSheetId(spreadsheetId);
+    const viewerUrl = normalizeString(
+        vaaShareSettingsState?.metadata?.viewerUrl ||
+        recent?.viewerUrl ||
+        managedReportState?.metadata?.viewerUrl ||
+        ""
+    );
+
+    reportAction.className = "px-2.5 py-2";
+    if (viewerUrl) {
+        reportAction.innerHTML = `<a href="${manageEscapeHtml(viewerUrl)}" target="_blank" rel="noopener noreferrer" class="font-extrabold text-[#0d6795] underline decoration-[#148ecc]/35 underline-offset-2 hover:text-[#148ecc]">分析レポートを開く</a>`;
+    } else {
+        reportAction.innerHTML = '<button type="button" data-help-open-report-finder class="font-extrabold text-[#0d6795] underline decoration-[#148ecc]/35 underline-offset-2 hover:text-[#148ecc]">分析レポートを探す</button>';
+    }
+}
+
 function updateSheetsOperationUi() {
     const input =
         document.getElementById(
@@ -4374,6 +4427,8 @@ function updateSheetsOperationUi() {
     if (typeof vaaSyncShareSettingsVisibility === "function") {
         vaaSyncShareSettingsVisibility(raw, id);
     }
+
+    vaaUpdateHelpNavigationMap();
 
     identityBlock
         ?.classList
@@ -11219,6 +11274,13 @@ if (managedOpenViewerQuickBtn) {
 }
 
 
+document.getElementById("etlHelpModal")?.addEventListener("click", event => {
+    const button = event.target?.closest?.("[data-help-open-report-finder]");
+    if (!button) return;
+    closeEtlHelpModal();
+    vaaOpenReportFinder();
+});
+
 document
     .getElementById(
         "openEtlHelpBtn"
@@ -12081,7 +12143,7 @@ msgEl.innerHTML = `
     
 
 // -----------------------------------------------------------------------------
-// v30.35: 共有設定を軽量API化 / v30.34計測UI維持
+// v30.36: 3つの場所ナビ統合 / v30.35共有設定軽量API維持
 // -----------------------------------------------------------------------------
 const VAA_RECENT_REPORTS_STORAGE_KEY = "validApplicationAnalysis.recentReports.v1";
 var vaaReportFinderReports = [];
