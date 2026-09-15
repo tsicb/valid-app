@@ -74,7 +74,7 @@
             z-index: 40 !important;
         }
     
-/* v30.31: recent output folder ordering / sheet folder quick open */
+/* v30.32: mode-specific copy / share loading elapsed / compact viewer URL / v30.31 features retained */
 .etl-auth-workspace.etl-auth-reveal {
     animation: etlAuthReveal .22s ease-out both;
 }
@@ -653,12 +653,12 @@
                 <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div class="min-w-0">
                         <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">
-                            <span class="vaa-brand-title">
-                                有効応募分析｜データ作成・更新
+                            <span id="workflowPageTitleText" class="vaa-brand-title">
+                                有効応募分析｜データ作成
                             </span>
                         </h1>
-                        <p class="mt-2 text-sm text-slate-500 leading-relaxed">
-                            応募・求人CSVを選び、新規作成または既存データの更新から、個社管理シート保存・分析レポート反映まで1回で完了します。
+                        <p id="workflowHeaderDescription" class="mt-2 text-sm text-slate-500 leading-relaxed">
+                            応募・求人CSVを選び、新しい個社管理シートと分析レポートを作成します。
                         </p>
                     </div>
 
@@ -669,7 +669,7 @@
                             aria-label="個社管理シート一覧をフォルダから開く"
                             title="個社管理シート一覧"
                         >
-                            <option value="" selected disabled>個社管理シート一覧</option>
+                            <option value="" selected disabled hidden>個社管理シート一覧</option>
                             <option value="__root__">共通フォルダ直下</option>
                         </select>
                         <button
@@ -765,17 +765,17 @@
                     <div class="min-w-0">
                         <div class="flex flex-wrap items-center gap-2">
                             <span id="workflowModeBadge" class="workflow-mode-badge">新規作成モード</span>
-                            <span class="text-[10px] font-extrabold tracking-[0.12em] text-slate-400">
-                                CREATE / UPDATE
+                            <span id="workflowModeCode" class="text-[10px] font-extrabold tracking-[0.12em] text-slate-400">
+                                CREATE
                             </span>
                         </div>
 
                         <div id="sheetsCreateTitle" class="mt-2 text-base font-extrabold text-slate-950">
-                            新しい企業のデータを保存します
+                            新しい企業のデータを登録
                         </div>
 
                         <div id="existingSheetModeNote" class="mt-1 text-[11px] leading-relaxed text-slate-600">
-                            実行すると、新しい個社管理シートと分析レポートを作成します。
+                            求人・応募データをアップロードして、個社管理シートと分析レポートを作成します。
                         </div>
 
                         <div
@@ -788,8 +788,8 @@
 
                 </div>
 
-                <div class="mt-3 text-[10px] leading-relaxed text-slate-500">
-                    既存企業の更新は、対象の個社管理シートにある「データを作成・更新」から開いてください。更新先は自動指定されます。
+                <div id="workflowModeFootnote" class="mt-3 text-[10px] leading-relaxed text-slate-500">
+                    企業名と保存先を確認して、応募・求人CSVを選択してください。
                 </div>
             </div>
 
@@ -904,6 +904,7 @@
                                 <span class="inline-block h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-sky-200 border-t-[#148ecc]"></span>
                                 <div class="min-w-0">
                                     <div id="shareSettingsLoadingTitle" class="text-[11px] font-extrabold text-slate-800">共有設定を読み込んでいます</div>
+                                    <div id="shareSettingsLoadingElapsed" class="mt-0.5 text-[10px] font-bold text-sky-700">0秒経過</div>
                                     <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-sky-100">
                                         <div class="h-full w-2/5 animate-pulse rounded-full bg-[#148ecc]"></div>
                                     </div>
@@ -3905,7 +3906,7 @@ function renderSheetFolderListOptions(folders = []) {
     if (!select) return;
 
     select.innerHTML = [
-        '<option value="" selected disabled>個社管理シート一覧</option>',
+        '<option value="" selected disabled hidden>個社管理シート一覧</option>',
         '<option value="__root__">共通フォルダ直下</option>',
         ...folders.map(folder =>
             `<option value="${escapeHtml(folder.id)}">${escapeHtml(folder.name)}</option>`
@@ -4044,6 +4045,7 @@ async function verifyStoredAccessKey(options = {}) {
                 // 認証確認とDriveの保存先一覧取得は分離する。
                 // ここは待たずに本体UIを表示し、保存先候補だけ別通信で読み込む。
                 void loadCreateOutputFolders();
+                void vaaLoadUpdateTargetIdentity();
 
                 const input = document.getElementById(
                     "sheetsAccessKeyInput"
@@ -4215,6 +4217,51 @@ function extractSpreadsheetIdFromUrl(value) {
     return "";
 }
 
+function vaaUpdateTargetDisplayName(sheetId = "") {
+    const id = normalizeString(sheetId);
+
+    try {
+        const hashParams = new URLSearchParams(
+            window.location.hash.replace(/^#/, "")
+        );
+        const hashName = normalizeString(hashParams.get("name"));
+        if (hashName) return hashName;
+    } catch (_) {}
+
+    const metadata = vaaUpdateTargetIdentity?.metadata || vaaShareSettingsState?.metadata || managedReportState?.metadata || {};
+    if (
+        normalizeString(metadata.spreadsheetId) === id ||
+        !normalizeString(metadata.spreadsheetId)
+    ) {
+        const metadataName =
+            normalizeString(metadata.enterpriseLabel) ||
+            normalizeString(metadata.fileName);
+        if (metadataName) return metadataName;
+    }
+
+    try {
+        const recent = typeof vaaReadRecentReports === "function"
+            ? vaaReadRecentReports()
+            : JSON.parse(localStorage.getItem("validApplicationAnalysis.recentReports.v1") || "[]");
+        const matched = Array.isArray(recent)
+            ? recent.find(item => normalizeString(item?.spreadsheetId) === id)
+            : null;
+        if (matched) {
+            return normalizeString(matched.enterpriseLabel) ||
+                normalizeString(matched.fileName) ||
+                normalizeString(matched.reportName);
+        }
+    } catch (_) {}
+
+    return "";
+}
+
+function vaaCompanyHonorificLabel(rawName = "") {
+    const name = normalizeString(rawName);
+    if (!name) return "この企業";
+    return /様$/.test(name) ? name : `${name}様`;
+}
+
 function updateSheetsOperationUi() {
     const input =
         document.getElementById(
@@ -4249,6 +4296,26 @@ function updateSheetsOperationUi() {
     const targetBanner =
         document.getElementById(
             "etlSheetTargetBanner"
+        );
+
+    const pageTitleText =
+        document.getElementById(
+            "workflowPageTitleText"
+        );
+
+    const modeCode =
+        document.getElementById(
+            "workflowModeCode"
+        );
+
+    const headerDescription =
+        document.getElementById(
+            "workflowHeaderDescription"
+        );
+
+    const modeFootnote =
+        document.getElementById(
+            "workflowModeFootnote"
         );
 
     const toggleTargetButton =
@@ -4300,8 +4367,12 @@ function updateSheetsOperationUi() {
         badge.textContent =
             "新規作成モード";
 
+        if (pageTitleText) pageTitleText.textContent = "有効応募分析｜データ作成";
+        if (modeCode) modeCode.textContent = "CREATE";
+        document.title = "有効応募分析｜データ作成";
+
         title.textContent =
-            "新しい企業のデータを保存します";
+            "新しい企業のデータを登録";
 
         runLabel.textContent =
             "データを保存して分析レポートを作る";
@@ -4310,7 +4381,17 @@ function updateSheetsOperationUi() {
             "mt-1 text-[11px] leading-relaxed text-slate-600";
 
         note.textContent =
-            "実行すると、新しい個社管理シートと分析レポートを作成します。";
+            "求人・応募データをアップロードして、個社管理シートと分析レポートを作成します。";
+
+        if (headerDescription) {
+            headerDescription.textContent =
+                "応募・求人CSVを選び、新しい個社管理シートと分析レポートを作成します。";
+        }
+
+        if (modeFootnote) {
+            modeFootnote.textContent =
+                "企業名と保存先を確認して、応募・求人CSVを選択してください。";
+        }
 
         targetBanner
             ?.classList
@@ -4335,6 +4416,10 @@ function updateSheetsOperationUi() {
         badge.textContent =
             "更新先を確認";
 
+        if (pageTitleText) pageTitleText.textContent = "有効応募分析｜データ更新";
+        if (modeCode) modeCode.textContent = "UPDATE";
+        document.title = "有効応募分析｜データ更新";
+
         title.textContent =
             "更新先の個社管理シートを確認してください";
 
@@ -4346,6 +4431,16 @@ function updateSheetsOperationUi() {
 
         note.textContent =
             "個社管理シートから「データを作成・更新」を開き直してください。";
+
+        if (headerDescription) {
+            headerDescription.textContent =
+                "更新対象の個社管理シートを確認してください。";
+        }
+
+        if (modeFootnote) {
+            modeFootnote.textContent =
+                "対象企業の個社管理シートから開き直すと、更新先が自動指定されます。";
+        }
 
         targetBanner
             ?.classList
@@ -4368,11 +4463,20 @@ function updateSheetsOperationUi() {
     selector.dataset.mode =
         "update";
 
+    const updateTargetName = vaaUpdateTargetDisplayName(id);
+    const updateTargetLabel = vaaCompanyHonorificLabel(updateTargetName);
+
     badge.textContent =
         "既存更新モード";
 
+    if (pageTitleText) pageTitleText.textContent = "有効応募分析｜データ更新";
+    if (modeCode) modeCode.textContent = "UPDATE";
+    document.title = updateTargetName
+        ? `${updateTargetLabel}｜データ更新`
+        : "有効応募分析｜データ更新";
+
     title.textContent =
-        "この企業のデータを更新します";
+        `${updateTargetLabel}のデータを更新`;
 
     runLabel.textContent =
         "データを保存して分析レポートを更新";
@@ -4381,8 +4485,19 @@ function updateSheetsOperationUi() {
         "mt-1 text-[11px] leading-relaxed text-slate-700";
 
     note.innerHTML =
-        "現在の個社管理シートに最新CSVの分析データを反映します。" +
-        '<span class="font-extrabold text-slate-900"> 新しい個社管理シートは作成しません。</span>';
+        `${manageEscapeHtml(updateTargetLabel)}の最新データをアップロードして、分析レポートを更新します。` +
+        '<span class="font-extrabold text-slate-900"> 新しい個社管理シートは作成されません。</span>';
+
+    if (headerDescription) {
+        headerDescription.textContent =
+            `${updateTargetLabel}の応募・求人CSVを更新し、既存の個社管理シートと分析レポートへ反映します。`;
+    }
+
+    if (modeFootnote) {
+        modeFootnote.textContent = updateTargetName
+            ? `${updateTargetLabel}の更新専用画面です。別の企業を更新する場合は、その企業の個社管理シートから開いてください。`
+            : "この企業の更新専用画面です。別の企業を更新する場合は、その企業の個社管理シートから開いてください。";
+    }
 
     if (targetBanner) {
         targetBanner.classList.remove(
@@ -11260,7 +11375,9 @@ if (sheetFromHash) {
                 );
             }
 
+            vaaUpdateTargetIdentity = null;
             updateSheetsOperationUi();
+            void vaaLoadUpdateTargetIdentity();
 
             if (
                 manageSheetUrlInput &&
@@ -11932,15 +12049,18 @@ msgEl.innerHTML = `
     
 
 // -----------------------------------------------------------------------------
-// v30.31: 保存先フォルダ最近利用順 / 個社管理シート一覧フォルダ選択 / v30.30機能維持
+// v30.32: モード別文言 / 共有設定待機秒数 / 短縮共有URL / v30.31機能維持
 // -----------------------------------------------------------------------------
 const VAA_RECENT_REPORTS_STORAGE_KEY = "validApplicationAnalysis.recentReports.v1";
 var vaaReportFinderReports = [];
 var vaaReportFinderLoaded = false;
 var vaaReportFinderLoading = false;
 var vaaShareSettingsState = null;
+var vaaUpdateTargetIdentity = null;
 var vaaShareSettingsSheetId = "";
 var vaaShareSettingsBusy = false;
+var vaaShareSettingsLoadingTimer = null;
+var vaaShareSettingsLoadingStartedAt = 0;
 var vaaShareConfirmMode = "";
 var vaaShareConfirmBusy = false;
 var vaaShareAutoOpenRequested = /(?:^|&)panel=sharing(?:&|$)/.test(window.location.hash.replace(/^#/, ""));
@@ -12180,6 +12300,32 @@ function vaaCloseReportFinder() {
     vaaSetModalOpen("reportFinderModal", false);
 }
 
+async function vaaLoadUpdateTargetIdentity() {
+    const targetSpreadsheetUrl = normalizeString(
+        document.getElementById("existingSheetUrlInput")?.value
+    );
+    const id = extractSpreadsheetIdFromUrl(targetSpreadsheetUrl);
+    if (!id || !globalAccessKeyVerified) return;
+
+    if (
+        normalizeString(vaaUpdateTargetIdentity?.metadata?.spreadsheetId) === id
+    ) {
+        updateSheetsOperationUi();
+        return;
+    }
+
+    try {
+        const data = await postManagementAction("manageIdentity", {
+            targetSpreadsheetUrl
+        });
+        if (extractSpreadsheetIdFromUrl(targetSpreadsheetUrl) !== id) return;
+        vaaUpdateTargetIdentity = data || null;
+        updateSheetsOperationUi();
+    } catch (error) {
+        console.warn("[Update identity] load failed; generic update label retained", error);
+    }
+}
+
 function vaaCurrentUpdateSheetId() {
     return extractSpreadsheetIdFromUrl(
         document.getElementById("existingSheetUrlInput")?.value || ""
@@ -12199,7 +12345,33 @@ function vaaSetShareSettingsExpanded(expanded) {
     }
 }
 
+function vaaStopShareSettingsLoadingTimer() {
+    if (vaaShareSettingsLoadingTimer) {
+        clearInterval(vaaShareSettingsLoadingTimer);
+        vaaShareSettingsLoadingTimer = null;
+    }
+    vaaShareSettingsLoadingStartedAt = 0;
+}
+
+function vaaStartShareSettingsLoadingTimer() {
+    vaaStopShareSettingsLoadingTimer();
+    vaaShareSettingsLoadingStartedAt = Date.now();
+
+    const render = () => {
+        const elapsedEl = document.getElementById("shareSettingsLoadingElapsed");
+        if (!elapsedEl || !vaaShareSettingsLoadingStartedAt) return;
+        const seconds = Math.max(0, Math.floor((Date.now() - vaaShareSettingsLoadingStartedAt) / 1000));
+        elapsedEl.textContent = seconds >= 15
+            ? `${seconds}秒経過・通常より少し時間がかかっています`
+            : `${seconds}秒経過`;
+    };
+
+    render();
+    vaaShareSettingsLoadingTimer = setInterval(render, 250);
+}
+
 function vaaResetShareSettings() {
+    vaaStopShareSettingsLoadingTimer();
     vaaShareSettingsState = null;
     vaaShareSettingsSheetId = "";
     document.getElementById("shareSettingsLoading")?.classList.add("hidden");
@@ -12227,6 +12399,7 @@ function vaaSyncShareSettingsVisibility(rawValue = "", sheetId = "") {
 }
 
 function vaaRenderShareSettings(data) {
+    vaaStopShareSettingsLoadingTimer();
     vaaShareSettingsState = data;
     vaaShareSettingsSheetId = vaaCurrentUpdateSheetId();
     const metadata = data?.metadata || {};
@@ -12270,6 +12443,8 @@ function vaaRenderShareSettings(data) {
         lastDataUpdateAt: metadata.lastDataUpdateAt,
         applicationCount: metadata.applicationCount
     });
+
+    updateSheetsOperationUi();
 }
 
 async function vaaLoadShareSettings() {
@@ -12286,6 +12461,7 @@ async function vaaLoadShareSettings() {
     document.getElementById("shareSettingsContent")?.classList.add("hidden");
     document.getElementById("shareSettingsError")?.classList.add("hidden");
     document.getElementById("shareSettingsLoading")?.classList.remove("hidden");
+    vaaStartShareSettingsLoadingTimer();
     const load = document.getElementById("loadShareSettingsBtn");
     if (load) {
         load.disabled = true;
@@ -12298,6 +12474,7 @@ async function vaaLoadShareSettings() {
         const data = await postManagementAction("manageLoad", { targetSpreadsheetUrl });
         vaaRenderShareSettings(data);
     } catch (error) {
+        vaaStopShareSettingsLoadingTimer();
         document.getElementById("shareSettingsLoading")?.classList.add("hidden");
         const errorBox = document.getElementById("shareSettingsError");
         const errorText = document.getElementById("shareSettingsErrorText");
