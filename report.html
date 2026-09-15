@@ -103,16 +103,6 @@
             color: #991b1b;
             border: 1px solid #fecaca;
         }
-        .share-warning {
-            background: #fef2f2;
-            border: 1px solid #fecaca;
-            color: #991b1b;
-            border-radius: 13px;
-            padding: 12px 15px;
-            margin-bottom: 14px;
-            font-size: 12px;
-            line-height: 1.6;
-        }
         .analysis-nav {
             display: flex;
             gap: 7px;
@@ -4309,7 +4299,6 @@
             <div id="shareReadyBadge" class="share-ok hidden"></div>
         </div>
 
-        <div id="shareNameWarning" class="share-warning hidden"></div>
 
         <div id="viewerDataSourceNotice" class="notice">
             期間や年齢を切り替えながら、自由に分析できます。画面上で変更した条件は元データや保存済みの設定には影響しません。
@@ -4544,10 +4533,6 @@
 
         function getViewerToken() {
             return (getViewerHashParams().get("r") || "").trim();
-        }
-
-        function getViewerUrlName() {
-            return (getViewerHashParams().get("name") || "").trim();
         }
 
 
@@ -12425,7 +12410,6 @@ function renderReport(data) {
     const settings = runtimeData.settings || {};
     const displayMap = viewerDisplayMap(data);
     const actualName = metadata.reportTitle || "有効応募分析レポート";
-    const urlName = getViewerUrlName();
 
     document.title =
         `${actualName} | 分析レポート`;
@@ -12435,21 +12419,6 @@ function renderReport(data) {
 
     document.getElementById("shareTargetName").textContent =
         actualName;
-
-    const shareWarning =
-        document.getElementById("shareNameWarning");
-
-    if (
-        urlName &&
-        urlName !== actualName
-    ) {
-        shareWarning.textContent =
-            `共有URLに表示されている名称「${urlName}」と、実際に保存されているレポート名「${actualName}」が一致しません。共有前に対象をご確認ください。`;
-        shareWarning.classList.remove("hidden");
-    } else {
-        shareWarning.classList.add("hidden");
-        shareWarning.textContent = "";
-    }
 
     currentViewerTargetDisplayLabel = result.targetLabel;
     document.getElementById("reportSubtitle").textContent = `最終データ更新：${formatDateLabel(metadata.lastDataUpdateAt)}`;
@@ -12638,6 +12607,7 @@ function renderReport(data) {
     if (
         !currentFastHandoffId
     ) {
+        canonicalizeCurrentViewerAddress();
         rememberReportVisitForInternalUser(
             data?.metadata?.reportTitle || ""
         );
@@ -12893,6 +12863,27 @@ function clearViewerFlowHandoff() {
     } catch (_) {}
 }
 
+function compactCurrentViewerUrl() {
+    const token = getViewerToken();
+    if (!token) return window.location.href;
+
+    try {
+        const parsed = new URL(window.location.href);
+        parsed.hash = `r=${encodeURIComponent(token)}`;
+        return parsed.toString();
+    } catch (_) {
+        return window.location.href;
+    }
+}
+
+function canonicalizeCurrentViewerAddress() {
+    const compactUrl = compactCurrentViewerUrl();
+    if (compactUrl === window.location.href) return;
+    try {
+        history.replaceState(null, "", compactUrl);
+    } catch (_) {}
+}
+
 function rememberReportVisitForInternalUser(
     reportName = ""
 ) {
@@ -12908,7 +12899,7 @@ function rememberReportVisitForInternalUser(
         }
 
         const viewerUrl =
-            window.location.href;
+            compactCurrentViewerUrl();
 
         const parsed =
             JSON.parse(
@@ -14110,12 +14101,7 @@ function stopViewerLoadingTimer() {
             const token =
                 getViewerToken();
 
-            const urlName =
-                getViewerUrlName();
-
-            startViewerLoading(
-                urlName
-            );
+            startViewerLoading();
 
             if (
                 !window.VAA_COMMON_MASTERS ||

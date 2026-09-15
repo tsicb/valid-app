@@ -74,7 +74,7 @@
             z-index: 40 !important;
         }
     
-/* v30.32: mode-specific copy / share loading elapsed / compact viewer URL / v30.31 features retained */
+/* v30.33: URL company-name removal / portal information architecture / v30.32 features retained */
 .etl-auth-workspace.etl-auth-reveal {
     animation: etlAuthReveal .22s ease-out both;
 }
@@ -1129,40 +1129,65 @@
                 <div id="helpGuidePanel" role="tabpanel" aria-labelledby="helpTabGuideBtn">
                     <div class="rounded-2xl border border-[#148ecc]/20 bg-[#edf8fd] p-4">
                         <div class="text-sm font-extrabold text-[#0d6795]">
-                            このツールは何をするもの？
+                            まずは3つの場所だけ覚えれば大丈夫です
                         </div>
                         <p class="mt-1 text-[11px] leading-relaxed text-slate-600">
-                            応募CSVと求人CSVを組み合わせ、応募傾向を分析するための個社データを作成・更新するツールです。
-                            処理後は、社内管理用の個社管理シートと、分析・共有用の分析レポートを利用できます。
+                            有効応募分析は「データ作成・更新」「個社管理シート」「分析レポート」の3つで構成されています。
+                            企業へ共有するのは分析レポートだけです。
                         </p>
+
+                        <div class="mt-3 overflow-hidden rounded-xl border border-[#148ecc]/15 bg-white">
+                            <table class="w-full table-fixed border-collapse text-left text-[10px] leading-relaxed">
+                                <thead class="bg-slate-50 text-slate-500">
+                                    <tr>
+                                        <th class="w-[24%] border-b border-slate-200 px-2.5 py-2 font-extrabold">場所</th>
+                                        <th class="w-[38%] border-b border-slate-200 px-2.5 py-2 font-extrabold">何をする場所？</th>
+                                        <th class="w-[22%] border-b border-slate-200 px-2.5 py-2 font-extrabold">主な用途</th>
+                                        <th class="w-[16%] border-b border-slate-200 px-2.5 py-2 text-center font-extrabold">企業共有</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="text-slate-600">
+                                    <tr>
+                                        <td class="border-b border-slate-100 px-2.5 py-2 font-extrabold text-slate-900">データ作成・更新</td>
+                                        <td class="border-b border-slate-100 px-2.5 py-2">CSVを登録する作業画面</td>
+                                        <td class="border-b border-slate-100 px-2.5 py-2">新規作成・データ更新・共有設定</td>
+                                        <td class="border-b border-slate-100 px-2.5 py-2 text-center"><span class="rounded-full bg-slate-100 px-2 py-1 font-extrabold text-slate-500">しない</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="border-b border-slate-100 px-2.5 py-2 font-extrabold text-slate-900">個社管理シート</td>
+                                        <td class="border-b border-slate-100 px-2.5 py-2">企業ごとの設定・管理場所</td>
+                                        <td class="border-b border-slate-100 px-2.5 py-2">設定・マスタ・各画面への入口</td>
+                                        <td class="border-b border-slate-100 px-2.5 py-2 text-center"><span class="rounded-full bg-slate-100 px-2 py-1 font-extrabold text-slate-500">しない</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-2.5 py-2 font-extrabold text-slate-900">分析レポート</td>
+                                        <td class="px-2.5 py-2">分析結果を見る場所</td>
+                                        <td class="px-2.5 py-2">応募分析・レポート確認</td>
+                                        <td class="px-2.5 py-2 text-center"><span class="rounded-full bg-emerald-50 px-2 py-1 font-extrabold text-emerald-700">共有OK</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
 
                     <div class="mt-4 grid gap-3">
                         <div class="rounded-xl border border-slate-200 p-3">
-                            <div class="text-[11px] font-extrabold text-slate-900">1. 新しい企業を分析するとき</div>
+                            <div class="text-[11px] font-extrabold text-slate-900">1. 新しい企業を始めるとき</div>
                             <p class="mt-1 text-[10px] leading-relaxed text-slate-500">
-                                データ作成・更新ページを直接開き、アクセスキーを確認してCSVを選択します。実行すると新しい個社管理シートと分析レポートを作成します。
+                                データ作成ページを開き、アクセスキーを確認してCSVを選択します。実行すると新しい個社管理シートと分析レポートを作成します。
                             </p>
                         </div>
 
                         <div class="rounded-xl border border-slate-200 p-3">
                             <div class="text-[11px] font-extrabold text-slate-900">2. 既存企業のデータを更新するとき</div>
                             <p class="mt-1 text-[10px] leading-relaxed text-slate-500">
-                                個社管理シートの「CSVデータ更新はこちら」から開くのが最短です。更新先が自動指定され、同じ個社管理シートへ最新CSVを反映します。
+                                対象企業の個社管理シートにある「データ更新ページを開く」から進みます。更新先が自動指定され、同じ個社管理シートへ最新CSVを反映します。
                                 <span class="font-extrabold text-slate-700">新しい個社管理シートは作成しません。</span>
                             </p>
                         </div>
 
                         <div class="rounded-xl border border-slate-200 p-3">
-                            <div class="text-[11px] font-extrabold text-slate-900">3. 個社管理シートと分析レポートの役割</div>
-                            <p class="mt-1 text-[10px] leading-relaxed text-slate-500">
-                                個社管理シートは社内で設定・マスタを管理する場所、分析レポートは分析結果を見る・共有する場所です。
-                                企業へ共有する場合は、基本的に分析レポートの共有URLを使います。
-                            </p>
-                        </div>
-
-                        <div class="rounded-xl border border-slate-200 p-3">
-                            <div class="text-[11px] font-extrabold text-slate-900">4. アクセスキーについて</div>
+                            <div class="text-[11px] font-extrabold text-slate-900">3. アクセスキーについて</div>
                             <p class="mt-1 text-[10px] leading-relaxed text-slate-500">
                                 データ作成・更新や管理機能を利用するための社内専用キーです。
                                 <span class="font-extrabold text-amber-800">企業担当者など社外の方へ共有・転送しないでください。</span>
@@ -1171,16 +1196,15 @@
                         </div>
 
                         <div class="rounded-xl border border-slate-200 p-3">
-                            <div class="text-[11px] font-extrabold text-slate-900">5. 分析レポートの共有URLを止める・再発行するのは？</div>
+                            <div class="text-[11px] font-extrabold text-slate-900">4. 分析レポートの共有URLを止める・再発行するとき</div>
                             <p class="mt-1 text-[10px] leading-relaxed text-slate-500">
-                                誤送信や共有先の変更などで、今の共有URLを使えなくしたいときに停止します。
-                                新しい共有URLへ切り替えたい場合は再発行します。既存企業の更新モードにある「分析レポート共有設定」から操作できます。
+                                対象企業のデータ更新ページにある「分析レポート共有設定」から操作します。誤送信や共有先変更時には閲覧停止、新しいURLへ切り替える場合は再発行を使います。
                             </p>
                         </div>
                     </div>
 
                     <div class="mt-4 rounded-xl bg-[#fbffd7] px-3 py-2.5 text-[10px] leading-relaxed text-slate-600">
-                        普段は「データ作成・更新」「個社管理シート」「分析レポート」の3つだけ意識すれば大丈夫です。内部の保存用データを直接操作する必要はありません。
+                        普段は「新規企業はデータ作成ページ」「既存企業は個社管理シート」「企業へ見せるのは分析レポート」と覚えておけば迷いにくくなります。
                     </div>
                 </div>
 
@@ -4219,14 +4243,6 @@ function extractSpreadsheetIdFromUrl(value) {
 
 function vaaUpdateTargetDisplayName(sheetId = "") {
     const id = normalizeString(sheetId);
-
-    try {
-        const hashParams = new URLSearchParams(
-            window.location.hash.replace(/^#/, "")
-        );
-        const hashName = normalizeString(hashParams.get("name"));
-        if (hashName) return hashName;
-    } catch (_) {}
 
     const metadata = vaaUpdateTargetIdentity?.metadata || vaaShareSettingsState?.metadata || managedReportState?.metadata || {};
     if (
@@ -11322,6 +11338,16 @@ if (existingSheetUrlInput) {
         vaaShareAutoOpenRequested = true;
     }
 
+    if (sheetFromHash) {
+        const canonicalHash =
+            `#sheet=${encodeURIComponent(sheetFromHash)}` +
+            (panelFromHash === "sharing" ? "&panel=sharing" : "");
+        if (window.location.hash !== canonicalHash) {
+            try {
+                history.replaceState(null, "", canonicalHash);
+            } catch (_) {}
+        }
+    }
 
 if (sheetFromHash) {
     const sheetUrl =
@@ -12049,7 +12075,7 @@ msgEl.innerHTML = `
     
 
 // -----------------------------------------------------------------------------
-// v30.32: モード別文言 / 共有設定待機秒数 / 短縮共有URL / v30.31機能維持
+// v30.33: URL企業名撤去 / 管理シート導線整理 / 3つの場所ガイド / v30.32機能維持
 // -----------------------------------------------------------------------------
 const VAA_RECENT_REPORTS_STORAGE_KEY = "validApplicationAnalysis.recentReports.v1";
 var vaaReportFinderReports = [];
@@ -12065,12 +12091,47 @@ var vaaShareConfirmMode = "";
 var vaaShareConfirmBusy = false;
 var vaaShareAutoOpenRequested = /(?:^|&)panel=sharing(?:&|$)/.test(window.location.hash.replace(/^#/, ""));
 
+function vaaCompactReportViewerUrl(rawUrl) {
+    const value = normalizeString(rawUrl);
+    if (!value) return "";
+
+    try {
+        const parsed = new URL(value, window.location.href);
+        const params = new URLSearchParams(parsed.hash.replace(/^#/, ""));
+        const token = normalizeString(params.get("r"));
+        if (!token) return value;
+        parsed.hash = `r=${encodeURIComponent(token)}`;
+        return parsed.toString();
+    } catch (_) {
+        return value;
+    }
+}
+
 function vaaReadRecentReports() {
     try {
         const parsed = JSON.parse(
             localStorage.getItem(VAA_RECENT_REPORTS_STORAGE_KEY) || "[]"
         );
-        return Array.isArray(parsed) ? parsed : [];
+        if (!Array.isArray(parsed)) return [];
+
+        let changed = false;
+        const normalized = parsed.map(item => {
+            const compactUrl = vaaCompactReportViewerUrl(item?.viewerUrl);
+            if (compactUrl !== normalizeString(item?.viewerUrl)) changed = true;
+            return {
+                ...item,
+                viewerUrl: compactUrl
+            };
+        });
+
+        if (changed) {
+            localStorage.setItem(
+                VAA_RECENT_REPORTS_STORAGE_KEY,
+                JSON.stringify(normalized)
+            );
+        }
+
+        return normalized;
     } catch (_) {
         return [];
     }
@@ -12078,7 +12139,7 @@ function vaaReadRecentReports() {
 
 function vaaRememberRecentReport(report) {
     const spreadsheetId = normalizeString(report?.spreadsheetId);
-    const viewerUrl = normalizeString(report?.viewerUrl);
+    const viewerUrl = vaaCompactReportViewerUrl(report?.viewerUrl);
     if (!spreadsheetId && !viewerUrl) return;
 
     try {
@@ -12144,7 +12205,7 @@ function vaaFormatReportDate(value) {
 function vaaReportFinderCardHtml(report) {
     const name = vaaReportDisplayName(report);
     const fileName = normalizeString(report?.fileName);
-    const viewerUrl = normalizeString(report?.viewerUrl);
+    const viewerUrl = vaaCompactReportViewerUrl(report?.viewerUrl);
     const enabled = report?.viewerEnabled !== false;
     const appCount = Number(report?.applicationCount || 0);
     const lastUpdated = vaaFormatReportDate(
