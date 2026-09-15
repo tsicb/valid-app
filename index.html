@@ -74,7 +74,7 @@
             z-index: 40 !important;
         }
     
-/* v30.37: company-home guided flow / v30.35 fast sharing retained */
+/* v30.38: recent-folder-first default / v30.37 company-home flow retained */
 .etl-auth-workspace.etl-auth-reveal {
     animation: etlAuthReveal .22s ease-out both;
 }
@@ -3949,9 +3949,20 @@ function renderCreateOutputFolderOptions(folders = [], options = {}) {
     if (!select) return;
 
     const previous = normalizeString(select.value);
+    const usageHistory = loadOutputFolderUsageHistory();
+    const mostRecentFolder = globalCreateOutputFolders.find(
+        folder => getOutputFolderUsageTimestamp(folder, usageHistory) > 0
+    ) || null;
+    const remainingFolders = mostRecentFolder
+        ? globalCreateOutputFolders.filter(folder => folder.id !== mostRecentFolder.id)
+        : globalCreateOutputFolders;
+
     select.innerHTML = [
+        ...(mostRecentFolder
+            ? [`<option value="${escapeHtml(mostRecentFolder.id)}">${escapeHtml(mostRecentFolder.name)}</option>`]
+            : []),
         '<option value="">共通フォルダ直下</option>',
-        ...globalCreateOutputFolders.map(folder =>
+        ...remainingFolders.map(folder =>
             `<option value="${escapeHtml(folder.id)}">${escapeHtml(folder.name)}</option>`
         ),
         '<option value="__new__">＋ 自分用のフォルダを新しく作る</option>'
@@ -3961,7 +3972,9 @@ function renderCreateOutputFolderOptions(folders = [], options = {}) {
         previous === "__new__" ||
         globalCreateOutputFolders.some(folder => folder.id === previous)
     );
-    select.value = canRestore ? previous : "";
+    select.value = canRestore
+        ? previous
+        : normalizeString(mostRecentFolder?.id);
     updateCreateOutputFolderUi();
 }
 
@@ -12114,7 +12127,7 @@ msgEl.innerHTML = `
     
 
 // -----------------------------------------------------------------------------
-// v30.37: 企業ホーム起点の一本道UX / v30.35共有設定軽量API維持
+// v30.38: 保存先は最近保存したフォルダを既定選択 / v30.37企業ホームUX維持
 // -----------------------------------------------------------------------------
 const VAA_RECENT_REPORTS_STORAGE_KEY = "validApplicationAnalysis.recentReports.v1";
 var vaaReportFinderReports = [];
