@@ -74,7 +74,7 @@
             z-index: 40 !important;
         }
     
-/* v30.30: auth workspace reveal / compact verified state */
+/* v30.31: recent output folder ordering / sheet folder quick open */
 .etl-auth-workspace.etl-auth-reveal {
     animation: etlAuthReveal .22s ease-out both;
 }
@@ -329,6 +329,26 @@
     border-color: rgba(20,142,204,.42);
     background: var(--vaa-blue-soft);
     transform: translateY(-1px);
+}
+.vaa-nav-select {
+    min-width: 148px;
+    max-width: 220px;
+    border-radius: .75rem;
+    border: 1px solid var(--vaa-line);
+    background: #fff;
+    padding: .5rem 2rem .5rem .75rem;
+    color: var(--vaa-blue-dark);
+    font-size: 11px;
+    font-weight: 800;
+    box-shadow: 0 3px 10px rgba(20,142,204,.06);
+    transition: .18s ease;
+    cursor: pointer;
+}
+.vaa-nav-select:hover,
+.vaa-nav-select:focus {
+    border-color: rgba(20,142,204,.42);
+    background: var(--vaa-blue-soft);
+    outline: none;
 }
 .vaa-nav-link--report {
     background:
@@ -643,15 +663,15 @@
                     </div>
 
                     <nav class="flex shrink-0 flex-wrap items-start gap-2" aria-label="ページ操作">
-                        <a
-                            id="openSheetFolderLink"
-                            href="https://drive.google.com/drive/folders/1izieBYn1U40y0sMkK2H5WzoILA1blYNb"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="vaa-nav-link etl-auth-only hidden"
+                        <select
+                            id="sheetFolderListSelect"
+                            class="vaa-nav-select etl-auth-only hidden"
+                            aria-label="個社管理シート一覧をフォルダから開く"
+                            title="個社管理シート一覧"
                         >
-                            個社管理シート一覧
-                        </a>
+                            <option value="" selected disabled>個社管理シート一覧</option>
+                            <option value="__root__">共通フォルダ直下</option>
+                        </select>
                         <button
                             id="openReportFinderBtn"
                             type="button"
@@ -839,16 +859,16 @@
                                     class="w-full border border-gray-300 rounded-lg p-2.5 text-xs bg-white focus:outline-none focus:border-[#148ecc] focus:ring-2 focus:ring-sky-100"
                                 >
                                     <option value="">共通フォルダ直下</option>
-                                    <option value="__new__">＋ 新しいフォルダを作成</option>
+                                    <option value="__new__">＋ 自分用のフォルダを新しく作る</option>
                                 </select>
                                 <div id="newOutputFolderNameWrap" class="hidden mt-2">
-                                    <label for="newOutputFolderNameInput" class="block text-[10px] font-bold text-gray-500 mb-1">新規フォルダ名</label>
+                                    <label for="newOutputFolderNameInput" class="block text-[10px] font-bold text-gray-500 mb-1">自分用フォルダの名前</label>
                                     <input
                                         id="newOutputFolderNameInput"
                                         type="text"
                                         maxlength="80"
                                         autocomplete="off"
-                                        placeholder="例：山田担当"
+                                        placeholder="例：山田用"
                                         class="w-full border border-gray-300 rounded-lg p-2.5 text-xs bg-white focus:outline-none focus:border-[#148ecc] focus:ring-2 focus:ring-sky-100"
                                     >
                                 </div>
@@ -859,7 +879,7 @@
                                     aria-live="polite"
                                 ></div>
                                 <div class="mt-1 text-[10px] text-gray-500">
-                                    共通フォルダ直下、またはその直下の1階層だけを選べます。既存フォルダと同名ならそのフォルダを使用します。
+                                    担当者ごとの整理用フォルダとして自由に作成できます。保存先は共通フォルダ直下、またはその直下1階層です。既存フォルダと同名ならそのフォルダを使用します。
                                 </div>
                             </div>
                         </div>
@@ -1301,6 +1321,8 @@
         const VIEWER_AUTO_OPEN_STORAGE_KEY = "validApplicationAnalysis.viewerAutoOpen";
         const VIEWER_FLOW_HANDOFF_STORAGE_KEY = "validApplicationAnalysis.viewerFlowHandoff.v1";
         const RECENT_REPORTS_STORAGE_KEY = "validApplicationAnalysis.recentReports.v1";
+        const OUTPUT_FOLDER_USAGE_STORAGE_KEY = "validApplicationAnalysis.outputFolderUsage.v1";
+        const OUTPUT_FOLDER_USAGE_LIMIT = 40;
         const SHEETS_POST_TIMEOUT_MS = 330000; // 5分30秒。1回のAPI処理待機上限。
 const SHEETS_MAX_AUTO_RESUME_MS = 900000; // 自動再開は最大15分。
 const SHEETS_MAX_AUTO_RESUME_ROUNDS = 12;
@@ -3732,7 +3754,7 @@ async function loadCreateOutputFolders(options = {}) {
         } else {
             setCreateOutputFolderStatus(
                 "ok",
-                "既存の1階層フォルダはありません。共通フォルダ直下、または新しいフォルダを選べます。"
+                "既存の1階層フォルダはありません。共通フォルダ直下、または自分用のフォルダを新しく作れます。"
             );
         }
     } catch (error) {
@@ -3759,22 +3781,162 @@ async function loadCreateOutputFolders(options = {}) {
         ) {
             setCreateOutputFolderStatus(
                 "error",
-                "既存フォルダ一覧を取得できませんでした。中央APIの公開版を確認してください。共通フォルダ直下への保存、または新規フォルダ作成は利用できます。"
+                "既存フォルダ一覧を取得できませんでした。中央APIの公開版を確認してください。共通フォルダ直下への保存、または自分用フォルダの新規作成は利用できます。"
             );
             return;
         }
 
         setCreateOutputFolderStatus(
             "error",
-            "既存フォルダ一覧を取得できませんでした。共通フォルダ直下への保存、または新規フォルダ作成はそのまま利用できます。"
+            "既存フォルダ一覧を取得できませんでした。共通フォルダ直下への保存、または自分用フォルダの新規作成はそのまま利用できます。"
         );
     } finally {
         globalCreateOutputFoldersLoading = false;
     }
 }
 
-function renderCreateOutputFolderOptions(folders = []) {
-    globalCreateOutputFolders = Array.isArray(folders)
+function loadOutputFolderUsageHistory() {
+    try {
+        const parsed = JSON.parse(
+            localStorage.getItem(OUTPUT_FOLDER_USAGE_STORAGE_KEY) || "[]"
+        );
+
+        if (!Array.isArray(parsed)) return [];
+
+        return parsed
+            .map(item => ({
+                id: normalizeString(item?.id),
+                name: normalizeString(item?.name),
+                lastUsedAt: Number(item?.lastUsedAt) || 0
+            }))
+            .filter(item => (item.id || item.name) && item.lastUsedAt > 0)
+            .sort((a, b) => b.lastUsedAt - a.lastUsedAt)
+            .slice(0, OUTPUT_FOLDER_USAGE_LIMIT);
+    } catch (_) {
+        return [];
+    }
+}
+
+function saveOutputFolderUsageHistory(history = []) {
+    try {
+        localStorage.setItem(
+            OUTPUT_FOLDER_USAGE_STORAGE_KEY,
+            JSON.stringify(
+                history
+                    .slice(0, OUTPUT_FOLDER_USAGE_LIMIT)
+                    .map(item => ({
+                        id: normalizeString(item?.id),
+                        name: normalizeString(item?.name),
+                        lastUsedAt: Number(item?.lastUsedAt) || Date.now()
+                    }))
+            )
+        );
+    } catch (_) {}
+}
+
+function rememberOutputFolderUsage({ id = "", name = "" } = {}) {
+    const folderId = normalizeString(id);
+    const folderName = normalizeString(name) || normalizeString(
+        globalCreateOutputFolders.find(folder => folder.id === folderId)?.name
+    );
+
+    // 共通フォルダ直下は固定選択肢として扱い、最近使ったフォルダ順には含めない。
+    if (!folderId && !folderName) return;
+
+    const history = loadOutputFolderUsageHistory();
+    const normalizedName = folderName.toLocaleLowerCase("ja");
+    const filtered = history.filter(item => {
+        if (folderId && normalizeString(item?.id) === folderId) return false;
+        if (
+            normalizedName &&
+            normalizeString(item?.name).toLocaleLowerCase("ja") === normalizedName
+        ) {
+            return false;
+        }
+        return true;
+    });
+
+    filtered.unshift({
+        id: folderId,
+        name: folderName,
+        lastUsedAt: Date.now()
+    });
+
+    saveOutputFolderUsageHistory(filtered);
+}
+
+function getOutputFolderUsageTimestamp(folder, history = loadOutputFolderUsageHistory()) {
+    const folderId = normalizeString(folder?.id);
+    const folderName = normalizeString(folder?.name).toLocaleLowerCase("ja");
+
+    const byId = folderId
+        ? history.find(item => normalizeString(item?.id) === folderId)
+        : null;
+
+    if (byId) return Number(byId.lastUsedAt) || 0;
+
+    const byName = folderName
+        ? history.find(item => normalizeString(item?.name).toLocaleLowerCase("ja") === folderName)
+        : null;
+
+    return Number(byName?.lastUsedAt) || 0;
+}
+
+function sortOutputFoldersByUsage(folders = []) {
+    const history = loadOutputFolderUsageHistory();
+
+    return [...folders].sort((a, b) => {
+        const aUsedAt = getOutputFolderUsageTimestamp(a, history);
+        const bUsedAt = getOutputFolderUsageTimestamp(b, history);
+
+        if (aUsedAt !== bUsedAt) {
+            return bUsedAt - aUsedAt;
+        }
+
+        return normalizeString(a?.name).localeCompare(
+            normalizeString(b?.name),
+            "ja"
+        );
+    });
+}
+
+function renderSheetFolderListOptions(folders = []) {
+    const select = document.getElementById("sheetFolderListSelect");
+    if (!select) return;
+
+    select.innerHTML = [
+        '<option value="" selected disabled>個社管理シート一覧</option>',
+        '<option value="__root__">共通フォルダ直下</option>',
+        ...folders.map(folder =>
+            `<option value="${escapeHtml(folder.id)}">${escapeHtml(folder.name)}</option>`
+        )
+    ].join("");
+    select.value = "";
+}
+
+function refreshOutputFolderOrdering() {
+    const sorted = sortOutputFoldersByUsage(globalCreateOutputFolders);
+    globalCreateOutputFolders = sorted;
+    renderCreateOutputFolderOptions(sorted, { alreadySorted: true });
+}
+
+function openSelectedSheetFolder() {
+    const select = document.getElementById("sheetFolderListSelect");
+    if (!select) return;
+
+    const value = normalizeString(select.value);
+    if (!value) return;
+
+    const url = value === "__root__"
+        ? SHEETS_OUTPUT_FOLDER_URL
+        : `https://drive.google.com/drive/folders/${encodeURIComponent(value)}`;
+
+    window.open(url, "_blank", "noopener,noreferrer");
+    select.value = "";
+}
+
+function renderCreateOutputFolderOptions(folders = [], options = {}) {
+    const normalizedFolders = Array.isArray(folders)
         ? folders
             .map(folder => ({
                 id: normalizeString(folder?.id),
@@ -3782,6 +3944,12 @@ function renderCreateOutputFolderOptions(folders = []) {
             }))
             .filter(folder => folder.id && folder.name)
         : [];
+
+    globalCreateOutputFolders = options?.alreadySorted
+        ? normalizedFolders
+        : sortOutputFoldersByUsage(normalizedFolders);
+
+    renderSheetFolderListOptions(globalCreateOutputFolders);
 
     const select = document.getElementById("newOutputFolderSelect");
     if (!select) return;
@@ -3792,7 +3960,7 @@ function renderCreateOutputFolderOptions(folders = []) {
         ...globalCreateOutputFolders.map(folder =>
             `<option value="${escapeHtml(folder.id)}">${escapeHtml(folder.name)}</option>`
         ),
-        '<option value="__new__">＋ 新しいフォルダを作成</option>'
+        '<option value="__new__">＋ 自分用のフォルダを新しく作る</option>'
     ].join("");
 
     const canRestore = previous && (
@@ -4386,7 +4554,7 @@ function mapSheetsApiError(data) {
         OUTPUT_FOLDER_INVALID:
             "保存先フォルダを確認してください。共通フォルダ直下またはその直下1階層を指定できます。",
         OUTPUT_FOLDER_LIST_ERROR:
-            "既存の保存先フォルダ一覧を取得できませんでした。共通フォルダ直下への保存、または新規フォルダ作成は利用できます。",
+            "既存の保存先フォルダ一覧を取得できませんでした。共通フォルダ直下への保存、または自分用フォルダの新規作成は利用できます。",
         REPORT_NAME_REQUIRED:
             "分析レポート名を入力してください。",
         IMAGE_RETRY_ERROR:
@@ -6820,7 +6988,7 @@ async function createGoogleSpreadsheet({
 
         if (folderSelectValue === "__new__" && !newFolderName) {
             setSheetsCreateStatus(
-                "新しく作成する保存先フォルダ名を入力してください。",
+                "自分用フォルダの名前を入力してください。",
                 "warning"
             );
             document.getElementById("newOutputFolderNameInput")?.focus();
@@ -7082,6 +7250,14 @@ async function createGoogleSpreadsheet({
             throw new Error(
                 "API処理は成功しましたが、保存先情報が返りませんでした。"
             );
+        }
+
+        if (!targetSpreadsheetId) {
+            rememberOutputFolderUsage({
+                id: normalizeString(payload.outputFolderId),
+                name: normalizeString(payload.outputFolderName)
+            });
+            refreshOutputFolderOrdering();
         }
 
         setSheetsCreateStatus(
@@ -10617,6 +10793,10 @@ document
     .getElementById("newOutputFolderSelect")
     ?.addEventListener("change", updateCreateOutputFolderUi);
 
+document
+    .getElementById("sheetFolderListSelect")
+    ?.addEventListener("change", openSelectedSheetFolder);
+
 verifyStoredAccessKey();
 
 const managedReportListSearch =
@@ -11752,7 +11932,7 @@ msgEl.innerHTML = `
     
 
 // -----------------------------------------------------------------------------
-// v30.30: index UX整理 / 分析レポート検索モーダル / 既存企業の共有設定
+// v30.31: 保存先フォルダ最近利用順 / 個社管理シート一覧フォルダ選択 / v30.30機能維持
 // -----------------------------------------------------------------------------
 const VAA_RECENT_REPORTS_STORAGE_KEY = "validApplicationAnalysis.recentReports.v1";
 var vaaReportFinderReports = [];
