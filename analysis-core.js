@@ -2404,7 +2404,8 @@ const BASIC_COLUMN_AXIS_DEFINITIONS = Object.freeze([
         label: "応募年月",
         axis: "応募年月",
         selfTableId: "month",
-        maxColumns: 24
+        // v30.39: 横スクロール前提で長期比較を行えるよう、基本表の応募年月列を最大36列へ拡張。
+        maxColumns: 36
     },
     {
         key: "media",
