@@ -1241,8 +1241,20 @@
         // TOP画像URL解決専用 Cloudflare Worker
         // ※ 任意URLは渡さず、求人管理番号(jobId)のみを渡す専用API。
         const TENICHI_IMAGE_WORKER_URL = "https://tenichi-image-proxy-test.tkarasa.workers.dev/";
+        const TENICHI_IMAGE_BASE_URL = "https://ten.1049.cc/";
         const IMAGE_LOOKUP_MAX_CONCURRENCY = 10;
         const IMAGE_LOOKUP_TIMEOUT_MS = 15000;
+
+        function normalizeTenichiImageUrl(value) {
+            const raw = String(value ?? "").trim();
+            if (!raw) return "";
+            try {
+                const resolved = new URL(raw, TENICHI_IMAGE_BASE_URL);
+                return /^(https?:)$/i.test(resolved.protocol) ? resolved.href : "";
+            } catch (_) {
+                return "";
+            }
+        }
         const COMMON_MASTER_VERSION = "2026.09.03-common-v1";
         const commonMasters = window.VAA_COMMON_MASTERS;
         if (!commonMasters || commonMasters.version !== COMMON_MASTER_VERSION) {
@@ -2445,11 +2457,19 @@ async function parseCSV(
                 }
 
                 if (response.ok && body?.ok && body?.imageUrl) {
+                    const imageUrl = normalizeTenichiImageUrl(body.imageUrl);
+                    if (imageUrl) {
+                        return {
+                            ok: true,
+                            imageUrl,
+                            method: normalizeString(body.method) || "worker",
+                            fetchedAt: normalizeString(body.fetchedAt) || new Date().toISOString()
+                        };
+                    }
                     return {
-                        ok: true,
-                        imageUrl: normalizeString(body.imageUrl),
-                        method: normalizeString(body.method) || "worker",
-                        fetchedAt: normalizeString(body.fetchedAt) || new Date().toISOString()
+                        ok: false,
+                        code: "INVALID_IMAGE_URL",
+                        message: "Workerが返した画像URLを有効なHTTP(S) URLへ変換できませんでした。"
                     };
                 }
 

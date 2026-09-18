@@ -405,13 +405,24 @@ function buildTagMaster() {
     };
 }
 
+function normalizeTenichiImageUrl(value) {
+    const raw = s(value);
+    if (!raw) return "";
+    try {
+        const resolved = new URL(raw, "https://ten.1049.cc/");
+        return /^(https?:)$/i.test(resolved.protocol) ? resolved.href : "";
+    } catch (_) {
+        return "";
+    }
+}
+
 function buildImageMap(dataset) {
     const rows = datasetObjects(dataset);
     const map = {};
 
     rows.forEach(row => {
         const fileName = s(row["画像ファイル名"]);
-        const url = s(row["画像URL"]);
+        const url = normalizeTenichiImageUrl(row["画像URL"]);
         if (fileName && url) map[fileName] = url;
     });
 
