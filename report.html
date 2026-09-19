@@ -7112,7 +7112,51 @@ function enhanceReportTables(root=document){
 }
 function ensureRowLabelTooltip(){let t=document.getElementById("rowLabelTooltip");if(t)return t;t=document.createElement("div");t.id="rowLabelTooltip";t.className="row-label-tooltip";t.setAttribute("role","tooltip");document.body.appendChild(t);return t;}
 function positionRowLabelTooltip(t,event){const margin=14,w=t.offsetWidth||240,h=t.offsetHeight||40;let left=event.clientX+12,top=event.clientY+14;if(left+w+margin>innerWidth)left=event.clientX-w-12;if(top+h+margin>innerHeight)top=event.clientY-h-12;t.style.left=`${Math.max(margin,left)}px`;t.style.top=`${Math.max(margin,top)}px`;}
-function initializeRowLabelTooltip(){const t=ensureRowLabelTooltip();document.addEventListener("mouseover",e=>{const label=e.target.closest(".row-label-text");if(!label||label.scrollWidth<=label.clientWidth+1)return;t.textContent=label.dataset.fullText||label.textContent||"";t.classList.add("visible");positionRowLabelTooltip(t,e);});document.addEventListener("mousemove",e=>{if(t.classList.contains("visible"))positionRowLabelTooltip(t,e);});document.addEventListener("mouseout",e=>{if(e.target.closest(".row-label-text"))t.classList.remove("visible");});}
+function rowLabelNaturalWidth(label,fullText){
+    const style=getComputedStyle(label);
+    const probe=document.createElement("span");
+    probe.textContent=fullText;
+    probe.setAttribute("aria-hidden","true");
+    Object.assign(probe.style,{
+        position:"fixed",
+        left:"-100000px",
+        top:"-100000px",
+        visibility:"hidden",
+        pointerEvents:"none",
+        display:"inline-block",
+        width:"max-content",
+        minWidth:"0",
+        maxWidth:"none",
+        overflow:"visible",
+        textOverflow:"clip",
+        whiteSpace:"nowrap",
+        font:style.font,
+        fontKerning:style.fontKerning,
+        fontFeatureSettings:style.fontFeatureSettings,
+        fontVariationSettings:style.fontVariationSettings,
+        letterSpacing:style.letterSpacing,
+        textTransform:style.textTransform
+    });
+    document.body.appendChild(probe);
+    const width=probe.getBoundingClientRect().width;
+    probe.remove();
+    return width;
+}
+function isRowLabelTruncated(label){
+    if(!label)return false;
+    const fullText=String(label.dataset.fullText||label.textContent||"");
+    if(!fullText)return false;
+    const clientWidth=label.clientWidth;
+    if(clientWidth<=0)return false;
+    if(label.scrollWidth>clientWidth)return true;
+    const style=getComputedStyle(label);
+    const paddingLeft=parseFloat(style.paddingLeft)||0;
+    const paddingRight=parseFloat(style.paddingRight)||0;
+    const availableWidth=Math.max(0,label.getBoundingClientRect().width-paddingLeft-paddingRight);
+    if(availableWidth<=0)return false;
+    return rowLabelNaturalWidth(label,fullText)>availableWidth+0.1;
+}
+function initializeRowLabelTooltip(){const t=ensureRowLabelTooltip();document.addEventListener("mouseover",e=>{const label=e.target.closest(".row-label-text");if(!label||!isRowLabelTruncated(label))return;t.textContent=label.dataset.fullText||label.textContent||"";t.classList.add("visible");positionRowLabelTooltip(t,e);});document.addEventListener("mousemove",e=>{if(t.classList.contains("visible"))positionRowLabelTooltip(t,e);});document.addEventListener("mouseout",e=>{if(e.target.closest(".row-label-text"))t.classList.remove("visible");});}
 function ensureCustomTopImageHoverPreview(){
     let preview=document.getElementById("customTopImageHoverPreview");
     if(preview)return preview;
