@@ -1437,3 +1437,4 @@ function markWorkbookMetadata_(ss, operationMode, requestId) {
 // ============================================================
 // Viewer access / read-only API
 // ============================================================
+
