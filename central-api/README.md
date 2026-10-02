@@ -26,6 +26,15 @@ The Apps Script export used CRLF line endings. The repository canonicalizes sour
 - `09_Registry_Audit.gs` - report Registry and audit
 - `10_Utils_State_ImageWorker.gs` - shared utilities/state/image-worker integration
 
+## GitHub Actions
+
+- `Central API check` validates syntax and the SHA-256 manifest.
+- `Central API sync to GAS` manually synchronizes GitHub `.gs` source into the standalone Apps Script project via clasp.
+- The sync preserves the live `appsscript.json` and non-server files by pulling the GAS project into temporary staging before push.
+- Source sync does **not** redeploy the Web App.
+
+Required one-time setup and secrets are documented in `docs/GAS_ACTIONS_SETUP.md`.
+
 ## Rules
 
 - Start Central API changes from these `.gs` files.
@@ -34,6 +43,6 @@ The Apps Script export used CRLF line endings. The repository canonicalizes sour
 - Preserve authentication, managed-folder checks, schema/storage-layout checks, Viewer-token validation and Registry consistency.
 - `manageSharingLoad` is the lightweight sharing-card load path; do not regress it to the old broad managed-state read.
 - Update `SOURCE_SHA256SUMS.txt` whenever the canonical source changes.
-- GitHub source changes still need to be applied/deployed to the Apps Script Web App runtime.
+- Use the manual GitHub Actions sync to update GAS source after GitHub changes.
 
-See `CENTRAL_API_V2_45_GUIDE.md`, repository `AGENTS.md`, and `docs/ARCHITECTURE.md`.
+See `CENTRAL_API_V2_45_GUIDE.md`, repository `AGENTS.md`, `docs/GAS_ACTIONS_SETUP.md`, and `docs/ARCHITECTURE.md`.
