@@ -9,8 +9,8 @@ Read this file first, then read `docs/CURRENT_STATE.md` and `docs/ARCHITECTURE.m
 - GitHub repository: `tsicb/valid-app`
 - Default branch: `main`
 - The files at repository root (`index.html`, `report.html`, `analysis-core.js`, `common-masters-v1.js`) are the GitHub Pages source of truth.
-- `central-api/` documents the Google Apps Script Central API and records the current v2.45 source layout/checksums. **The full `.gs` source is not yet mirrored in GitHub**, so the deployed Apps Script project remains the code source of truth for API edits until that mirror is completed.
-- `cloudflare-worker/` is the development mirror of the Tenichi TOP-image Worker. A code change here is **not deployed** until the Cloudflare Worker is deployed.
+- `central-api/` is the canonical source mirror for the Google Apps Script Central API. The current mirrored baseline is **v2.45 / schema 3.0**.
+- `cloudflare-worker/` is the development source for the Tenichi TOP-image Worker. A GitHub change is not deployed until the Worker is deployed.
 - Do not rebuild from an old ZIP or an old chat attachment. Always inspect current `main` first and apply the smallest required diff.
 
 ## Product model / normal user flow
@@ -72,11 +72,29 @@ Semantic colors (warning, danger, target-age emphasis, target-rate emphasis, etc
 See `docs/ARCHITECTURE.md` and `central-api/README.md`.
 
 - Current schema: `3.0`.
+- Current source baseline: Central API **v2.45**.
+- GitHub `central-api/*.gs` is the canonical code mirror. When editing GAS behavior, start from those files.
 - Preserve existing protocol/action names unless there is a concrete reason to version them.
 - `EXPECTED_PAGES_VERSION` is an internal protocol/build compatibility value and is not the same thing as the human release label `Pages v30.x`.
 - Do not weaken authentication, managed-folder checks, workbook/schema validation or viewer-token checks for performance.
 - Prefer performance improvements that remove unrelated reads/writes rather than caching away correctness checks.
 - Spreadsheet ID / Registry are canonical linkage data; Drive discovery is not the canonical relationship after creation.
+
+## GAS mirror / deployment discipline
+
+GitHub is now the code source for Central API edits, but GitHub commits do **not** automatically deploy Apps Script.
+
+When Central API changes:
+
+1. edit and validate `central-api/*.gs` in GitHub
+2. apply the same source to the Apps Script project
+3. deploy/update the Web App as required
+4. verify the runtime version/behavior
+5. update `docs/CURRENT_STATE.md` if the release baseline changes
+
+If the Apps Script editor was modified outside GitHub, export/compare it against `central-api/*.gs` before continuing, then reconcile GitHub first.
+
+Canonical repository text uses LF line endings. `central-api/SOURCE_SHA256SUMS.txt` records the LF-normalized source hashes.
 
 ## Security / repository hygiene
 
@@ -95,7 +113,7 @@ Public service URLs already required by the frontend are not treated as secrets,
 1. Inspect current `main` and relevant docs.
 2. Identify the smallest code path that owns the behavior.
 3. Preserve unrelated behavior and protocols.
-4. If Central API behavior changes before the full `.gs` mirror exists, first obtain/verify the current Apps Script source; update the API docs/checksums after the change. If Worker behavior changes, update `cloudflare-worker/` and `docs/CURRENT_STATE.md` in the same change.
+4. If Central API behavior changes, update the relevant `central-api/*.gs` source and any release/current-state docs in the same change. If Worker behavior changes, update `cloudflare-worker/` and `docs/CURRENT_STATE.md`.
 5. Validate before finishing.
 
 Minimum validation for Pages changes:
@@ -111,6 +129,7 @@ Minimum validation for Central API changes:
 - action dispatch / expected response shape
 - relevant schema/protocol constants
 - no embedded secret values
+- update `SOURCE_SHA256SUMS.txt` when source changes
 
 For multi-component changes, deploy dependencies first:
 
