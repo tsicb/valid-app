@@ -7,7 +7,7 @@ This file describes the **repository baseline**, not a guarantee that each exter
 ## Versions
 
 - GitHub Pages: **v30.41**
-- Central API source baseline: **v2.45**
+- Central API source baseline: **v2.46**
 - Cloudflare image Worker: **v2**
 - Spreadsheet schema: **3.0**
 
@@ -78,6 +78,17 @@ The four root Pages files on `main` match the v30.41 release snapshot:
 - Central API v2.45 canonicalizes stored image URLs and repairs existing relative paths on sync
 - report/Pages retain defensive canonicalization
 
+### Custom analysis defaults (Central API v2.46)
+
+- `30_分析レポート初期設定` now owns the company-specific initial custom-analysis axes
+- four visible settings are ensured: `カスタム分析 行軸1`, `カスタム分析 行軸2`, `カスタム分析 行軸3`, `カスタム分析 列軸`
+- existing workbooks migrate their previous hidden `34_カスタム分析設定` values into the new visible settings on finalize/update
+- row axes support the report's existing maximum of three levels
+- duplicate/hidden/unavailable axes are normalized safely before Viewer data is returned
+- available-axis validation follows the current `31_分析レポート表示項目` state at workbook finalize/update time
+- `34_カスタム分析設定` remains hidden as a compatibility mirror
+- Pages remain v30.41; no report-side code change was required because report already accepts `rowAxes`
+
 ### Central API GitHub Actions
 
 - `Central API check` workflow added for syntax/checksum validation
@@ -90,11 +101,11 @@ The four root Pages files on `main` match the v30.41 release snapshot:
 
 ## Central API source-of-truth status
 
-`central-api/*.gs` is now the canonical GitHub source mirror for Central API v2.45.
+`central-api/*.gs` is now the canonical GitHub source for Central API v2.46.
 
 The current Apps Script source and the mirrored GitHub source are code-equivalent. Repository files use LF line endings, and `central-api/SOURCE_SHA256SUMS.txt` records the LF-normalized checksums.
 
-After Actions secrets are configured, use the manual sync workflow to copy GitHub source into the Apps Script project. A successful source sync still does not imply that the versioned Web App deployment was updated.
+GitHub currently contains v2.46 source. The last runtime version explicitly confirmed before this change was v2.45. Use the manual `Central API sync to GAS` workflow to copy v2.46 source into Apps Script, then update the versioned Web App deployment separately before treating v2.46 as live.
 
 If Apps Script is edited outside GitHub, reconcile those edits back into GitHub before the next development change.
 
