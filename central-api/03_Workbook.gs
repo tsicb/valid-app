@@ -387,6 +387,11 @@ function normalizeCustomAnalysisSettings_(
           )
       : [];
 
+  const restrictToAllowed =
+    Array.isArray(
+      allowedAxes
+    );
+
   const allowed =
     new Set(
       axes
@@ -427,7 +432,7 @@ function normalizeCustomAnalysisSettings_(
             axis
           ) >= 0 ||
           (
-            allowed.size &&
+            restrictToAllowed &&
             !allowed.has(
               axis
             )
@@ -464,7 +469,7 @@ function normalizeCustomAnalysisSettings_(
   if (
     !colAxis ||
     (
-      allowed.size &&
+      restrictToAllowed &&
       !allowed.has(
         colAxis
       )
