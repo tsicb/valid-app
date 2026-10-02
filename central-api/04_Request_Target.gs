@@ -627,3 +627,4 @@ function getStateValueForValidation_(
 
   return '';
 }
+
