@@ -122,3 +122,4 @@ const VIEWER_DISPLAY_DEFINITIONS_ =
     ['top-image-detail', 'TOP画像別応募傾向', '詳細分析', 'TOP画像ごとの詳細分析', true],
     ['custom-analysis', 'カスタム分析', '自由分析', '分析レポート上で行軸・列軸を自由選択。選べる軸は他の分析レポート表示項目に連動', true]
   ]);
+
