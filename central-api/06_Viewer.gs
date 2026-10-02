@@ -960,16 +960,31 @@ function readViewerSettings_(ss, timeZone) {
 }
 
 function readViewerCustomAnalysis_(ss) {
-  return (
+  const fromInitial =
+    readInitialCustomAnalysisSettings_(
+      ss
+    );
+
+  const fromLegacy =
     readCustomAnalysisSettingsSheet_(
       ss.getSheetByName(
         REPORT_SHEETS.CUSTOM_ANALYSIS
       )
-    ) ||
+    );
+
+  return normalizeCustomAnalysisSettings_(
+    fromInitial ||
+    fromLegacy ||
     {
-      rowAxis: '対応状況',
-      colAxis: '応募媒体'
-    }
+      rowAxes: [
+        '対応状況'
+      ],
+      colAxis:
+        '応募媒体'
+    },
+    customAnalysisAllowedAxes_(
+      ss
+    )
   );
 }
 
@@ -1213,7 +1228,7 @@ function writeReportPortalSheet_(
     .setBackground(PRODUCT_THEME_.brandBlueDark);
 
   const settingsLinks = [
-    ['分析レポート初期設定', REPORT_SHEETS.INITIAL_SETTINGS, 'ターゲット年齢・バケット幅・表示件数などの初期値'],
+    ['分析レポート初期設定', REPORT_SHEETS.INITIAL_SETTINGS, 'ターゲット年齢・バケット幅・表示件数・カスタム分析の初期軸'],
     ['分析レポート表示項目', REPORT_SHEETS.DISPLAY_SETTINGS, '企業へ見せる分析表をチェックボックスで選択'],
     ['仕事名キーワード', REPORT_SHEETS.KEYWORD_MASTER, '上の行ほど優先'],
     ['画像URL・メモ', REPORT_SHEETS.IMAGE_MASTER, 'TOP画像URL・メモ'],
