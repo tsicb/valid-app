@@ -1,0 +1,166 @@
+name: Central API sync to GAS
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type SYNC to overwrite the GAS project source with GitHub central-api/*.gs'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: central-api-gas-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync GitHub source to Apps Script
+    runs-on: ubuntu-latest
+    env:
+      GAS_SCRIPT_ID: ${{ secrets.GAS_SCRIPT_ID }}
+      CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+
+    steps:
+      - name: Require explicit confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.confirm }}" != "SYNC" ]; then
+            echo "Confirmation must be exactly: SYNC" >&2
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate required GitHub Actions secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${GAS_SCRIPT_ID:-}" ]; then
+            echo "Repository secret GAS_SCRIPT_ID is not configured." >&2
+            exit 1
+          fi
+          if [ -z "${CLASPRC_JSON:-}" ]; then
+            echo "Repository secret CLASPRC_JSON is not configured." >&2
+            exit 1
+          fi
+
+      - name: Validate Central API source before sync
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tmp_dir="$(mktemp -d)"
+          expected="$(mktemp)"
+          actual="$(mktemp)"
+          trap 'rm -rf "$tmp_dir"; rm -f "$expected" "$actual"' EXIT
+
+          shopt -s nullglob
+          files=(central-api/*.gs)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No central-api/*.gs files found." >&2
+            exit 1
+          fi
+
+          for file in "${files[@]}"; do
+            base="$(basename "${file%.gs}")"
+            cp "$file" "$tmp_dir/$base.js"
+            node --check "$tmp_dir/$base.js"
+          done
+
+          grep -Ev '^[[:space:]]*(#|$)' central-api/SOURCE_SHA256SUMS.txt > "$expected"
+          (
+            cd central-api
+            while IFS= read -r file; do
+              sha256sum "$file"
+            done < <(
+              find . -maxdepth 1 -type f -name '*.gs' -printf '%f\n' | LC_ALL=C sort
+            )
+          ) > "$actual"
+
+          diff -u "$expected" "$actual"
+
+      - name: Install clasp
+        shell: bash
+        run: npm install --global @google/clasp@3.3.0
+
+      - name: Restore clasp OAuth credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Configure temporary clasp project
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("fs");
+          const config = {
+            scriptId: process.env.GAS_SCRIPT_ID,
+            rootDir: ".gas-stage",
+            scriptExtensions: [".gs", ".js"]
+          };
+          fs.writeFileSync(".clasp.json", JSON.stringify(config, null, 2) + "\n");
+          NODE
+
+      - name: Pull current GAS project into staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .gas-stage
+          mkdir -p .gas-stage
+          clasp pull
+
+          if [ ! -f .gas-stage/appsscript.json ]; then
+            echo "appsscript.json was not returned by GAS. Refusing to push." >&2
+            exit 1
+          fi
+
+      - name: Replace only server-side GAS source in staging
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Preserve the live manifest and any non-server files pulled from GAS.
+          # GitHub central-api/*.gs is authoritative for server-side script files.
+          find .gas-stage -type f \( -name '*.gs' -o -name '*.js' \) -delete
+          cp central-api/*.gs .gas-stage/
+
+          echo "Files staged for Apps Script:"
+          find .gas-stage -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort
+
+      - name: Show clasp push status
+        shell: bash
+        run: |
+          set -euo pipefail
+          clasp status
+
+      - name: Push GitHub Central API source to GAS
+        shell: bash
+        run: |
+          set -euo pipefail
+          clasp push --force
+
+      - name: Sync summary
+        shell: bash
+        run: |
+          {
+            echo "## Central API -> GAS sync completed"
+            echo
+            echo "- Source: `central-api/*.gs` at commit `${GITHUB_SHA::7}`"
+            echo "- Target script ID: stored in repository secret `GAS_SCRIPT_ID`"
+            echo "- Existing GAS `appsscript.json` and non-server files were preserved from a pre-push pull."
+            echo "- This workflow updates project source only."
+            echo "- It does **not** create a new Apps Script version or redeploy the Web App."
+          } >> "$GITHUB_STEP_SUMMARY"
