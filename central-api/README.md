@@ -2,7 +2,7 @@
 
 This directory contains the canonical GitHub source mirror for the Google Apps Script Central API used by 有効応募分析.
 
-Current baseline: **v2.45**, spreadsheet schema **3.0**.
+Current baseline: **v2.46**, spreadsheet schema **3.0**.
 
 ## Verification status
 
@@ -26,6 +26,14 @@ The Apps Script export used CRLF line endings. The repository canonicalizes sour
 - `09_Registry_Audit.gs` - report Registry and audit
 - `10_Utils_State_ImageWorker.gs` - shared utilities/state/image-worker integration
 
+## v2.46 custom-analysis defaults
+
+- company-specific custom-analysis row/column defaults are controlled from `30_分析レポート初期設定`
+- row axis supports up to three levels
+- the old hidden `34_カスタム分析設定` is retained as a compatibility mirror
+- Viewer normalizes defaults against currently enabled analysis axes
+- no Pages code change is required for this feature
+
 ## GitHub Actions
 
 - `Central API check` validates syntax and the SHA-256 manifest.
@@ -45,4 +53,4 @@ Required one-time setup and secrets are documented in `docs/GAS_ACTIONS_SETUP.md
 - Update `SOURCE_SHA256SUMS.txt` whenever the canonical source changes.
 - Use the manual GitHub Actions sync to update GAS source after GitHub changes.
 
-See `CENTRAL_API_V2_45_GUIDE.md`, repository `AGENTS.md`, `docs/GAS_ACTIONS_SETUP.md`, and `docs/ARCHITECTURE.md`.
+See `CENTRAL_API_V2_46_GUIDE.md`, repository `AGENTS.md`, `docs/GAS_ACTIONS_SETUP.md`, and `docs/ARCHITECTURE.md`.
