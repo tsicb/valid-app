@@ -153,14 +153,15 @@ jobs:
           clasp push --force
 
       - name: Sync summary
+        if: success()
         shell: bash
         run: |
           {
-            echo "## Central API -> GAS sync completed"
+            echo '## Central API -> GAS sync completed'
             echo
-            echo "- Source: `central-api/*.gs` at commit `${GITHUB_SHA::7}`"
-            echo "- Target script ID: stored in repository secret `GAS_SCRIPT_ID`"
-            echo "- Existing GAS `appsscript.json` and non-server files were preserved from a pre-push pull."
-            echo "- This workflow updates project source only."
-            echo "- It does **not** create a new Apps Script version or redeploy the Web App."
+            printf '%s\n' "- Source: central-api/*.gs at commit ${GITHUB_SHA::7}"
+            echo '- Target script ID: stored in repository secret GAS_SCRIPT_ID'
+            echo '- Existing GAS appsscript.json and non-server files were preserved from a pre-push pull.'
+            echo '- This workflow updates project source only.'
+            echo '- It does not create a new Apps Script version or redeploy the Web App.'
           } >> "$GITHUB_STEP_SUMMARY"
