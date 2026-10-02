@@ -74,7 +74,7 @@ jobs:
           diff -u "$expected" "$actual"
 
       - name: Summary
-        if: always()
+        if: success()
         shell: bash
         run: |
           {
