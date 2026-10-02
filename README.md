@@ -28,7 +28,7 @@
 ## Current repository baseline
 
 - Pages: **v30.41**
-- Central API: **v2.45**
+- Central API source: **v2.46**
 - Image Worker: **v2**
 - Spreadsheet schema: **3.0**
 
