@@ -1,0 +1,86 @@
+name: Central API check
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "central-api/**"
+      - ".github/workflows/central-api-check.yml"
+      - ".github/workflows/central-api-sync.yml"
+  pull_request:
+    paths:
+      - "central-api/**"
+      - ".github/workflows/central-api-check.yml"
+      - ".github/workflows/central-api-sync.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate GAS source
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check GAS JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp_dir="$(mktemp -d)"
+          trap 'rm -rf "$tmp_dir"' EXIT
+
+          shopt -s nullglob
+          files=(central-api/*.gs)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No central-api/*.gs files found." >&2
+            exit 1
+          fi
+
+          for file in "${files[@]}"; do
+            base="$(basename "${file%.gs}")"
+            cp "$file" "$tmp_dir/$base.js"
+            node --check "$tmp_dir/$base.js"
+          done
+
+      - name: Verify Central API SHA-256 manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="$(mktemp)"
+          actual="$(mktemp)"
+          trap 'rm -f "$expected" "$actual"' EXIT
+
+          grep -Ev '^[[:space:]]*(#|$)' central-api/SOURCE_SHA256SUMS.txt > "$expected"
+
+          (
+            cd central-api
+            while IFS= read -r file; do
+              sha256sum "$file"
+            done < <(
+              find . -maxdepth 1 -type f -name '*.gs' -printf '%f\n' | LC_ALL=C sort
+            )
+          ) > "$actual"
+
+          diff -u "$expected" "$actual"
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Central API validation"
+            echo
+            echo "- GAS syntax: checked with Node.js"
+            echo "- SHA-256 manifest: verified"
+            echo "- Source: `central-api/*.gs`"
+          } >> "$GITHUB_STEP_SUMMARY"
