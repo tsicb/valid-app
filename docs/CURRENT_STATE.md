@@ -11,6 +11,14 @@ This file describes the **repository baseline**, not a guarantee that each exter
 - Cloudflare image Worker: **v2**
 - Spreadsheet schema: **3.0**
 
+The current Apps Script project header was manually confirmed by the user as:
+
+- `Integration v2.45 canonical image URL fix / schemaVersion 3.0`
+- Script Properties include `SCHEMA_VERSION = 3.0`
+- `APP_VERSION` is an independent runtime label
+
+This confirms the runtime project is intended to be the v2.45 / schema 3.0 line, but it is **not yet a full source-level verification** against the repository SHA-256 manifest.
+
 The four root Pages files on `main` match the v30.41 release snapshot:
 
 - `index.html`
@@ -70,7 +78,9 @@ The four root Pages files on `main` match the v30.41 release snapshot:
 
 The repository now contains the Central API architecture/release guide and a v2.45 source-file SHA-256 manifest, but **not yet the full `.gs` source**. Until the full source mirror is added, the deployed Apps Script project remains the code source of truth for API edits.
 
-Before a Central API change, obtain/verify the current Apps Script source and compare it with the documented v2.45 layout/checksums where applicable. A GitHub documentation commit does not imply an Apps Script deployment.
+The Apps Script project header has been manually confirmed as v2.45 / schema 3.0. Before promoting GitHub to the code source of truth for the Central API, export or provide the complete current `.gs` sources and compare them with the documented v2.45 layout/checksums.
+
+A GitHub documentation commit does not imply an Apps Script deployment.
 
 ## Next-chat startup
 
