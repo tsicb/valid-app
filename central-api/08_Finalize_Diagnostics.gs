@@ -997,6 +997,7 @@ function runSystemDiagnostics_(
     diagnosticAuditLog_(
       sampleSs
     );
+
   checks.push(
     diagnosticItem_(
       'audit_log',
