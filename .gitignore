@@ -1,0 +1,8 @@
+# clasp / Apps Script local state
+.clasprc.json
+.clasp.json
+.gas-stage/
+
+# local environment
+.env
+.env.*
