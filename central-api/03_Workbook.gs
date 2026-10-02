@@ -243,6 +243,52 @@ function customAnalysisHasKeywords_(ss) {
     );
 }
 
+function customAnalysisAvailableAxes_(ss) {
+  const axes =
+    customAnalysisAxisRules_()
+      .map(
+        row =>
+          row[0]
+      );
+
+  const firstSalaryIndex =
+    axes.indexOf(
+      '時給下限'
+    );
+
+  if (
+    firstSalaryIndex >= 0
+  ) {
+    axes.splice(
+      firstSalaryIndex,
+      0,
+      '給与区分'
+    );
+  }
+
+  if (
+    customAnalysisHasKeywords_(
+      ss
+    )
+  ) {
+    const recruitIndex =
+      axes.indexOf(
+        '募集背景'
+      );
+
+    axes.splice(
+      recruitIndex >= 0
+        ? recruitIndex
+        : axes.length,
+      0,
+      '仕事名KW',
+      '仕事名フルKW'
+    );
+  }
+
+  return axes;
+}
+
 function customAnalysisAllowedAxes_(ss) {
   const visibility = {};
 
@@ -718,7 +764,7 @@ function formatInitialSettingsSheet_(
   }
 
   const axes =
-    customAnalysisAllowedAxes_(
+    customAnalysisAvailableAxes_(
       ss
     );
 
@@ -786,7 +832,7 @@ function formatInitialSettingsSheet_(
               false
             )
             .setHelpText(
-              '分析レポート表示項目でONになっている分析軸から選択してください。'
+              'カスタム分析で利用できる軸から選択してください。実際の初期表示では「31_分析レポート表示項目」でONの軸だけが有効です。'
             )
             .build()
         );
