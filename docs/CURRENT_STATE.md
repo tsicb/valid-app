@@ -85,7 +85,7 @@ The four root Pages files on `main` match the v30.41 release snapshot:
 - existing workbooks migrate their previous hidden `34_カスタム分析設定` values into the new visible settings on finalize/update
 - row axes support the report's existing maximum of three levels
 - duplicate/hidden/unavailable axes are normalized safely before Viewer data is returned
-- available-axis validation follows the current `31_分析レポート表示項目` state at workbook finalize/update time
+- the 30-sheet dropdown exposes technically available axes so setting order does not matter; Viewer then enforces the current `31_分析レポート表示項目` state when report data is read
 - `34_カスタム分析設定` remains hidden as a compatibility mirror
 - Pages remain v30.41; no report-side code change was required because report already accepts `rowAxes`
 
