@@ -2905,38 +2905,48 @@ function applyManagedCustomAnalysis_(
     return;
   }
 
-  const axes =
-    managedCustomAxes_(
+  const current =
+    readViewerCustomAnalysis_(
       ss
     );
 
-  let rowAxis =
-    normalizeString_(
-      incoming.rowAxis
+  const incomingRows =
+    Array.isArray(
+      incoming.rowAxes
+    )
+      ? incoming.rowAxes
+      : [
+          incoming.rowAxis,
+          ...(Array.isArray(
+            current.rowAxes
+          )
+            ? current.rowAxes.slice(
+                1,
+                3
+              )
+            : [])
+        ];
+
+  const normalized =
+    normalizeCustomAnalysisSettings_(
+      {
+        rowAxes:
+          incomingRows,
+        colAxis:
+          normalizeString_(
+            incoming.colAxis
+          ) ||
+          current.colAxis
+      },
+      customAnalysisAllowedAxes_(
+        ss
+      )
     );
 
-  let colAxis =
-    normalizeString_(
-      incoming.colAxis
-    );
-
-  if (
-    axes.indexOf(
-      rowAxis
-    ) < 0
-  ) {
-    rowAxis =
-      '対応状況';
-  }
-
-  if (
-    axes.indexOf(
-      colAxis
-    ) < 0
-  ) {
-    colAxis =
-      '応募媒体';
-  }
+  writeInitialCustomAnalysisSettings_(
+    ss,
+    normalized
+  );
 
   writeCustomAnalysisSettingsSheet_(
     ensureSheet_(
@@ -2944,58 +2954,14 @@ function applyManagedCustomAnalysis_(
       REPORT_SHEETS.CUSTOM_ANALYSIS,
       true
     ),
-    {
-      rowAxis,
-      colAxis
-    }
+    normalized
   );
 }
 
 function managedCustomAxes_(ss) {
-  const axes = [
-    '対応状況',
-    '応募年月',
-    '応募媒体',
-    '氏名文字種区分',
-    '居住都道府県',
-    '企業ID',
-    '職種',
-    '雇用形態',
-    '求人勤務地名称',
-    '勤務地都道府県',
-    '勤務地・居住都道府県一致',
-    '募集背景',
-    '月内応募日',
-    '応募曜日',
-    '応募時間帯',
-    '給与区分',
-    '時給下限',
-    '日給下限',
-    '月給下限',
-    '年収下限',
-    '求人原稿文字数',
-    'メイン画像有無',
-    '求人画像枚数',
-    'TOP画像ファイル名',
-    '求人動画有無',
-    'Indeed求人タグ数',
-    '求人備考1行目'
-  ];
-
-  if (
-    readManagedKeywords_(
-      ss
-    ).length
-  ) {
-    axes.splice(
-      11,
-      0,
-      '仕事名KW',
-      '仕事名フルKW'
-    );
-  }
-
-  return axes;
+  return customAnalysisAllowedAxes_(
+    ss
+  );
 }
 
 // ============================================================
