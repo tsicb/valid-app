@@ -78,9 +78,9 @@ jobs:
         shell: bash
         run: |
           {
-            echo "## Central API validation"
+            echo '## Central API validation'
             echo
-            echo "- GAS syntax: checked with Node.js"
-            echo "- SHA-256 manifest: verified"
-            echo "- Source: `central-api/*.gs`"
+            echo '- GAS syntax: checked with Node.js'
+            echo '- SHA-256 manifest: verified'
+            echo '- Source: central-api/*.gs'
           } >> "$GITHUB_STEP_SUMMARY"
