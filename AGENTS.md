@@ -80,17 +80,27 @@ See `docs/ARCHITECTURE.md` and `central-api/README.md`.
 - Prefer performance improvements that remove unrelated reads/writes rather than caching away correctness checks.
 - Spreadsheet ID / Registry are canonical linkage data; Drive discovery is not the canonical relationship after creation.
 
-## GAS mirror / deployment discipline
+## GAS sync / deployment discipline
 
-GitHub is now the code source for Central API edits, but GitHub commits do **not** automatically deploy Apps Script.
+GitHub is the source of truth for Central API edits.
 
-When Central API changes:
+Preferred flow:
 
 1. edit and validate `central-api/*.gs` in GitHub
-2. apply the same source to the Apps Script project
-3. deploy/update the Web App as required
-4. verify the runtime version/behavior
-5. update `docs/CURRENT_STATE.md` if the release baseline changes
+2. commit to `main`
+3. run **Central API sync to GAS** from GitHub Actions
+4. verify the Apps Script project source/runtime
+5. update/redeploy the Web App separately when the change should go live
+6. update `docs/CURRENT_STATE.md` if the release baseline changes
+
+The sync workflow is manual and requires an explicit `SYNC` confirmation. It pulls the current GAS project into temporary staging first so the live `appsscript.json` and non-server files are preserved, then replaces only server-side script files with `central-api/*.gs`.
+
+GitHub Actions secrets required for sync:
+
+- `CLASPRC_JSON`
+- `GAS_SCRIPT_ID`
+
+Never commit these values.
 
 If the Apps Script editor was modified outside GitHub, export/compare it against `central-api/*.gs` before continuing, then reconcile GitHub first.
 
@@ -102,6 +112,7 @@ Never commit:
 
 - access keys
 - Script Properties values such as `ACCESS_KEY`
+- clasp OAuth credentials
 - private credentials or API tokens
 - user/customer data exports
 - temporary debug payloads containing personal data
@@ -134,7 +145,7 @@ Minimum validation for Central API changes:
 For multi-component changes, deploy dependencies first:
 
 1. Cloudflare Worker (if changed and consumed by the other layers)
-2. Central API (if changed)
+2. Central API source sync + Web App deployment (if changed)
 3. GitHub Pages
 
 If only Pages changed, do not redeploy GAS/Worker unnecessarily.
