@@ -18,8 +18,8 @@
 - `report.html` - 分析レポート（企業共有可能な終点）
 - `analysis-core.js` - 分析ロジック
 - `common-masters-v1.js` - 共通マスタ
-- `central-api/` - Google Apps Script Central API の設計・リリース情報・v2.45ソース照合用manifest（`.gs`本体のGitHubミラーは未完）
-- `cloudflare-worker/` - Tenichi TOP画像取得Workerの開発ミラー
+- `central-api/` - Google Apps Script Central API の正本ミラー
+- `cloudflare-worker/` - Tenichi TOP画像取得Workerの開発ソース
 - `docs/ARCHITECTURE.md` - システム構成・責務
 - `docs/CURRENT_STATE.md` - 現在のリリース状態・直近設計
 - `docs/DEPLOYMENT.md` - 反映順・確認手順
@@ -28,8 +28,10 @@
 ## Current repository baseline
 
 - Pages: **v30.41**
-- Central API documented baseline: **v2.45**
+- Central API: **v2.45**
 - Image Worker: **v2**
 - Spreadsheet schema: **3.0**
+
+Central APIの11本の `.gs` は、現行Apps Scriptから共有されたソースとコード内容が一致することを確認したうえでGitHubへミラーしています。リポジトリではLF改行を正規形とします。
 
 詳細と「何が現在の正本か」は `AGENTS.md` と `docs/CURRENT_STATE.md` を参照してください。
