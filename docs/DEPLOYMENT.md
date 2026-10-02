@@ -17,25 +17,56 @@ If Central API and Worker did not change, do not redeploy them.
 
 ## Central API (Google Apps Script)
 
-Documentation / source-layout record: `central-api/`
+Canonical source: `central-api/*.gs`
 
-The full `.gs` source is not yet mirrored in GitHub. Runtime source remains the Apps Script project.
+### Validation
 
-When Central API changes:
+`.github/workflows/central-api-check.yml` validates:
 
-1. obtain and verify the currently deployed GAS source
-2. compare its file layout/checksums with `central-api/SOURCE_SHA256SUMS.txt` when applicable
-3. apply and validate the change in the Apps Script source
-4. update/create the Web App deployment as required
-5. update the repository Central API guide/current-state documentation (and the full source mirror once established)
-6. verify `doGet()` reports the expected app/schema information
-7. test the affected action before publishing dependent Pages changes
+- JavaScript syntax of all `.gs`
+- `SOURCE_SHA256SUMS.txt`
 
-Never commit `ACCESS_KEY` or other Script Property values.
+It runs for relevant pushes/PRs and can also be started manually.
+
+### GitHub -> GAS source sync
+
+`.github/workflows/central-api-sync.yml` is a manual workflow.
+
+It:
+
+1. requires explicit `SYNC` confirmation
+2. validates syntax and checksums
+3. authenticates with clasp
+4. pulls the current GAS project into temporary staging
+5. preserves the live `appsscript.json` and non-server files
+6. replaces staged server-side scripts with GitHub `central-api/*.gs`
+7. runs `clasp push --force`
+
+Required repository secrets:
+
+- `CLASPRC_JSON`
+- `GAS_SCRIPT_ID`
+
+See `docs/GAS_ACTIONS_SETUP.md`.
+
+### Web App deployment
+
+The source-sync workflow does **not** create an Apps Script version and does **not** redeploy the versioned Web App.
+
+For now:
+
+1. update source in GitHub
+2. run the sync workflow
+3. verify source/runtime
+4. manually update the Web App deployment when the change should go live
+
+A separate deployment workflow can be added later with its own confirmation/approval boundary.
+
+Never commit `ACCESS_KEY`, clasp OAuth credentials, or other Script Property values.
 
 ## Cloudflare Worker
 
-Development mirror: `cloudflare-worker/worker.js`
+Development source: `cloudflare-worker/worker.js`
 
 When Worker changes:
 
@@ -50,7 +81,7 @@ When Worker changes:
 Default dependency order:
 
 ```text
-Cloudflare Worker -> Central API -> GitHub Pages
+Cloudflare Worker -> Central API source sync/deploy -> GitHub Pages
 ```
 
 Only deploy the components that changed.
@@ -67,6 +98,7 @@ Only deploy the components that changed.
 ### Central API
 
 - syntax across all `.gs`
+- checksum manifest
 - action dispatch and response shape
 - schema/protocol compatibility
 - no secrets in source
