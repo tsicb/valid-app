@@ -998,6 +998,7 @@ function handleManageViewerRotate_(payload) {
 
   const lock =
     LockService.getScriptLock();
+
   try {
     lock.waitLock(20000);
 
@@ -2996,6 +2997,7 @@ function managedCustomAxes_(ss) {
 
   return axes;
 }
+
 // ============================================================
 // DATASTORE_V1 workbook finalization
 // ============================================================
