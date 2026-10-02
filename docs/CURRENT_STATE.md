@@ -7,17 +7,21 @@ This file describes the **repository baseline**, not a guarantee that each exter
 ## Versions
 
 - GitHub Pages: **v30.41**
-- Central API documented baseline: **v2.45** (full `.gs` source mirror is not yet committed)
+- Central API source baseline: **v2.45**
 - Cloudflare image Worker: **v2**
 - Spreadsheet schema: **3.0**
 
-The current Apps Script project header was manually confirmed by the user as:
+The current Apps Script project header was manually confirmed as:
 
 - `Integration v2.45 canonical image URL fix / schemaVersion 3.0`
 - Script Properties include `SCHEMA_VERSION = 3.0`
 - `APP_VERSION` is an independent runtime label
 
-This confirms the runtime project is intended to be the v2.45 / schema 3.0 line, but it is **not yet a full source-level verification** against the repository SHA-256 manifest.
+The complete 11-file GAS source was then provided from the current Apps Script project and compared against the previously recorded v2.45 source snapshot.
+
+**Result: code content matched.**
+
+The raw upload used CRLF line endings, while most of the prior package used LF. After line-ending normalization, the code is identical. The repository now stores the canonical Central API source under `central-api/*.gs` with LF line endings.
 
 The four root Pages files on `main` match the v30.41 release snapshot:
 
@@ -74,13 +78,13 @@ The four root Pages files on `main` match the v30.41 release snapshot:
 - Central API v2.45 canonicalizes stored image URLs and repairs existing relative paths on sync
 - report/Pages retain defensive canonicalization
 
-## Known architectural follow-up
+## Central API source-of-truth status
 
-The repository now contains the Central API architecture/release guide and a v2.45 source-file SHA-256 manifest, but **not yet the full `.gs` source**. Until the full source mirror is added, the deployed Apps Script project remains the code source of truth for API edits.
+`central-api/*.gs` is now the canonical GitHub source mirror for Central API v2.45.
 
-The Apps Script project header has been manually confirmed as v2.45 / schema 3.0. Before promoting GitHub to the code source of truth for the Central API, export or provide the complete current `.gs` sources and compare them with the documented v2.45 layout/checksums.
+The current Apps Script source and the mirrored GitHub source are code-equivalent. Repository files use LF line endings, and `central-api/SOURCE_SHA256SUMS.txt` records the LF-normalized checksums.
 
-A GitHub documentation commit does not imply an Apps Script deployment.
+A GitHub commit does not itself deploy Apps Script. If Apps Script is edited outside GitHub, reconcile those edits back into GitHub before the next development change.
 
 ## Next-chat startup
 
