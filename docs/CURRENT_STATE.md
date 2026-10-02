@@ -85,7 +85,8 @@ The four root Pages files on `main` match the v30.41 release snapshot:
 - sync preserves live `appsscript.json` / non-server files via temporary `clasp pull`
 - source sync requires explicit `SYNC` confirmation
 - Web App redeployment remains a separate manual step
-- one-time repository secrets still need to be configured before the first real sync: `CLASPRC_JSON` and `GAS_SCRIPT_ID`
+- repository secrets `CLASPRC_JSON` and `GAS_SCRIPT_ID` are configured
+- first manual `Central API sync to GAS` run completed successfully; clasp reported `Script is already up to date.`
 
 ## Central API source-of-truth status
 
