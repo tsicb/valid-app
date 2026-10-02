@@ -1,6 +1,6 @@
 /**
  * 有効応募分析 - Google Sheets生成 API
- * Integration v2.45 canonical image URL fix / schemaVersion 3.0
+ * Integration v2.46 custom analysis defaults / schemaVersion 3.0
  *
  * Script Properties（プロジェクト設定から登録）
  * - ACCESS_KEY
@@ -14,7 +14,7 @@
 
 const API_CONFIG = Object.freeze({
   DEFAULT_SCHEMA_VERSION: '3.0',
-  DEFAULT_APP_VERSION: '2026.09.18-api-v2.45-canonical-image-url',
+  DEFAULT_APP_VERSION: '2026.10.02-api-v2.46-custom-analysis-defaults',
   ROOT_FOLDER_ID: '1pczMllofAeCpPsMKmaU0fDDUUXgkXy8f',
   SHEET_OUTPUT_FOLDER_ID: '1izieBYn1U40y0sMkK2H5WzoILA1blYNb',
   EXPECTED_PAGES_VERSION: '2026.09.03-etl-v2.22-prerelease-clean',
