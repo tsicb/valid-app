@@ -33,6 +33,18 @@ function finalizeDataStoreWorkbook_(
       displayStartedAt
     );
 
+  const initialSettingsStartedAt =
+    Date.now();
+
+  ensureInitialSettings_(
+    ss
+  );
+
+  perf.initialSettingsEnsureMs =
+    perfMs_(
+      initialSettingsStartedAt
+    );
+
   const auditStartedAt =
     Date.now();
 
