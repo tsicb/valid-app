@@ -1,16 +1,18 @@
-# Central API documentation
+# Central API
 
-This directory documents the Google Apps Script Central API used by 有効応募分析.
+This directory contains the canonical GitHub source mirror for the Google Apps Script Central API used by 有効応募分析.
 
-Current documented baseline: **v2.45**, spreadsheet schema **3.0**.
+Current baseline: **v2.45**, spreadsheet schema **3.0**.
 
-## Source mirror status
+## Verification status
 
-The full `.gs` source is **not yet committed to GitHub**. Until it is exported/mirrored, the deployed Apps Script project remains the code source of truth for Central API edits.
+The current Apps Script project supplied by the user contained all 11 source files. They were compared with the previously recorded v2.45 snapshot.
 
-`SOURCE_SHA256SUMS.txt` records the exact SHA-256 values of the v2.45 source snapshot used with Pages v30.41. It can be used to verify a future export before establishing the full GitHub mirror.
+Result: **code-equivalent / no substantive source difference**.
 
-## v2.45 source-file layout
+The Apps Script export used CRLF line endings. The repository canonicalizes source text to LF, so checksum comparison must use the LF-normalized files recorded in `SOURCE_SHA256SUMS.txt`.
+
+## Source-file layout
 
 - `00_Config.gs` - schema/app constants and sheet definitions
 - `01_DataStore_Performance.gs` - DataStore/performance helpers
@@ -26,9 +28,12 @@ The full `.gs` source is **not yet committed to GitHub**. Until it is exported/m
 
 ## Rules
 
+- Start Central API changes from these `.gs` files.
 - Never commit Script Property values such as `ACCESS_KEY`.
 - Do not change action/protocol names casually.
 - Preserve authentication, managed-folder checks, schema/storage-layout checks, Viewer-token validation and Registry consistency.
 - `manageSharingLoad` is the lightweight sharing-card load path; do not regress it to the old broad managed-state read.
+- Update `SOURCE_SHA256SUMS.txt` whenever the canonical source changes.
+- GitHub source changes still need to be applied/deployed to the Apps Script Web App runtime.
 
 See `CENTRAL_API_V2_45_GUIDE.md`, repository `AGENTS.md`, and `docs/ARCHITECTURE.md`.
