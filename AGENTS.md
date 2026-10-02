@@ -9,7 +9,7 @@ Read this file first, then read `docs/CURRENT_STATE.md` and `docs/ARCHITECTURE.m
 - GitHub repository: `tsicb/valid-app`
 - Default branch: `main`
 - The files at repository root (`index.html`, `report.html`, `analysis-core.js`, `common-masters-v1.js`) are the GitHub Pages source of truth.
-- `central-api/` is the canonical source mirror for the Google Apps Script Central API. The current mirrored baseline is **v2.45 / schema 3.0**.
+- `central-api/` is the canonical source mirror for the Google Apps Script Central API. The current mirrored baseline is **v2.46 / schema 3.0**.
 - `cloudflare-worker/` is the development source for the Tenichi TOP-image Worker. A GitHub change is not deployed until the Worker is deployed.
 - Do not rebuild from an old ZIP or an old chat attachment. Always inspect current `main` first and apply the smallest required diff.
 
@@ -72,7 +72,7 @@ Semantic colors (warning, danger, target-age emphasis, target-rate emphasis, etc
 See `docs/ARCHITECTURE.md` and `central-api/README.md`.
 
 - Current schema: `3.0`.
-- Current source baseline: Central API **v2.45**.
+- Current source baseline: Central API **v2.46**.
 - GitHub `central-api/*.gs` is the canonical code mirror. When editing GAS behavior, start from those files.
 - Preserve existing protocol/action names unless there is a concrete reason to version them.
 - `EXPECTED_PAGES_VERSION` is an internal protocol/build compatibility value and is not the same thing as the human release label `Pages v30.x`.
