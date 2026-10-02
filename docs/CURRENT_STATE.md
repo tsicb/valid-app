@@ -78,13 +78,24 @@ The four root Pages files on `main` match the v30.41 release snapshot:
 - Central API v2.45 canonicalizes stored image URLs and repairs existing relative paths on sync
 - report/Pages retain defensive canonicalization
 
+### Central API GitHub Actions
+
+- `Central API check` workflow added for syntax/checksum validation
+- `Central API sync to GAS` workflow added for manual GitHub -> standalone GAS source synchronization
+- sync preserves live `appsscript.json` / non-server files via temporary `clasp pull`
+- source sync requires explicit `SYNC` confirmation
+- Web App redeployment remains a separate manual step
+- one-time repository secrets still need to be configured before the first real sync: `CLASPRC_JSON` and `GAS_SCRIPT_ID`
+
 ## Central API source-of-truth status
 
 `central-api/*.gs` is now the canonical GitHub source mirror for Central API v2.45.
 
 The current Apps Script source and the mirrored GitHub source are code-equivalent. Repository files use LF line endings, and `central-api/SOURCE_SHA256SUMS.txt` records the LF-normalized checksums.
 
-A GitHub commit does not itself deploy Apps Script. If Apps Script is edited outside GitHub, reconcile those edits back into GitHub before the next development change.
+After Actions secrets are configured, use the manual sync workflow to copy GitHub source into the Apps Script project. A successful source sync still does not imply that the versioned Web App deployment was updated.
+
+If Apps Script is edited outside GitHub, reconcile those edits back into GitHub before the next development change.
 
 ## Next-chat startup
 
