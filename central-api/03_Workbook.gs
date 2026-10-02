@@ -183,10 +183,656 @@ function ensureSheetSize_(sheet, requiredRows, requiredCols) {
   }
 }
 
+function customAnalysisAxisRules_() {
+  return [
+    ['対応状況', 'status'],
+    ['応募年月', 'month'],
+    ['応募媒体', 'media'],
+    ['氏名文字種区分', 'name-script'],
+    ['居住都道府県', 'residence'],
+    ['企業ID', 'enterprise'],
+    ['職種', 'job-category'],
+    ['雇用形態', 'employment'],
+    ['求人勤務地名称', 'job-location-name'],
+    ['勤務地都道府県', 'job-prefecture'],
+    ['勤務地・居住都道府県一致', 'prefecture-match'],
+    ['募集背景', 'recruit-background'],
+    ['月内応募日', 'month-day'],
+    ['応募曜日', 'weekday'],
+    ['応募時間帯', 'hour'],
+    ['時給下限', 'hourly-salary'],
+    ['日給下限', 'daily-salary'],
+    ['月給下限', 'monthly-salary'],
+    ['年収下限', 'annual-salary'],
+    ['求人原稿文字数', 'text-length'],
+    ['メイン画像有無', 'main-image'],
+    ['求人画像枚数', 'image-count'],
+    ['TOP画像ファイル名', 'top-image-detail'],
+    ['求人動画有無', 'job-video'],
+    ['Indeed求人タグ数', 'indeed-tag-count'],
+    ['求人備考1行目', 'note-detail']
+  ];
+}
+
+function customAnalysisHasKeywords_(ss) {
+  const sheet =
+    ss.getSheetByName(
+      REPORT_SHEETS.KEYWORD_MASTER
+    );
+
+  if (
+    !sheet ||
+    sheet.getLastRow() < 2
+  ) {
+    return false;
+  }
+
+  return sheet
+    .getRange(
+      2,
+      1,
+      sheet.getLastRow() - 1,
+      1
+    )
+    .getValues()
+    .some(
+      row =>
+        !!normalizeString_(
+          row[0]
+        )
+    );
+}
+
+function customAnalysisAllowedAxes_(ss) {
+  const visibility = {};
+
+  readViewerDisplaySettings_(
+    ss
+  ).forEach(
+    item => {
+      visibility[item.id] =
+        item.visible !== false;
+    }
+  );
+
+  const enabled =
+    id =>
+      !Object.prototype
+        .hasOwnProperty.call(
+          visibility,
+          id
+        ) ||
+      visibility[id] !== false;
+
+  const axes =
+    customAnalysisAxisRules_()
+      .filter(
+        row =>
+          enabled(
+            row[1]
+          )
+      )
+      .map(
+        row =>
+          row[0]
+      );
+
+  const salaryIds = [
+    'hourly-salary',
+    'daily-salary',
+    'monthly-salary',
+    'annual-salary'
+  ];
+
+  if (
+    salaryIds.some(
+      enabled
+    )
+  ) {
+    const salaryIndexes =
+      [
+        '時給下限',
+        '日給下限',
+        '月給下限',
+        '年収下限'
+      ]
+        .map(
+          axis =>
+            axes.indexOf(
+              axis
+            )
+        )
+        .filter(
+          index =>
+            index >= 0
+        )
+        .sort(
+          (a, b) =>
+            a - b
+        );
+
+    if (
+      salaryIndexes.length
+    ) {
+      axes.splice(
+        salaryIndexes[0],
+        0,
+        '給与区分'
+      );
+    }
+  }
+
+  if (
+    customAnalysisHasKeywords_(
+      ss
+    )
+  ) {
+    const keywordAxes = [];
+
+    if (
+      enabled(
+        'job-keyword'
+      )
+    ) {
+      keywordAxes.push(
+        '仕事名KW'
+      );
+    }
+
+    if (
+      enabled(
+        'job-full-keyword'
+      )
+    ) {
+      keywordAxes.push(
+        '仕事名フルKW'
+      );
+    }
+
+    if (
+      keywordAxes.length
+    ) {
+      const recruitIndex =
+        axes.indexOf(
+          '募集背景'
+        );
+
+      axes.splice(
+        recruitIndex >= 0
+          ? recruitIndex
+          : axes.length,
+        0,
+        ...keywordAxes
+      );
+    }
+  }
+
+  return axes;
+}
+
+function normalizeCustomAnalysisSettings_(
+  value,
+  allowedAxes
+) {
+  const axes =
+    Array.isArray(
+      allowedAxes
+    )
+      ? allowedAxes
+          .map(
+            normalizeString_
+          )
+          .filter(
+            Boolean
+          )
+      : [];
+
+  const allowed =
+    new Set(
+      axes
+    );
+
+  const rawRows =
+    Array.isArray(
+      value &&
+      value.rowAxes
+    )
+      ? value.rowAxes
+      : [
+          value &&
+            (
+              value.rowAxis1 ||
+              value.rowAxis
+            ),
+          value &&
+            value.rowAxis2,
+          value &&
+            value.rowAxis3
+        ];
+
+  const rowAxes = [];
+
+  rawRows
+    .map(
+      normalizeString_
+    )
+    .filter(
+      Boolean
+    )
+    .forEach(
+      axis => {
+        if (
+          rowAxes.length >= 3 ||
+          rowAxes.indexOf(
+            axis
+          ) >= 0 ||
+          (
+            allowed.size &&
+            !allowed.has(
+              axis
+            )
+          )
+        ) {
+          return;
+        }
+
+        rowAxes.push(
+          axis
+        );
+      }
+    );
+
+  if (
+    !rowAxes.length &&
+    axes.length
+  ) {
+    rowAxes.push(
+      axes.indexOf(
+        '対応状況'
+      ) >= 0
+        ? '対応状況'
+        : axes[0]
+    );
+  }
+
+  let colAxis =
+    normalizeString_(
+      value &&
+      value.colAxis
+    );
+
+  if (
+    !colAxis ||
+    (
+      allowed.size &&
+      !allowed.has(
+        colAxis
+      )
+    ) ||
+    rowAxes.indexOf(
+      colAxis
+    ) >= 0
+  ) {
+    if (
+      axes.indexOf(
+        '応募媒体'
+      ) >= 0 &&
+      rowAxes.indexOf(
+        '応募媒体'
+      ) < 0
+    ) {
+      colAxis =
+        '応募媒体';
+    } else {
+      colAxis =
+        axes.find(
+          axis =>
+            rowAxes.indexOf(
+              axis
+            ) < 0
+        ) ||
+        '';
+    }
+  }
+
+  return {
+    rowAxes,
+    rowAxis:
+      rowAxes[0] ||
+      '',
+    rowAxis2:
+      rowAxes[1] ||
+      '',
+    rowAxis3:
+      rowAxes[2] ||
+      '',
+    colAxis
+  };
+}
+
+function readInitialCustomAnalysisSettings_(ss) {
+  const sheet =
+    ss.getSheetByName(
+      REPORT_SHEETS.INITIAL_SETTINGS
+    );
+
+  if (
+    !sheet ||
+    sheet.getLastRow() < 2
+  ) {
+    return null;
+  }
+
+  const values =
+    sheet.getRange(
+      2,
+      1,
+      sheet.getLastRow() - 1,
+      Math.min(
+        2,
+        Math.max(
+          sheet.getLastColumn(),
+          2
+        )
+      )
+    ).getValues();
+
+  const map = {};
+
+  values.forEach(
+    row => {
+      const key =
+        normalizeString_(
+          row[0]
+        );
+
+      if (key) {
+        map[key] =
+          row[1];
+      }
+    }
+  );
+
+  const keys = [
+    'カスタム分析 行軸1',
+    'カスタム分析 行軸2',
+    'カスタム分析 行軸3',
+    'カスタム分析 列軸'
+  ];
+
+  if (
+    !keys.some(
+      key =>
+        Object.prototype
+          .hasOwnProperty.call(
+            map,
+            key
+          )
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    rowAxes: [
+      map[
+        'カスタム分析 行軸1'
+      ],
+      map[
+        'カスタム分析 行軸2'
+      ],
+      map[
+        'カスタム分析 行軸3'
+      ]
+    ],
+    colAxis:
+      map[
+        'カスタム分析 列軸'
+      ]
+  };
+}
+
+function initialCustomAnalysisRows_(
+  value
+) {
+  const normalized =
+    value || {};
+
+  return [
+    [
+      'カスタム分析 行軸1',
+      normalizeString_(
+        normalized.rowAxis ||
+        (
+          Array.isArray(
+            normalized.rowAxes
+          )
+            ? normalized.rowAxes[0]
+            : ''
+        )
+      ) ||
+      '対応状況',
+      'カスタム分析を開いたときの1段目の行軸'
+    ],
+    [
+      'カスタム分析 行軸2',
+      normalizeString_(
+        normalized.rowAxis2 ||
+        (
+          Array.isArray(
+            normalized.rowAxes
+          )
+            ? normalized.rowAxes[1]
+            : ''
+        )
+      ),
+      '任意。カスタム分析を開いたときの2段目の行軸'
+    ],
+    [
+      'カスタム分析 行軸3',
+      normalizeString_(
+        normalized.rowAxis3 ||
+        (
+          Array.isArray(
+            normalized.rowAxes
+          )
+            ? normalized.rowAxes[2]
+            : ''
+        )
+      ),
+      '任意。カスタム分析を開いたときの3段目の行軸'
+    ],
+    [
+      'カスタム分析 列軸',
+      normalizeString_(
+        normalized.colAxis
+      ) ||
+      '応募媒体',
+      'カスタム分析を開いたときの列軸。行軸との重複は自動調整'
+    ]
+  ];
+}
+
+function formatInitialSettingsSheet_(
+  ss,
+  sheet
+) {
+  if (!sheet) return;
+
+  const lastRow =
+    Math.max(
+      sheet.getLastRow(),
+      1
+    );
+
+  sheet.setFrozenRows(
+    1
+  );
+
+  sheet
+    .getRange(
+      1,
+      1,
+      1,
+      3
+    )
+    .setFontWeight(
+      'bold'
+    )
+    .setFontColor(
+      PRODUCT_THEME_.white
+    )
+    .setBackground(
+      PRODUCT_THEME_.brandBlue
+    );
+
+  if (
+    lastRow > 1
+  ) {
+    sheet
+      .getRange(
+        2,
+        2,
+        lastRow - 1,
+        1
+      )
+      .setBackground(
+        PRODUCT_THEME_.brandYellowSoft
+      );
+
+    sheet
+      .getRange(
+        2,
+        3,
+        lastRow - 1,
+        1
+      )
+      .setFontColor(
+        PRODUCT_THEME_.textSecondary
+      );
+  }
+
+  const axes =
+    customAnalysisAllowedAxes_(
+      ss
+    );
+
+  const keyRows = {};
+
+  if (
+    lastRow > 1
+  ) {
+    sheet
+      .getRange(
+        2,
+        1,
+        lastRow - 1,
+        1
+      )
+      .getValues()
+      .forEach(
+        (row, index) => {
+          const key =
+            normalizeString_(
+              row[0]
+            );
+
+          if (key) {
+            keyRows[key] =
+              index + 2;
+          }
+        }
+      );
+  }
+
+  const customKeys = [
+    'カスタム分析 行軸1',
+    'カスタム分析 行軸2',
+    'カスタム分析 行軸3',
+    'カスタム分析 列軸'
+  ];
+
+  customKeys.forEach(
+    key => {
+      const row =
+        keyRows[key];
+
+      if (!row) return;
+
+      const cell =
+        sheet.getRange(
+          row,
+          2
+        );
+
+      cell.clearDataValidations();
+
+      if (
+        axes.length
+      ) {
+        cell.setDataValidation(
+          SpreadsheetApp
+            .newDataValidation()
+            .requireValueInList(
+              axes,
+              true
+            )
+            .setAllowInvalid(
+              false
+            )
+            .setHelpText(
+              '分析レポート表示項目でONになっている分析軸から選択してください。'
+            )
+            .build()
+        );
+      }
+    }
+  );
+
+  sheet.setColumnWidth(
+    1,
+    210
+  );
+  sheet.setColumnWidth(
+    2,
+    170
+  );
+  sheet.setColumnWidth(
+    3,
+    520
+  );
+
+  try {
+    sheet.setTabColor(
+      PRODUCT_THEME_.brandBlue
+    );
+  } catch (_) {}
+}
+
 function writeInitialSettings_(ss, settings) {
-  const sheet = ensureSheet_(ss, REPORT_SHEETS.INITIAL_SETTINGS, false);
+  const sheet =
+    ensureSheet_(
+      ss,
+      REPORT_SHEETS.INITIAL_SETTINGS,
+      false
+    );
+
   sheet.clearContents();
   sheet.clearFormats();
+
+  const customDefaults =
+    normalizeCustomAnalysisSettings_(
+      {
+        rowAxes: [
+          '対応状況'
+        ],
+        colAxis:
+          '応募媒体'
+      },
+      customAnalysisAllowedAxes_(
+        ss
+      )
+    );
 
   const rows = [
     ['設定項目', '設定値', '説明'],
@@ -201,27 +847,249 @@ function writeInitialSettings_(ss, settings) {
     ['月給下限幅', 50000, '月給下限別のバケット幅'],
     ['年収下限幅', 500000, '年収下限別のバケット幅'],
     ['Indeedタグ表示件数', 50, 'Indeedタグ分析に表示する上位件数（20 / 50 / 100 / すべて）'],
-    ['TOP画像表示件数', 50, 'TOP画像分析に表示する上位件数（20 / 50 / 100 / すべて）']
+    ['TOP画像表示件数', 50, 'TOP画像分析に表示する上位件数（20 / 50 / 100 / すべて）'],
+    ...initialCustomAnalysisRows_(
+      customDefaults
+    )
   ];
 
-  sheet.getRange(1, 1, rows.length, 3).setValues(rows);
-  sheet.setFrozenRows(1);
-  sheet.getRange(1, 1, 1, 3)
-    .setFontWeight('bold')
-    .setFontColor(PRODUCT_THEME_.white)
-    .setBackground(PRODUCT_THEME_.brandBlue);
+  sheet
+    .getRange(
+      1,
+      1,
+      rows.length,
+      3
+    )
+    .setValues(
+      rows
+    );
 
-  if (rows.length > 1) {
-    sheet.getRange(2, 2, rows.length - 1, 1)
-      .setBackground(PRODUCT_THEME_.brandYellowSoft);
-    sheet.getRange(2, 3, rows.length - 1, 1)
-      .setFontColor(PRODUCT_THEME_.textSecondary);
+  formatInitialSettingsSheet_(
+    ss,
+    sheet
+  );
+}
+
+function ensureInitialSettings_(ss) {
+  const sheet =
+    ensureSheet_(
+      ss,
+      REPORT_SHEETS.INITIAL_SETTINGS,
+      false
+    );
+
+  if (
+    sheet.getLastRow() < 2
+  ) {
+    writeInitialSettings_(
+      ss,
+      {}
+    );
   }
 
-  sheet.setColumnWidth(1, 210);
-  sheet.setColumnWidth(2, 170);
-  sheet.setColumnWidth(3, 520);
-  try { sheet.setTabColor(PRODUCT_THEME_.brandBlue); } catch (_) {}
+  const current =
+    readInitialCustomAnalysisSettings_(
+      ss
+    );
+
+  const legacy =
+    readCustomAnalysisSettingsSheet_(
+      ss.getSheetByName(
+        REPORT_SHEETS.CUSTOM_ANALYSIS
+      )
+    );
+
+  const normalized =
+    normalizeCustomAnalysisSettings_(
+      current ||
+      legacy ||
+      {
+        rowAxes: [
+          '対応状況'
+        ],
+        colAxis:
+          '応募媒体'
+      },
+      customAnalysisAllowedAxes_(
+        ss
+      )
+    );
+
+  const lastRow =
+    sheet.getLastRow();
+
+  const values =
+    sheet
+      .getRange(
+        2,
+        1,
+        Math.max(
+          lastRow - 1,
+          1
+        ),
+        1
+      )
+      .getValues();
+
+  const keyRows = {};
+
+  values.forEach(
+    (row, index) => {
+      const key =
+        normalizeString_(
+          row[0]
+        );
+
+      if (key) {
+        keyRows[key] =
+          index + 2;
+      }
+    }
+  );
+
+  const customRows =
+    initialCustomAnalysisRows_(
+      normalized
+    );
+
+  customRows.forEach(
+    row => {
+      const key =
+        row[0];
+
+      const existingRow =
+        keyRows[key];
+
+      if (
+        existingRow
+      ) {
+        sheet
+          .getRange(
+            existingRow,
+            2,
+            1,
+            2
+          )
+          .setValues([
+            [
+              row[1],
+              row[2]
+            ]
+          ]);
+      } else {
+        sheet.appendRow(
+          row
+        );
+
+        keyRows[key] =
+          sheet.getLastRow();
+      }
+    }
+  );
+
+  formatInitialSettingsSheet_(
+    ss,
+    sheet
+  );
+
+  writeCustomAnalysisSettingsSheet_(
+    ensureSheet_(
+      ss,
+      REPORT_SHEETS.CUSTOM_ANALYSIS,
+      true
+    ),
+    normalized
+  );
+
+  return normalized;
+}
+
+function writeInitialCustomAnalysisSettings_(
+  ss,
+  value
+) {
+  ensureInitialSettings_(
+    ss
+  );
+
+  const sheet =
+    ss.getSheetByName(
+      REPORT_SHEETS.INITIAL_SETTINGS
+    );
+
+  if (!sheet) return null;
+
+  const normalized =
+    normalizeCustomAnalysisSettings_(
+      value,
+      customAnalysisAllowedAxes_(
+        ss
+      )
+    );
+
+  const keyValues = {
+    'カスタム分析 行軸1':
+      normalized.rowAxis,
+    'カスタム分析 行軸2':
+      normalized.rowAxis2,
+    'カスタム分析 行軸3':
+      normalized.rowAxis3,
+    'カスタム分析 列軸':
+      normalized.colAxis
+  };
+
+  const count =
+    Math.max(
+      sheet.getLastRow() - 1,
+      0
+    );
+
+  if (
+    count
+  ) {
+    const keys =
+      sheet
+        .getRange(
+          2,
+          1,
+          count,
+          1
+        )
+        .getValues();
+
+    keys.forEach(
+      (row, index) => {
+        const key =
+          normalizeString_(
+            row[0]
+          );
+
+        if (
+          Object.prototype
+            .hasOwnProperty.call(
+              keyValues,
+              key
+            )
+        ) {
+          sheet
+            .getRange(
+              index + 2,
+              2
+            )
+            .setValue(
+              keyValues[key]
+            );
+        }
+      }
+    );
+  }
+
+  formatInitialSettingsSheet_(
+    ss,
+    sheet
+  );
+
+  return normalized;
 }
 
 function ensureCustomAnalysisSettings_(ss) {
@@ -492,19 +1360,39 @@ function readCustomAnalysisSettingsSheet_(
     }
   });
 
-  if (
-    !normalizeString_(
-      map.rowAxis
+  const rowAxes = [
+    map.rowAxis1 ||
+      map.rowAxis,
+    map.rowAxis2,
+    map.rowAxis3
+  ]
+    .map(
+      normalizeString_
     )
+    .filter(
+      Boolean
+    )
+    .slice(
+      0,
+      3
+    );
+
+  if (
+    !rowAxes.length
   ) {
     return null;
   }
 
   return {
+    rowAxes,
     rowAxis:
-      normalizeString_(
-        map.rowAxis
-      ),
+      rowAxes[0],
+    rowAxis2:
+      rowAxes[1] ||
+      '',
+    rowAxis3:
+      rowAxes[2] ||
+      '',
     colAxis:
       normalizeString_(
         map.colAxis
@@ -522,10 +1410,53 @@ function writeCustomAnalysisSettingsSheet_(
   sheet.clearContents();
   sheet.clearFormats();
 
+  const rowAxes =
+    Array.isArray(
+      value &&
+      value.rowAxes
+    )
+      ? value.rowAxes
+          .map(
+            normalizeString_
+          )
+          .filter(
+            Boolean
+          )
+          .slice(
+            0,
+            3
+          )
+      : [
+          normalizeString_(
+            value &&
+            (
+              value.rowAxis1 ||
+              value.rowAxis
+            )
+          ),
+          normalizeString_(
+            value &&
+            value.rowAxis2
+          ),
+          normalizeString_(
+            value &&
+            value.rowAxis3
+          )
+        ]
+          .filter(
+            Boolean
+          )
+          .slice(
+            0,
+            3
+          );
+
   const rows = [
     ['設定項目', '設定値'],
-    ['rowAxis', normalizeString_(value.rowAxis) || '対応状況'],
-    ['colAxis', normalizeString_(value.colAxis) || '応募媒体']
+    ['rowAxis', rowAxes[0] || '対応状況'],
+    ['rowAxis2', rowAxes[1] || ''],
+    ['rowAxis3', rowAxes[2] || ''],
+    ['colAxis', normalizeString_(value && value.colAxis) || '応募媒体']
   ];
 
   sheet.getRange(
