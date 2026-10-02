@@ -103,7 +103,7 @@ The four root Pages files on `main` match the v30.41 release snapshot:
 
 `central-api/*.gs` is now the canonical GitHub source for Central API v2.46.
 
-The current Apps Script source and the mirrored GitHub source are code-equivalent. Repository files use LF line endings, and `central-api/SOURCE_SHA256SUMS.txt` records the LF-normalized checksums.
+The v2.45 Apps Script source and the original GitHub mirror were verified code-equivalent before this change. GitHub has since advanced to v2.46. Repository files use LF line endings, and `central-api/SOURCE_SHA256SUMS.txt` records the current v2.46 LF-normalized checksums.
 
 GitHub currently contains v2.46 source. The last runtime version explicitly confirmed before this change was v2.45. Use the manual `Central API sync to GAS` workflow to copy v2.46 source into Apps Script, then update the versioned Web App deployment separately before treating v2.46 as live.
 
