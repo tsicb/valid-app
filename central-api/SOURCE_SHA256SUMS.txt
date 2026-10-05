@@ -1,8 +1,8 @@
-# SHA-256 of canonical GitHub source with LF line endings - Central API v2.46
-afeadd83560a9d1e12eef41df757d2b88d0432d89687d6d63cacf949893c7298  00_Config.gs
+# SHA-256 of canonical GitHub source with LF line endings - Central API v2.47
+beea0bb9abe46e8ae0184c4e9389f02c40fe18b6233d984eff4258508fc40768  00_Config.gs
 56a7e71f224c9e54d1680e849d2b6ed26afe3006f3ef9d84e5da7c3bdc540947  01_DataStore_Performance.gs
 6c21415b45ece91677c4283e2974ddc57504d010a94b65e04fbf0608decbdc62  02_EntryPoint.gs
-405f663b0ece8def8d1eb70d2220a38498d9c6f6b21598afba94768ca63dc2b8  03_Workbook.gs
+a00ba48af75cc271c7d6ea238b5e1763497260a94825e8fd1b9b4a15438accad  03_Workbook.gs
 b17606ade1ace1dd91ae8e8701bc75fa79de654636db560d57e9bed7231f4590  04_Request_Target.gs
 bd5e876efa3e2a5fa12d8a2f9a84b0a710b1b094a3c843652a8ebd6676b0a79b  05_Masters.gs
 3d71c8c689f67d349dee48648b11e252b596309623792e1c96b2dafd8bab3e74  06_Viewer.gs
