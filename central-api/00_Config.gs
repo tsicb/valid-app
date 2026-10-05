@@ -1,6 +1,6 @@
 /**
  * 有効応募分析 - Google Sheets生成 API
- * Integration v2.46 custom analysis defaults / schemaVersion 3.0
+ * Integration v2.47 gender analysis / schemaVersion 3.0
  *
  * Script Properties（プロジェクト設定から登録）
  * - ACCESS_KEY
@@ -14,7 +14,7 @@
 
 const API_CONFIG = Object.freeze({
   DEFAULT_SCHEMA_VERSION: '3.0',
-  DEFAULT_APP_VERSION: '2026.10.02-api-v2.46-custom-analysis-defaults',
+  DEFAULT_APP_VERSION: '2026.10.06-api-v2.47-gender-analysis',
   ROOT_FOLDER_ID: '1pczMllofAeCpPsMKmaU0fDDUUXgkXy8f',
   SHEET_OUTPUT_FOLDER_ID: '1izieBYn1U40y0sMkK2H5WzoILA1blYNb',
   EXPECTED_PAGES_VERSION: '2026.09.03-etl-v2.22-prerelease-clean',
@@ -95,6 +95,7 @@ const VIEWER_DISPLAY_DEFINITIONS_ =
     ['month', '応募月別', '基本分析', '応募月ごとの推移', true],
     ['media', '応募媒体別', '基本分析', '応募媒体ごとの応募傾向', true],
     ['enterprise', '企業ID別', '基本分析', '企業IDが複数ある場合の比較', false],
+    ['gender', '性別ごと', '基本分析', '性別ごとの応募傾向', true],
     ['name-script', '氏名文字種区分別', '基本分析', '氏名文字種区分ごとの応募傾向', true],
     ['residence', '居住都道府県別', '基本分析', '応募者居住都道府県ごとの応募傾向', true],
     ['job-category', '職種別', '基本分析', '求人職種ごとの応募傾向', true],
