@@ -1,14 +1,19 @@
-# Pages v30.41 / Central API v2.46 / Image Worker v2 Release Checklist
+# Pages v30.42 / Central API v2.47 / Image Worker v2 Release Checklist
 
-今回の差分はCentral APIのみです。Pages / Workerの再デプロイは不要です。
+今回の機能差分はPages + Central APIです。Image Workerの再デプロイは不要です。
 
-- [x] Central API v2.46 ソースをGitHubへ反映
+- [x] Pages v30.42 ソースをGitHubへ反映
+- [x] GitHub Pages build / deploy成功
+- [x] Central API v2.47 ソースをGitHubへ反映
 - [x] GAS構文チェック
 - [x] SOURCE_SHA256SUMS.txt照合
 - [ ] GitHub Actions「Central API sync to GAS」を手動実行
-- [ ] Apps Script側のソースがv2.46になったことを確認
-- [ ] 既存Web App deploymentをv2.46へ更新
-- [ ] 既存企業を1件更新し、30_分析レポート初期設定にカスタム分析4項目が追加されることを確認
-- [ ] 行軸1～3／列軸を変更し、report再読み込みで初期表示へ反映されることを確認
-- [ ] 31_分析レポート表示項目でOFFの軸を設定した場合、安全な軸へフォールバックすることを確認
-- [ ] 既存の34_カスタム分析設定が非表示のまま維持されることを確認
+- [ ] Apps Script側のソースがv2.47になったことを確認
+- [ ] 既存Web App deploymentをv2.47へ更新
+- [ ] 性別列を含む応募CSVで個社シートを更新し、applicationDataに性別が保存されることを確認
+- [ ] reportの「求職者」内に「性別」が表示されることを確認
+- [ ] 女性 / 男性 / 未回答 / 空欄が別カテゴリとして集計されることを確認
+- [ ] 総応募数 → ターゲット応募数 → 日本語文字順の一般カテゴリソートを確認
+- [ ] 氏名文字種区分も同じ一般カテゴリソートになっていることを確認
+- [ ] カスタム分析で「性別」を行軸・列軸に選べることを確認
+- [ ] 性別ヘッダーを持たない旧DataStoreでは性別分析が出ないことを確認
