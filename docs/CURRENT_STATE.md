@@ -6,8 +6,8 @@ This file describes the **repository baseline**, not a guarantee that each exter
 
 ## Versions
 
-- GitHub Pages: **v30.41**
-- Central API source baseline: **v2.46**
+- GitHub Pages: **v30.42**
+- Central API source baseline: **v2.47**
 - Cloudflare image Worker: **v2**
 - Spreadsheet schema: **3.0**
 
@@ -23,7 +23,7 @@ The complete 11-file GAS source was then provided from the current Apps Script p
 
 The raw upload used CRLF line endings, while most of the prior package used LF. After line-ending normalization, the code is identical. The repository now stores the canonical Central API source under `central-api/*.gs` with LF line endings.
 
-The four root Pages files on `main` match the v30.41 release snapshot:
+The four root Pages files on `main` are the Pages v30.42 source baseline:
 
 - `index.html`
 - `report.html`
@@ -89,6 +89,19 @@ The four root Pages files on `main` match the v30.41 release snapshot:
 - `34_カスタム分析設定` remains hidden as a compatibility mirror
 - Pages remain v30.41; no report-side code change was required because report already accepts `rowAxes`
 
+### Gender analysis (Pages v30.42 / Central API v2.47)
+
+- application CSV column `性別` is now retained in `applicationData` after `年代`
+- source values are preserved as supplied; current expected patterns are `女性`, `男性`, `未回答`, and blank
+- gender is a basic-analysis item under the `求職者` group and is available as a custom-analysis axis
+- the report title is `性別ごとの応募傾向`
+- blank gender values are displayed as `（空欄）`; `未回答` remains a separate category
+- generic category sorting is used: total applications descending, then target applications descending, then Japanese label order
+- `氏名文字種区分` now uses the same generic category sorting instead of a fixed label order
+- legacy application datasets without a `性別` header do not show the gender table or gender custom axis
+- index help now explains that gender is stored for aggregate application-trend analysis
+- spreadsheet schema remains 3.0; `SHEETS_APP_VERSION` / `EXPECTED_PAGES_VERSION` remain the existing internal compatibility values
+
 ### Central API GitHub Actions
 
 - `Central API check` workflow added for syntax/checksum validation
@@ -101,11 +114,11 @@ The four root Pages files on `main` match the v30.41 release snapshot:
 
 ## Central API source-of-truth status
 
-`central-api/*.gs` is now the canonical GitHub source for Central API v2.46.
+`central-api/*.gs` is now the canonical GitHub source for Central API v2.47.
 
-The v2.45 Apps Script source and the original GitHub mirror were verified code-equivalent before this change. GitHub has since advanced to v2.46. Repository files use LF line endings, and `central-api/SOURCE_SHA256SUMS.txt` records the current v2.46 LF-normalized checksums.
+The original v2.45 Apps Script source and GitHub mirror were verified code-equivalent. v2.46 was subsequently synchronized and its sheet-update behavior was confirmed. GitHub has now advanced to v2.47. Repository files use LF line endings, and `central-api/SOURCE_SHA256SUMS.txt` records the current v2.47 LF-normalized checksums.
 
-GitHub currently contains v2.46 source. The last runtime version explicitly confirmed before this change was v2.45. Use the manual `Central API sync to GAS` workflow to copy v2.46 source into Apps Script, then update the versioned Web App deployment separately before treating v2.46 as live.
+GitHub currently contains v2.47 source. The v2.46 behavior was confirmed before this change. Use the manual `Central API sync to GAS` workflow to copy v2.47 source into Apps Script, then update the versioned Web App deployment separately before treating v2.47 as live.
 
 If Apps Script is edited outside GitHub, reconcile those edits back into GitHub before the next development change.
 
