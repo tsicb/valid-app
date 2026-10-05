@@ -4833,7 +4833,7 @@
 
 
 const VIEWER_UI_RELEASE =
-    "2026.09.14-viewer-ui-v30.23-favicon-c-pair";
+    "2026.10.06-viewer-ui-v30.42-gender-analysis";
 const VIEWER_SIDEBAR_STATE_KEY =
     "validApplicationAnalysis.viewerSidebarCollapsed.v1";
 
@@ -4843,6 +4843,7 @@ const BASIC_ANALYSIS_SHORT_LABELS =
         "month": "応募月",
         "media": "媒体",
         "enterprise": "企業",
+        "gender": "性別",
         "name-script": "氏名文字",
         "residence": "居住地",
         "job-category": "職種",
@@ -4873,6 +4874,7 @@ const BASIC_ANALYSIS_DISPLAY_TITLES =
         "month": "月別応募傾向",
         "media": "媒体別応募傾向",
         "enterprise": "企業ID別応募傾向",
+        "gender": "性別ごとの応募傾向",
         "name-script": "氏名文字種区分別応募傾向",
         "residence": "居住都道府県別応募傾向",
         "job-category": "職種別応募傾向",
@@ -4922,6 +4924,7 @@ const BASIC_ANALYSIS_GROUPS =
         {
             label: "求職者",
             ids: [
+                "gender",
                 "name-script",
                 "residence",
                 "prefecture-match"
