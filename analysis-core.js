@@ -475,8 +475,19 @@ function buildImageMap(dataset) {
                 50
             );
 
+        const applicationDataset =
+            viewerResponse?.datasets?.applicationData || {};
+
+        const applicationHeaders =
+            Array.isArray(applicationDataset?.headers)
+                ? applicationDataset.headers
+                : [];
+
+        const hasGenderField =
+            applicationHeaders.includes("性別");
+
         const apps = datasetObjects(
-            viewerResponse?.datasets?.applicationData || {}
+            applicationDataset
         );
 
         const jobs = datasetObjects(
@@ -608,6 +619,7 @@ function buildImageMap(dataset) {
             indeedTagLimit,
             topImageLimit,
             enterpriseInfo,
+            hasGenderField,
             timelineRecords,
             filteredTimelineRecords,
             recordsAll,
@@ -804,13 +816,24 @@ function buildImageMap(dataset) {
             });
         }
 
+        if (context.hasGenderField) {
+            definitions.push({
+                id: "gender",
+                label: "性別ごと",
+                baseLabel: "全応募",
+                records: all,
+                sort: "countDesc",
+                categoryFn: record =>
+                    category(record.app["性別"] || "（空欄）")
+            });
+        }
+
         definitions.push({
             id: "name-script",
             label: "氏名文字種区分別",
             baseLabel: "全応募",
             records: all,
-            sort: "fixed",
-            order: ["漢字を含む", "漢字を含まない", "（不明）"],
+            sort: "countDesc",
             categoryFn: record =>
                 category(record.app["氏名文字種区分"] || "（不明）")
         });
@@ -1994,6 +2017,7 @@ function customAxisOptions(
         ["対応状況", "status"],
         ["応募年月", "month"],
         ["応募媒体", "media"],
+        ["性別", "gender"],
         ["氏名文字種区分", "name-script"],
         ["居住都道府県", "residence"],
         ["企業ID", "enterprise"],
@@ -2022,7 +2046,11 @@ function customAxisOptions(
     const options =
         rules
             .filter(
-                ([, settingId]) =>
+                ([axis, settingId]) =>
+                    (
+                        axis !== "性別" ||
+                        context.hasGenderField
+                    ) &&
                     viewerDisplaySettingEnabled(
                         visibility,
                         settingId
@@ -2125,6 +2153,7 @@ function customAxisRequiresJob(axis) {
         "対応状況",
         "応募年月",
         "応募媒体",
+        "性別",
         "氏名文字種区分",
         "居住都道府県",
         "企業ID",
@@ -2180,15 +2209,12 @@ function customAxisValue(record, axis, context) {
         return category(record.app["応募媒体"] || "（未設定）");
     }
 
+    if (axis === "性別") {
+        return category(record.app["性別"] || "（空欄）");
+    }
+
     if (axis === "氏名文字種区分") {
-        const label = record.app["氏名文字種区分"] || "（不明）";
-        return category(
-            label,
-            fixedSortValue(
-                label,
-                ["漢字を含む", "漢字を含まない", "（不明）"]
-            )
-        );
+        return category(record.app["氏名文字種区分"] || "（不明）");
     }
 
     if (axis === "居住都道府県") {
