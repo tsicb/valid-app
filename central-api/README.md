@@ -31,7 +31,7 @@ The Apps Script export used CRLF line endings. The repository canonicalizes sour
 - adds `gender` to Viewer display definitions
 - exposes `性別` as a custom-analysis axis
 - keeps spreadsheet schema 3.0
-- Pages v30.42 performs CSV capture, basic aggregation, legacy-header detection and report presentation
+- Pages v30.43 performs CSV_A/CSV_B normalization, gender normalization, basic aggregation, legacy-header detection and report presentation
 
 ## v2.46 custom-analysis defaults
 
