@@ -341,6 +341,30 @@
             applicationAvailable &&
             jobRows.length > 0;
 
+        const jobCsvRows =
+            jobRows.filter(
+                job => {
+                    const source =
+                        s(
+                            job?.[
+                                "求人分析情報ソース"
+                            ]
+                        );
+
+                    // v30.44以前のjobAnalysisMasterにはsource列がない。
+                    // 旧データは求人CSV突合済み求人だけなのでJOB_CSVとして扱う。
+                    return (
+                        !source ||
+                        source ===
+                            "JOB_CSV"
+                    );
+                }
+            );
+
+        const jobCsvDataAvailable =
+            applicationAvailable &&
+            jobCsvRows.length > 0;
+
         const hasJobValue =
             field =>
                 jobDataAvailable &&
@@ -351,10 +375,20 @@
                         ) !== ""
                 );
 
-        const hasNumericJobValue =
+        const hasJobCsvValue =
             field =>
-                jobDataAvailable &&
-                jobRows.some(
+                jobCsvDataAvailable &&
+                jobCsvRows.some(
+                    job =>
+                        s(
+                            job?.[field]
+                        ) !== ""
+                );
+
+        const hasNumericJobCsvValue =
+            field =>
+                jobCsvDataAvailable &&
+                jobCsvRows.some(
                     job =>
                         n(
                             job?.[field]
@@ -363,8 +397,8 @@
 
         const hasSalaryType =
             salaryType =>
-                jobDataAvailable &&
-                jobRows.some(
+                jobCsvDataAvailable &&
+                jobCsvRows.some(
                     job =>
                         s(
                             job?.["給与区分"]
@@ -557,37 +591,37 @@
                 ),
             "求人原稿文字数":
                 capability(
-                    hasNumericJobValue(
+                    hasNumericJobCsvValue(
                         "求人原稿文字数"
                     ),
                     "JOB_TEXT_LENGTH_UNAVAILABLE"
                 ),
             "メイン画像有無":
                 capability(
-                    jobDataAvailable,
-                    "JOB_DATA_UNAVAILABLE"
+                    jobCsvDataAvailable,
+                    "JOB_CSV_DATA_UNAVAILABLE"
                 ),
             "求人画像枚数":
                 capability(
-                    jobDataAvailable,
-                    "JOB_DATA_UNAVAILABLE"
+                    jobCsvDataAvailable,
+                    "JOB_CSV_DATA_UNAVAILABLE"
                 ),
             "TOP画像ファイル名":
                 capability(
-                    hasJobValue(
+                    hasJobCsvValue(
                         "メイン画像ファイル名"
                     ),
                     "TOP_IMAGE_UNAVAILABLE"
                 ),
             "求人動画有無":
                 capability(
-                    jobDataAvailable,
-                    "JOB_DATA_UNAVAILABLE"
+                    jobCsvDataAvailable,
+                    "JOB_CSV_DATA_UNAVAILABLE"
                 ),
             "Indeed求人タグ数":
                 capability(
-                    jobDataAvailable,
-                    "JOB_DATA_UNAVAILABLE"
+                    jobCsvDataAvailable,
+                    "JOB_CSV_DATA_UNAVAILABLE"
                 )
         };
     }
@@ -841,6 +875,7 @@ function buildImageMap(dataset) {
         const filteredTimelineRecords = [];
         const recordsAll = [];
         const recordsMatched = [];
+        const recordsJobAvailable = [];
 
         apps.forEach(app => {
             const appDate = parseDate(app["応募日時"]);
@@ -864,9 +899,28 @@ function buildImageMap(dataset) {
             const jobRefId = s(app["求人参照ID"]);
             const matchedFlag = truthy(app["求人データ突合フラグ"]);
             const job =
-                matchedFlag && jobRefId
+                jobRefId
                     ? (jobMap.get(jobRefId) || null)
                     : null;
+
+            const jobAvailable =
+                !!job;
+
+            const matched =
+                matchedFlag &&
+                jobAvailable;
+
+            const jobSource =
+                jobAvailable
+                    ? (
+                        s(
+                            job?.[
+                                "求人分析情報ソース"
+                            ]
+                        ) ||
+                        "JOB_CSV"
+                    )
+                    : "";
 
             const enterpriseId = s(app["企業ID"]);
             let enterpriseLabel = enterpriseId;
@@ -892,7 +946,9 @@ function buildImageMap(dataset) {
             const record = {
                 app,
                 job,
-                matched: !!job,
+                matched,
+                jobAvailable,
+                jobSource,
                 jobRefId,
                 appDate,
                 age,
@@ -911,12 +967,27 @@ function buildImageMap(dataset) {
             };
 
             recordsAll.push(record);
-            if (record.matched) recordsMatched.push(record);
+
+            if (
+                record.jobAvailable
+            ) {
+                recordsJobAvailable.push(
+                    record
+                );
+            }
+
+            if (record.matched) {
+                recordsMatched.push(
+                    record
+                );
+            }
         });
 
         const basicAgeFilterActive = false;
         const basicRecordsAll = recordsAll;
         const basicRecordsMatched = recordsMatched;
+        const basicRecordsJobAvailable =
+            recordsJobAvailable;
 
         return {
             settings,
@@ -943,8 +1014,10 @@ function buildImageMap(dataset) {
             filteredTimelineRecords,
             recordsAll,
             recordsMatched,
+            recordsJobAvailable,
             basicRecordsAll,
-            basicRecordsMatched
+            basicRecordsMatched,
+            basicRecordsJobAvailable
         };
     }
 
@@ -1088,6 +1161,10 @@ function buildImageMap(dataset) {
     function buildBasicTableDefinitions(context) {
         const all = context.basicRecordsAll || context.recordsAll;
         const matched = context.basicRecordsMatched || context.recordsMatched;
+        const jobAvailable =
+            context.basicRecordsJobAvailable ||
+            context.recordsJobAvailable ||
+            matched;
         const w = context.widths;
         const definitions = [];
 
@@ -1170,8 +1247,8 @@ function buildImageMap(dataset) {
         definitions.push({
             id: "job-category",
             label: "職種別",
-            baseLabel: "求人突合済応募",
-            records: matched,
+            baseLabel: "求人分析情報あり応募",
+            records: jobAvailable,
             sort: "countDesc",
             categoryFn: record =>
                 category(record.job?.["職種"] || "（未設定）")
@@ -1180,8 +1257,8 @@ function buildImageMap(dataset) {
         definitions.push({
             id: "employment",
             label: "雇用形態別",
-            baseLabel: "求人突合済応募",
-            records: matched,
+            baseLabel: "求人分析情報あり応募",
+            records: jobAvailable,
             sort: "countDesc",
             categoryFn: record =>
                 category(record.job?.["雇用形態"] || "（未設定）")
@@ -1190,8 +1267,8 @@ function buildImageMap(dataset) {
         definitions.push({
             id: "job-location-name",
             label: "求人勤務地名称別",
-            baseLabel: "求人突合済応募",
-            records: matched,
+            baseLabel: "求人分析情報あり応募",
+            records: jobAvailable,
             sort: "countDesc",
             categoryFn: record =>
                 category(record.job?.["求人勤務地名称"] || "（未設定）")
@@ -1200,8 +1277,8 @@ function buildImageMap(dataset) {
         definitions.push({
             id: "job-prefecture",
             label: "勤務地都道府県別",
-            baseLabel: "求人突合済応募",
-            records: matched,
+            baseLabel: "求人分析情報あり応募",
+            records: jobAvailable,
             sort: "countDesc",
             categoryFn: record =>
                 category(record.job?.["勤務地都道府県"] || "（未設定）")
@@ -1226,8 +1303,8 @@ function buildImageMap(dataset) {
             definitions.push({
                 id: "job-keyword",
                 label: "仕事名KW別",
-                baseLabel: "求人突合済応募",
-                records: matched,
+                baseLabel: "求人分析情報あり応募",
+                records: jobAvailable,
                 sort: "countDesc",
                 categoryFn: record =>
                     category(record.kwSingle || "（該当なし）")
@@ -1236,8 +1313,8 @@ function buildImageMap(dataset) {
             definitions.push({
                 id: "job-full-keyword",
                 label: "仕事名フルKW別",
-                baseLabel: "求人突合済応募",
-                records: matched,
+                baseLabel: "求人分析情報あり応募",
+                records: jobAvailable,
                 sort: "countDesc",
                 categoryFn: record =>
                     category(record.kwFull || "（該当なし）")
@@ -1247,8 +1324,8 @@ function buildImageMap(dataset) {
         definitions.push({
             id: "recruit-background",
             label: "募集背景別",
-            baseLabel: "求人突合済応募",
-            records: matched,
+            baseLabel: "求人分析情報あり応募",
+            records: jobAvailable,
             sort: "countDesc",
             categoryFn: record =>
                 category(record.job?.["募集背景"] || "（未設定）")
@@ -1798,7 +1875,11 @@ function buildImageMap(dataset) {
     }
 
 function aggregateNoteDetail(context, basicColumnState) {
-    const records = context.basicRecordsMatched || context.recordsMatched;
+    const records =
+        context.basicRecordsJobAvailable ||
+        context.recordsJobAvailable ||
+        context.basicRecordsMatched ||
+        context.recordsMatched;
 
     const visible = records.some(
         record =>
@@ -2528,7 +2609,7 @@ function customAxisOptions(
 }
 
 
-function customAxisRequiresJob(axis) {
+function customAxisDataScope(axis) {
     const appOnly = new Set([
         "対応状況",
         "応募年月",
@@ -2543,7 +2624,39 @@ function customAxisRequiresJob(axis) {
         "応募時間帯"
     ]);
 
-    return !appOnly.has(axis);
+    if (appOnly.has(axis)) {
+        return "application";
+    }
+
+    const jobAnalysisAxes =
+        new Set([
+            "職種",
+            "雇用形態",
+            "求人勤務地名称",
+            "勤務地都道府県",
+            "仕事名KW",
+            "仕事名フルKW",
+            "募集背景",
+            "求人備考1行目"
+        ]);
+
+    if (
+        jobAnalysisAxes.has(
+            axis
+        )
+    ) {
+        return "jobAnalysis";
+    }
+
+    return "jobCsv";
+}
+
+function customAxisRequiresJob(axis) {
+    return (
+        customAxisDataScope(
+            axis
+        ) !== "application"
+    );
 }
 
 function fixedSortValue(label, order) {
@@ -2667,7 +2780,7 @@ function customAxisValue(record, axis, context) {
         );
     }
 
-    if (!record.matched) return null;
+    if (!record.jobAvailable) return null;
 
     if (axis === "職種") {
         return category(record.job?.["職種"] || "（未設定）");
@@ -2696,6 +2809,14 @@ function customAxisValue(record, axis, context) {
     if (axis === "募集背景") {
         return category(record.job?.["募集背景"] || "（未設定）");
     }
+
+    if (axis === "求人備考1行目") {
+        return category(
+            record.noteFirst || "（求人備考なし）"
+        );
+    }
+
+    if (!record.matched) return null;
 
     if (axis === "給与区分") {
         return category(record.job?.["給与区分"] || "（未設定）");
@@ -2800,12 +2921,6 @@ function customAxisValue(record, axis, context) {
         return category(`${start}-${end}個`, start);
     }
 
-    if (axis === "求人備考1行目") {
-        return category(
-            record.noteFirst || "（求人備考なし）"
-        );
-    }
-
     return null;
 }
 
@@ -2838,7 +2953,7 @@ const BASIC_COLUMN_AXIS_DEFINITIONS = Object.freeze([
         axis: "職種",
         selfTableId: "job-category",
         maxColumns: 12,
-        requiresMatched: true
+        requiresJobAnalysis: true
     },
     {
         key: "employment",
@@ -2846,7 +2961,7 @@ const BASIC_COLUMN_AXIS_DEFINITIONS = Object.freeze([
         axis: "雇用形態",
         selfTableId: "employment",
         maxColumns: 12,
-        requiresMatched: true
+        requiresJobAnalysis: true
     },
     {
         key: "weekday",
@@ -2868,11 +2983,11 @@ function basicColumnAxisCategory(record, definition, context) {
     }
 
     if (
-        definition.requiresMatched &&
-        !record.matched
+        definition.requiresJobAnalysis &&
+        !record.jobAvailable
     ) {
         return category(
-            "（求人未突合）",
+            "（求人情報なし）",
             999999999998
         );
     }
@@ -2928,16 +3043,25 @@ function collectBasicColumnLabels(context, definition) {
         ];
     }
 
-    const unmatchedIndex = labels.indexOf("（求人未突合）");
-    const unmatchedLabel =
-        unmatchedIndex >= 0
-            ? labels.splice(unmatchedIndex, 1)[0]
+    const unavailableIndex =
+        labels.indexOf(
+            "（求人情報なし）"
+        );
+
+    const unavailableLabel =
+        unavailableIndex >= 0
+            ? labels.splice(
+                unavailableIndex,
+                1
+            )[0]
             : "";
 
     sortCustomLabels(labels, metaMap, totalMap);
 
-    if (unmatchedLabel) {
-        labels.push(unmatchedLabel);
+    if (unavailableLabel) {
+        labels.push(
+            unavailableLabel
+        );
     }
 
     return labels;
@@ -2951,8 +3075,12 @@ function basicColumnAxisOptions(context) {
         );
         const categoryCount = columnLabels.length;
         const hasRequiredData =
-            !definition.requiresMatched ||
-            context.recordsMatched.length > 0;
+            !definition.requiresJobAnalysis ||
+            (
+                context.recordsJobAvailable ||
+                context.recordsMatched ||
+                []
+            ).length > 0;
         const available =
             definition.key === "age" ||
             (
@@ -2965,7 +3093,7 @@ function basicColumnAxisOptions(context) {
 
         if (!available) {
             if (!hasRequiredData) {
-                unavailableReason = "求人突合済応募がありません";
+                unavailableReason = "求人分析情報がある応募がありません";
             } else if (categoryCount > definition.maxColumns) {
                 unavailableReason = `${categoryCount}種類あるため基本表では利用できません`;
             } else {
@@ -3147,15 +3275,32 @@ function aggregateCustom(context, options = {}) {
         };
     }
 
-    const requiresJob =
-        allAxes.some(
-            customAxisRequiresJob
+    const scopes =
+        allAxes.map(
+            customAxisDataScope
         );
 
-    let base =
-        requiresJob
-            ? context.recordsMatched
-            : context.recordsAll;
+    let base;
+
+    if (
+        scopes.includes(
+            "jobCsv"
+        )
+    ) {
+        base =
+            context.recordsMatched;
+    } else if (
+        scopes.includes(
+            "jobAnalysis"
+        )
+    ) {
+        base =
+            context.recordsJobAvailable ||
+            context.recordsMatched;
+    } else {
+        base =
+            context.recordsAll;
+    }
 
     if (
         ageFilterMode ===
@@ -3530,6 +3675,7 @@ function aggregateCustom(context, options = {}) {
         analysisAxisCapability,
         analysisAxisAvailable,
         customAxisOptions,
+        customAxisDataScope,
         customAxisRequiresJob,
         customAxisValue,
         aggregateCustom,

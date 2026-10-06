@@ -3275,6 +3275,7 @@ const APPLICATION_DATA_HEADERS = [
 // 仕事内容・待遇・PR本文等の長文は、現行分析では原文を使わないため送信しない。
 const JOB_ANALYSIS_HEADERS = [
     "求人参照ID",
+    "求人分析情報ソース",
     "企業ID",
     "仕事番号",
     "求人管理番号",
@@ -3384,37 +3385,376 @@ function calculateJobTextLengthFromRawJob(row) {
     return combined.replace(/<br\s*\/?>/gi, "").length;
 }
 
-function buildJobRecordFromJoinedRow(row, jobRefId) {
-    const meta = row.__sheetMeta || {};
+const JOB_ANALYSIS_SOURCE = Object.freeze({
+    JOB_CSV: "JOB_CSV",
+    APPLICATION_EMBEDDED: "APPLICATION_EMBEDDED"
+});
+
+const APPLICATION_EMBEDDED_JOB_FIELDS = Object.freeze([
+    "仕事名",
+    "職種",
+    "雇用形態",
+    "求人勤務地名称",
+    "勤務地1",
+    "求人備考",
+    "募集背景"
+]);
+
+function hasApplicationEmbeddedJobData(row) {
+    return APPLICATION_EMBEDDED_JOB_FIELDS.some(
+        field =>
+            normalizeString(
+                row?.[field]
+            ) !== ""
+    );
+}
+
+function preferredJobAnalysisValue(
+    applicationRow,
+    jobCsvRow,
+    field
+) {
+    const jobCsvValue =
+        firstNonEmptyCsvValue(
+            jobCsvRow || {},
+            [field]
+        );
+
+    if (
+        normalizeString(
+            jobCsvValue
+        ) !== ""
+    ) {
+        return jobCsvValue;
+    }
+
+    return firstNonEmptyCsvValue(
+        applicationRow || {},
+        [field]
+    );
+}
+
+function buildJobAnalysisMeta(
+    applicationRow,
+    jobCsvRow,
+    matchedJobCsv
+) {
+    const hasEmbedded =
+        hasApplicationEmbeddedJobData(
+            applicationRow
+        );
+
+    const source =
+        matchedJobCsv
+            ? JOB_ANALYSIS_SOURCE.JOB_CSV
+            : (
+                hasEmbedded
+                    ? JOB_ANALYSIS_SOURCE.APPLICATION_EMBEDDED
+                    : ""
+            );
+
+    if (!source) {
+        return null;
+    }
+
+    const preferred =
+        field =>
+            preferredJobAnalysisValue(
+                applicationRow,
+                matchedJobCsv
+                    ? jobCsvRow
+                    : null,
+                field
+            );
+
+    const jobCsvOnly =
+        matchedJobCsv
+            ? (jobCsvRow || {})
+            : {};
+
+    const locationAddress =
+        preferred(
+            "勤務地1"
+        );
+
+    const locationPrefecture =
+        firstNonEmptyCsvValue(
+            jobCsvOnly,
+            ["勤務地都道府県"]
+        ) ||
+        extractPrefecture(
+            locationAddress
+        );
+
+    const salaryTypeCode =
+        matchedJobCsv
+            ? normalizeString(
+                jobCsvOnly["給与区分"]
+            )
+            : "";
+
+    const featureCode =
+        matchedJobCsv
+            ? normalizeString(
+                jobCsvOnly["特徴"]
+            )
+            : "";
+
+    const indeedTagCode =
+        matchedJobCsv
+            ? normalizeString(
+                jobCsvOnly["Indeed用求人関連タグ"]
+            )
+            : "";
+
+    const mainImageFileName =
+        matchedJobCsv
+            ? normalizeString(
+                jobCsvOnly["メイン画像データファイルタイトル"]
+            )
+            : "";
+
+    const videoTitle =
+        matchedJobCsv
+            ? normalizeString(
+                jobCsvOnly["動画タイトル"]
+            )
+            : "";
+
     return {
-        "求人参照ID": jobRefId,
-        "企業ID": getEnterpriseIdFromRow(row),
-        "仕事番号": normalizeString(row["仕事番号"]),
-        "求人管理番号": normalizeString(row["求人管理番号"]),
-        "公開情報区分": normalizeString(row["公開情報区分"]),
-        "仕事名": normalizeString(row["仕事名"]),
-        "Indeed用求人タイトル": normalizeString(row["Indeed用求人タイトル"]),
-        "職種": normalizeString(row["職種"]),
-        "雇用形態": normalizeString(row["雇用形態"]),
-        "募集背景": normalizeString(row["募集背景"]),
-        "求人勤務地名称": normalizeString(row["求人勤務地名称"]),
-        "勤務地住所": normalizeString(row["勤務地1"]),
-        "勤務地都道府県": normalizeString(row["勤務地都道府県"]),
-        "最寄駅": normalizeString(row["最寄駅1"]),
-        "求人備考": normalizeString(row["求人備考"]),
-        "給与区分コード": normalizeString(meta.salaryTypeCode),
-        "給与金額MIN": row["給与金額MIN"] ?? "",
-        "給与金額MAX": row["給与金額MAX"] ?? "",
-        "メイン画像ファイル名": getJobImageFileName(row),
-        "メイン画像あり": row["TOP画像"] ?? "",
-        "求人画像枚数": row["画像枚数"] ?? "",
-        "動画タイトル": normalizeString(row["動画タイトル"]),
-        "求人動画あり": row["動画"] ?? "",
-        "特徴コード": normalizeString(meta.featureCode),
-        "Indeed求人タグコード": normalizeString(meta.indeedTagCode),
-        "Indeed求人タグ数": row["求人タグ数"] ?? "",
-        "求人原稿文字数": row["求人文字数"] ?? ""
+        source,
+        values: {
+            "企業ID":
+                getEnterpriseIdFromRow(
+                    applicationRow
+                ),
+            "仕事番号":
+                normalizeString(
+                    applicationRow?.["仕事番号"]
+                ),
+            "求人管理番号":
+                matchedJobCsv
+                    ? normalizeString(
+                        jobCsvOnly["求人管理番号"]
+                    )
+                    : "",
+            "公開情報区分":
+                matchedJobCsv
+                    ? normalizeString(
+                        jobCsvOnly["公開情報区分"]
+                    )
+                    : "",
+            "仕事名":
+                preferred("仕事名"),
+            "Indeed用求人タイトル":
+                matchedJobCsv
+                    ? preferred(
+                        "Indeed用求人タイトル"
+                    )
+                    : "",
+            "職種":
+                preferred("職種"),
+            "雇用形態":
+                preferred("雇用形態"),
+            "募集背景":
+                preferred("募集背景"),
+            "求人勤務地名称":
+                preferred(
+                    "求人勤務地名称"
+                ),
+            "勤務地住所":
+                locationAddress,
+            "勤務地都道府県":
+                locationPrefecture,
+            "最寄駅":
+                preferred("最寄駅1"),
+            "求人備考":
+                preferred("求人備考"),
+            "給与区分コード":
+                salaryTypeCode,
+            "給与金額MIN":
+                matchedJobCsv
+                    ? (
+                        jobCsvOnly["給与金額MIN"] ??
+                        ""
+                    )
+                    : "",
+            "給与金額MAX":
+                matchedJobCsv
+                    ? (
+                        jobCsvOnly["給与金額MAX"] ??
+                        ""
+                    )
+                    : "",
+            "メイン画像ファイル名":
+                mainImageFileName,
+            "メイン画像あり":
+                matchedJobCsv
+                    ? (
+                        mainImageFileName
+                            ? 1
+                            : 0
+                    )
+                    : "",
+            "求人画像枚数":
+                matchedJobCsv
+                    ? countImagesFromRawJob(
+                        jobCsvOnly
+                    )
+                    : "",
+            "動画タイトル":
+                videoTitle,
+            "求人動画あり":
+                matchedJobCsv
+                    ? (
+                        videoTitle
+                            ? 1
+                            : 0
+                    )
+                    : "",
+            "特徴コード":
+                featureCode,
+            "Indeed求人タグコード":
+                indeedTagCode,
+            "Indeed求人タグ数":
+                matchedJobCsv
+                    ? countIndeedTagsFromRawCode(
+                        indeedTagCode
+                    )
+                    : "",
+            "求人原稿文字数":
+                matchedJobCsv
+                    ? calculateJobTextLengthFromRawJob(
+                        jobCsvOnly
+                    )
+                    : ""
+        }
     };
+}
+
+function buildJobRecordFromJoinedRow(row, jobRefId) {
+    const analysisMeta =
+        row.__jobAnalysisMeta ||
+        null;
+
+    const values =
+        analysisMeta?.values ||
+        {};
+
+    return {
+        "求人参照ID":
+            jobRefId,
+        "求人分析情報ソース":
+            normalizeString(
+                analysisMeta?.source
+            ),
+        ...Object.fromEntries(
+            JOB_ANALYSIS_HEADERS
+                .filter(
+                    header =>
+                        header !==
+                            "求人参照ID" &&
+                        header !==
+                            "求人分析情報ソース"
+                )
+                .map(
+                    header => [
+                        header,
+                        values[header] ?? ""
+                    ]
+                )
+        )
+    };
+}
+
+function mergeJobAnalysisRecord(
+    existing,
+    candidate
+) {
+    const existingSource =
+        normalizeString(
+            existing?.[
+                "求人分析情報ソース"
+            ]
+        );
+
+    const candidateSource =
+        normalizeString(
+            candidate?.[
+                "求人分析情報ソース"
+            ]
+        );
+
+    const candidatePreferred =
+        candidateSource ===
+            JOB_ANALYSIS_SOURCE.JOB_CSV &&
+        existingSource !==
+            JOB_ANALYSIS_SOURCE.JOB_CSV;
+
+    if (candidatePreferred) {
+        JOB_ANALYSIS_HEADERS.forEach(
+            header => {
+                if (
+                    header ===
+                        "求人参照ID"
+                ) {
+                    return;
+                }
+
+                const candidateValue =
+                    candidate?.[header];
+
+                if (
+                    normalizeString(
+                        candidateValue
+                    ) !== ""
+                ) {
+                    existing[header] =
+                        candidateValue;
+                }
+            }
+        );
+
+        existing[
+            "求人分析情報ソース"
+        ] =
+            JOB_ANALYSIS_SOURCE.JOB_CSV;
+    }
+
+    JOB_ANALYSIS_HEADERS.forEach(
+        header => {
+            if (
+                header ===
+                    "求人参照ID" ||
+                header ===
+                    "求人分析情報ソース"
+            ) {
+                return;
+            }
+
+            if (
+                normalizeString(
+                    existing?.[header]
+                ) !== ""
+            ) {
+                return;
+            }
+
+            const candidateValue =
+                candidate?.[header];
+
+            if (
+                normalizeString(
+                    candidateValue
+                ) !== ""
+            ) {
+                existing[header] =
+                    candidateValue;
+            }
+        }
+    );
+
+    return existing;
 }
 
 function buildJobSnapshotRecord(rawRow) {
@@ -3458,26 +3798,99 @@ function buildJobSnapshotRecord(rawRow) {
 
 function buildNormalizedSheetsModel() {
     const jobRefByKey = new Map();
+    const jobRecordByKey = new Map();
     const jobRecords = [];
     let nextJobRef = 1;
 
-    // Pagesが実際にJOINした求人だけを、同じJOINキー単位で1求人1行へ正規化する。
+    // 求人CSV突合済み求人を優先しつつ、求人CSVがない/突合できない場合は
+    // 応募CSV内に含まれる求人属性をfallbackとして1求人1行へ正規化する。
+    // 同じ求人キーが複数応募に現れる場合は、空欄を後続行から補完する。
     globalFinalData.forEach(row => {
-        const isMatched = Number(row["ファイルB結合フラグ"]) === 1;
-        if (!isMatched) return;
+        const analysisMeta =
+            row.__jobAnalysisMeta ||
+            null;
 
-        const key = buildJoinedJobKey(row);
-        if (!key || jobRefByKey.has(key)) return;
+        if (!analysisMeta?.source) {
+            return;
+        }
 
-        const jobRefId = `JOB${String(nextJobRef++).padStart(6, "0")}`;
-        jobRefByKey.set(key, jobRefId);
-        jobRecords.push(buildJobRecordFromJoinedRow(row, jobRefId));
+        const key =
+            buildJoinedJobKey(
+                row
+            );
+
+        if (!key) {
+            return;
+        }
+
+        if (
+            jobRefByKey.has(
+                key
+            )
+        ) {
+            const existing =
+                jobRecordByKey.get(
+                    key
+                );
+
+            const candidate =
+                buildJobRecordFromJoinedRow(
+                    row,
+                    jobRefByKey.get(
+                        key
+                    )
+                );
+
+            mergeJobAnalysisRecord(
+                existing,
+                candidate
+            );
+
+            return;
+        }
+
+        const jobRefId =
+            `JOB${String(nextJobRef++).padStart(6, "0")}`;
+
+        const record =
+            buildJobRecordFromJoinedRow(
+                row,
+                jobRefId
+            );
+
+        jobRefByKey.set(
+            key,
+            jobRefId
+        );
+
+        jobRecordByKey.set(
+            key,
+            record
+        );
+
+        jobRecords.push(
+            record
+        );
     });
+
+    let jobAnalysisApplicationCount = 0;
+    let applicationEmbeddedJobCount = 0;
 
     const applicationRows = globalFinalData.map((row, index) => {
         const isMatched = Number(row["ファイルB結合フラグ"]) === 1;
-        const key = isMatched ? buildJoinedJobKey(row) : "";
+        const key = buildJoinedJobKey(row);
         const jobRefId = key ? (jobRefByKey.get(key) || "") : "";
+
+        if (jobRefId) {
+            jobAnalysisApplicationCount++;
+        }
+
+        if (
+            jobRefId &&
+            !isMatched
+        ) {
+            applicationEmbeddedJobCount++;
+        }
 
         const record = {
             "レコードID": `APP${String(index + 1).padStart(6, "0")}`,
@@ -3518,7 +3931,29 @@ function buildNormalizedSheetsModel() {
             headers: JOB_ANALYSIS_HEADERS,
             rows: jobAnalysisRows
         },
-        jobRefByKey
+        jobRefByKey,
+        stats: {
+            jobAnalysisApplicationCount,
+            applicationEmbeddedJobCount,
+            jobAnalysisMasterCount:
+                jobAnalysisRows.length,
+            jobCsvMasterCount:
+                jobRecords.filter(
+                    record =>
+                        record[
+                            "求人分析情報ソース"
+                        ] ===
+                        JOB_ANALYSIS_SOURCE.JOB_CSV
+                ).length,
+            applicationEmbeddedMasterCount:
+                jobRecords.filter(
+                    record =>
+                        record[
+                            "求人分析情報ソース"
+                        ] ===
+                        JOB_ANALYSIS_SOURCE.APPLICATION_EMBEDDED
+                ).length
+        }
     };
 }
 
@@ -3538,7 +3973,11 @@ function buildProcessInfoDataset(normalizedModel) {
         ["分析対象応募数", globalFinalData.length],
         ["求人突合済応募数", globalJoinCount],
         ["求人突合率", Number(joinRate.toFixed(2))],
-        ["JOIN済み求人マスタ件数", normalizedModel.jobAnalysisMaster.rows.length],
+        ["求人分析情報あり応募数", Number(normalizedModel.stats?.jobAnalysisApplicationCount || 0)],
+        ["応募CSV内求人情報利用応募数", Number(normalizedModel.stats?.applicationEmbeddedJobCount || 0)],
+        ["求人分析マスタ件数", normalizedModel.jobAnalysisMaster.rows.length],
+        ["求人CSV由来求人マスタ件数", Number(normalizedModel.stats?.jobCsvMasterCount || 0)],
+        ["応募CSV由来求人マスタ件数", Number(normalizedModel.stats?.applicationEmbeddedMasterCount || 0)],
         ["画像分析対象数", globalImageLookupStats.targetCount],
         ["画像URL取得成功数", globalImageLookupStats.successCount],
         ["画像URL未取得数", globalImageLookupStats.unresolvedCount]
@@ -5111,7 +5550,7 @@ function refreshSheetsCreateSummary() {
 
     if (jobFileCount === 0) {
         el.textContent =
-            `分析対象 ${appCount.toLocaleString()}応募 ／ 求人CSVなし（応募データのみで作成）`;
+            `分析対象 ${appCount.toLocaleString()}応募 ／ 求人CSVなし（応募CSV内の求人情報を利用できる範囲で分析）`;
     } else {
         el.textContent =
             `分析対象 ${appCount.toLocaleString()}応募 ／ 求人突合 ${joinCount.toLocaleString()}応募（${joinRate.toFixed(1)}%） ／ 求人CSV ${jobFileCount}ファイル`;
@@ -7719,7 +8158,7 @@ async function createGoogleSpreadsheet({
         const proceed =
             window.confirm(
                 "求人CSVは読み込まれていますが、応募データとの求人突合が0件です。\n\n" +
-                "このまま「応募データのみ」で分析レポートへ反映しますか？"
+                "求人CSVは使わず、応募CSV内の求人情報を利用できる範囲で分析レポートへ反映しますか？"
             );
 
         if (!proceed) {
@@ -12443,6 +12882,23 @@ const viewerTab =
                         enumerable: false,
                         configurable: true
                     });
+
+                    Object.defineProperty(
+                        newRow,
+                        "__jobAnalysisMeta",
+                        {
+                            value:
+                                buildJobAnalysisMeta(
+                                    rowA,
+                                    sourceB,
+                                    !!matchedB
+                                ),
+                            enumerable:
+                                false,
+                            configurable:
+                                true
+                        }
+                    );
 
                     derivedCols.forEach(col => {
                         let val = "";

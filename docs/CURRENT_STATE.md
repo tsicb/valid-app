@@ -6,7 +6,7 @@ This file describes the **repository baseline**, not a guarantee that each exter
 
 ## Versions
 
-- GitHub Pages: **v30.44**
+- GitHub Pages: **v30.45**
 - Central API source baseline: **v2.47**
 - Cloudflare image Worker: **v2**
 - Spreadsheet schema: **3.0**
@@ -23,7 +23,7 @@ The complete 11-file GAS source was then provided from the current Apps Script p
 
 The raw upload used CRLF line endings, while most of the prior package used LF. After line-ending normalization, the code is identical. The repository now stores the canonical Central API source under `central-api/*.gs` with LF line endings.
 
-The four root Pages files on `main` are the Pages v30.44 source baseline:
+The four root Pages files on `main` are the Pages v30.45 source baseline:
 
 - `index.html`
 - `report.html`
@@ -123,6 +123,20 @@ The four root Pages files on `main` are the Pages v30.44 source baseline:
 - new ETL runs store an unknown prefecture match as blank when either prefecture cannot be resolved; report presentation renders that value as `（不明）`
 - existing DataStore rows are not rewritten automatically; companies receive the corrected prefecture-match values after their CSV data is updated again
 - this is a Pages-only change; Central API v2.47 and spreadsheet schema 3.0 are unchanged
+
+### Application-embedded job-analysis fallback (Pages v30.45)
+
+- `jobAnalysisMaster` can now include job-analysis rows sourced from application CSV data when no job CSV row is matched
+- each job-analysis row records `求人分析情報ソース` as `JOB_CSV` or `APPLICATION_EMBEDDED`
+- when a job CSV row is matched, job CSV values take priority and blank core attributes can fall back to the application CSV copy
+- repeated applications for the same job key merge non-empty embedded attributes, so fallback quality does not depend only on the first application row
+- application-only fallback is limited to compatible core attributes such as 仕事名 / 職種 / 雇用形態 / 求人勤務地名称 / 勤務地 / 求人備考 / 募集背景
+- salary, text-length, image, video and Indeed-tag analyses remain job-CSV-only so their existing definitions are not diluted by application CSV data
+- `求人データ突合フラグ` and the report KPI `求人データ突合率` continue to mean actual job-CSV matching; they are not inflated by fallback data
+- Viewer records now distinguish `matched` from `jobAvailable`; core job analyses and custom axes use `jobAvailable`, while job-CSV-only analyses continue to use `matched`
+- basic column axes for 職種 / 雇用形態 now use job-analysis availability and show `（求人情報なし）` only for applications without either source
+- process information records counts for applications/job-master rows using application-embedded fallback
+- Central API v2.47 and spreadsheet schema 3.0 remain unchanged; the DataStore already accepts dynamic dataset headers
 
 ### Central API GitHub Actions
 

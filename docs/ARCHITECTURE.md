@@ -203,6 +203,8 @@ The hidden `34_カスタム分析設定` remains as a compatibility mirror for o
 
 Custom-axis choices are also gated by source-data capability. The capability check uses the stored application/job/master datasets before the current period or age filters are applied. Therefore an axis does not disappear merely because the current filter produces zero rows. Job-derived axes require their underlying job attribute to exist; application-only axes remain independent from job matching.
 
+Job analysis has two source levels. A matched job CSV row is stored as `JOB_CSV` and remains authoritative for full job analysis. When no job CSV row is matched, compatible job attributes embedded in application CSV A/B can create an `APPLICATION_EMBEDDED` job-analysis row. Repeated application rows for the same job key merge non-empty core attributes, while `JOB_CSV` has source priority. Core axes (職種, 雇用形態, 求人勤務地名称, 勤務地都道府県, 仕事名KW, 仕事名フルKW, 募集背景, 求人備考1行目) may use either source. Salary, job-text length, image, video and Indeed-tag analysis remain `JOB_CSV` only. The application `求人データ突合フラグ` continues to represent actual job-CSV matching.
+
 `勤務地・居住都道府県一致` is application-level once a valid match result has been stored. It does not require a matched job record in the Viewer. New ETL runs store blank/unknown when either prefecture cannot be resolved, instead of treating missing prefecture data as a mismatch.
 
 ## 11. Image pipeline
