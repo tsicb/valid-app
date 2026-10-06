@@ -1996,7 +1996,7 @@ function startEtlProcessingOverlay() {
 
     updateEtlProcessingStage(
         "csv",
-        "選択されたShift_JIS形式のCSVを読み込んでいます。"
+        "選択されたCSVの文字コードと入力形式を確認して読み込んでいます。"
     );
 }
 
@@ -5591,7 +5591,7 @@ function renderEtlPerformance(apiData = null) {
 
     const rows = [
         perfRow(
-            "CSV読込（Shift_JIS固定）",
+            "CSV読込（文字コード自動判定）",
             trace.csvReadMs
         ),
         perfRow(
