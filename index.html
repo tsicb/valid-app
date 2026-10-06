@@ -1269,6 +1269,8 @@
         const salaryTypeMap = commonMasters.salaryTypeMap;
         const featureCodeMap = commonMasters.featureCodeMap;
         const indeedTagMap = commonMasters.indeedTagMap; 
+        // 求人CSVは従来どおりヘッダーaliasで正規化する。
+        // 応募CSVはA/B形式で同名・類似列が衝突するため、parse後に行単位でcanonical化する。
         const aliasMap = { "お仕事NO": "仕事番号", "応募日": "応募日時", "就業形態": "雇用形態", "掲載仕事備考": "求人備考", "勤務地名1": "求人勤務地名称", "求人都道府県": "勤務地1", "応募者名": "氏名", "応募媒体名": "応募媒体", "都道府県": "住所", "特徴コード": "特徴" };
 
         const targetColsA = [
@@ -2113,6 +2115,458 @@ function stopEtlProcessingOverlay({
 const INPUT_CSV_ENCODING =
     "Shift_JIS";
 
+function cleanCsvHeader(
+    value
+) {
+    return String(
+        value || ""
+    )
+        .replace(/^\uFEFF/, "")
+        .trim();
+}
+
+async function detectCsvEncoding(
+    file
+) {
+    const bytes =
+        new Uint8Array(
+            await file
+                .slice(0, 65536)
+                .arrayBuffer()
+        );
+
+    if (
+        bytes.length >= 3 &&
+        bytes[0] === 0xEF &&
+        bytes[1] === 0xBB &&
+        bytes[2] === 0xBF
+    ) {
+        return "UTF-8";
+    }
+
+    try {
+        new TextDecoder(
+            "utf-8",
+            { fatal: true }
+        ).decode(bytes);
+
+        return "UTF-8";
+    } catch (_) {
+        return INPUT_CSV_ENCODING;
+    }
+}
+
+function firstNonEmptyCsvValue(
+    row,
+    candidates
+) {
+    for (
+        const name of candidates
+    ) {
+        if (
+            !Object.prototype
+                .hasOwnProperty.call(
+                    row || {},
+                    name
+                )
+        ) {
+            continue;
+        }
+
+        const value =
+            String(
+                row[name] ?? ""
+            ).trim();
+
+        if (value !== "") {
+            return row[name];
+        }
+    }
+
+    return "";
+}
+
+function normalizeApplicationGender(
+    value
+) {
+    const raw =
+        String(
+            value ?? ""
+        ).trim();
+
+    if (
+        raw === "男" ||
+        raw === "男性"
+    ) {
+        return "男性";
+    }
+
+    if (
+        raw === "女" ||
+        raw === "女性"
+    ) {
+        return "女性";
+    }
+
+    if (
+        raw === "" ||
+        raw === "不明"
+    ) {
+        return "不明";
+    }
+
+    if (
+        raw === "未回答"
+    ) {
+        return "未回答";
+    }
+
+    // 将来値が増えても勝手に意味変換せず、そのまま分析カテゴリとして残す。
+    return raw;
+}
+
+function detectApplicationCsvFormat(
+    fields
+) {
+    const fieldSet =
+        new Set(
+            (fields || [])
+                .map(cleanCsvHeader)
+                .filter(Boolean)
+        );
+
+    if (
+        fieldSet.has(
+            "応募先企業ID"
+        ) &&
+        fieldSet.has(
+            "応募求人ID"
+        ) &&
+        fieldSet.has(
+            "応募者ID"
+        )
+    ) {
+        return "B";
+    }
+
+    if (
+        fieldSet.has(
+            "企業コード"
+        ) &&
+        (
+            fieldSet.has(
+                "お仕事NO"
+            ) ||
+            fieldSet.has(
+                "仕事番号"
+            )
+        ) &&
+        (
+            fieldSet.has(
+                "応募日時"
+            ) ||
+            fieldSet.has(
+                "応募日"
+            )
+        )
+    ) {
+        return "A";
+    }
+
+    return "GENERIC";
+}
+
+function normalizeApplicationCsv(
+    rows,
+    fields
+) {
+    const cleanFields =
+        (fields || [])
+            .map(cleanCsvHeader);
+
+    const fieldSet =
+        new Set(
+            cleanFields
+                .filter(Boolean)
+        );
+
+    const format =
+        detectApplicationCsvFormat(
+            cleanFields
+        );
+
+    const canonicalFields =
+        new Set(
+            cleanFields
+        );
+
+    const exposeCanonical =
+        (
+            canonical,
+            aliases
+        ) => {
+            if (
+                aliases.some(
+                    alias =>
+                        fieldSet.has(
+                            alias
+                        )
+                )
+            ) {
+                canonicalFields.add(
+                    canonical
+                );
+            }
+        };
+
+    exposeCanonical(
+        "仕事番号",
+        [
+            "仕事番号",
+            "お仕事NO",
+            "応募求人ID"
+        ]
+    );
+    exposeCanonical(
+        "応募日時",
+        [
+            "応募日時",
+            "応募日"
+        ]
+    );
+    exposeCanonical(
+        "氏名",
+        [
+            "氏名",
+            "応募者名"
+        ]
+    );
+    exposeCanonical(
+        "企業コード",
+        [
+            "企業コード",
+            "企業ID",
+            "応募先企業ID"
+        ]
+    );
+    exposeCanonical(
+        "応募媒体",
+        [
+            "応募媒体",
+            "応募媒体名"
+        ]
+    );
+    exposeCanonical(
+        "対応状況",
+        [
+            "対応状況",
+            "応募者対応ステータス（企業）"
+        ]
+    );
+    exposeCanonical(
+        "メールアドレス",
+        [
+            "メールアドレス",
+            "MAIL"
+        ]
+    );
+    exposeCanonical(
+        "雇用形態",
+        [
+            "雇用形態",
+            "就業形態"
+        ]
+    );
+    exposeCanonical(
+        "求人備考",
+        [
+            "求人備考",
+            "掲載仕事備考"
+        ]
+    );
+    exposeCanonical(
+        "求人勤務地名称",
+        [
+            "求人勤務地名称",
+            "勤務地名1"
+        ]
+    );
+    exposeCanonical(
+        "勤務地1",
+        [
+            "勤務地1",
+            "求人都道府県",
+            "求人市区町村",
+            "求人勤務地住所"
+        ]
+    );
+    exposeCanonical(
+        "住所",
+        [
+            "都道府県",
+            "住所"
+        ]
+    );
+
+    const normalizedRows =
+        (rows || [])
+            .map(
+                source => {
+                    const row = {
+                        ...(source || {})
+                    };
+
+                    row["仕事番号"] =
+                        firstNonEmptyCsvValue(
+                            source,
+                            [
+                                "仕事番号",
+                                "お仕事NO",
+                                "応募求人ID"
+                            ]
+                        );
+
+                    row["応募日時"] =
+                        firstNonEmptyCsvValue(
+                            source,
+                            [
+                                "応募日時",
+                                "応募日"
+                            ]
+                        );
+
+                    row["氏名"] =
+                        firstNonEmptyCsvValue(
+                            source,
+                            [
+                                "氏名",
+                                "応募者名"
+                            ]
+                        );
+
+                    row["企業コード"] =
+                        firstNonEmptyCsvValue(
+                            source,
+                            [
+                                "企業コード",
+                                "企業ID",
+                                "応募先企業ID"
+                            ]
+                        );
+
+                    row["応募媒体"] =
+                        firstNonEmptyCsvValue(
+                            source,
+                            [
+                                "応募媒体",
+                                "応募媒体名"
+                            ]
+                        );
+
+                    row["対応状況"] =
+                        firstNonEmptyCsvValue(
+                            source,
+                            [
+                                "対応状況",
+                                "応募者対応ステータス（企業）"
+                            ]
+                        );
+
+                    row["メールアドレス"] =
+                        firstNonEmptyCsvValue(
+                            source,
+                            [
+                                "メールアドレス",
+                                "MAIL"
+                            ]
+                        );
+
+                    row["雇用形態"] =
+                        firstNonEmptyCsvValue(
+                            source,
+                            [
+                                "雇用形態",
+                                "就業形態"
+                            ]
+                        );
+
+                    row["求人備考"] =
+                        firstNonEmptyCsvValue(
+                            source,
+                            [
+                                "求人備考",
+                                "掲載仕事備考"
+                            ]
+                        );
+
+                    row["求人勤務地名称"] =
+                        firstNonEmptyCsvValue(
+                            source,
+                            [
+                                "求人勤務地名称",
+                                "勤務地名1"
+                            ]
+                        );
+
+                    if (
+                        format === "B"
+                    ) {
+                        row["勤務地1"] =
+                            [
+                                source?.["求人都道府県"],
+                                source?.["求人市区町村"],
+                                source?.["求人勤務地住所"]
+                            ]
+                                .map(
+                                    value =>
+                                        String(
+                                            value ?? ""
+                                        ).trim()
+                                )
+                                .filter(Boolean)
+                                .join("");
+                    } else {
+                        row["勤務地1"] =
+                            firstNonEmptyCsvValue(
+                                source,
+                                [
+                                    "勤務地1",
+                                    "求人都道府県"
+                                ]
+                            );
+                    }
+
+                    // CSV_Aの「都道府県」は市区町村以降を含む場合がある。
+                    // CSV_Bは「住所」が別列にあるため、都道府県が空なら住所へフォールバックする。
+                    row["住所"] =
+                        firstNonEmptyCsvValue(
+                            source,
+                            [
+                                "都道府県",
+                                "住所"
+                            ]
+                        );
+
+                    row["性別"] =
+                        normalizeApplicationGender(
+                            source?.["性別"]
+                        );
+
+                    return row;
+                }
+            );
+
+    return {
+        rows:
+            normalizedRows,
+        fields:
+            Array.from(
+                canonicalFields
+            ),
+        format
+    };
+}
+
 function validateFixedCsvFormat(
     kind,
     fields,
@@ -2121,12 +2575,7 @@ function validateFixedCsvFormat(
     const normalizedFields =
         new Set(
             (fields || [])
-                .map(
-                    field =>
-                        String(
-                            field || ""
-                        ).trim()
-                )
+                .map(cleanCsvHeader)
                 .filter(Boolean)
         );
 
@@ -2205,7 +2654,7 @@ function validateFixedCsvFormat(
 
         throw new Error(
             `${spec.label}「${fileName}」の形式を確認できませんでした。\n` +
-            `このツールは天職市場のShift_JIS固定CSVを読み込みます。\n` +
+            `このツールは応募CSV_A / 応募CSV_Bと、従来の求人CSVを読み込みます。\n` +
             `不足または文字化けしている必須項目: ${details.join(" / ")}`
         );
     }
@@ -2215,6 +2664,14 @@ async function parseCSV(
     file,
     kind
 ) {
+    const detectedEncoding =
+        await detectCsvEncoding(
+            file
+        );
+
+    let applicationFormat =
+        "";
+
     const rows =
         await new Promise(
             (
@@ -2227,11 +2684,20 @@ async function parseCSV(
                         header: true,
                         skipEmptyLines: true,
                         encoding:
-                            INPUT_CSV_ENCODING,
+                            detectedEncoding,
                         transformHeader:
                             function(header) {
                                 const cleanHeader =
-                                    header.trim();
+                                    cleanCsvHeader(
+                                        header
+                                    );
+
+                                if (
+                                    kind !==
+                                    "job"
+                                ) {
+                                    return cleanHeader;
+                                }
 
                                 return aliasMap[
                                     cleanHeader
@@ -2244,12 +2710,38 @@ async function parseCSV(
                         complete:
                             results => {
                                 try {
-                                    validateFixedCsvFormat(
-                                        kind,
+                                    let parsedRows =
+                                        results.data;
+
+                                    let parsedFields =
                                         results
                                             .meta
                                             ?.fields ||
-                                            [],
+                                        [];
+
+                                    if (
+                                        kind ===
+                                        "application"
+                                    ) {
+                                        const normalized =
+                                            normalizeApplicationCsv(
+                                                parsedRows,
+                                                parsedFields
+                                            );
+
+                                        parsedRows =
+                                            normalized.rows;
+
+                                        parsedFields =
+                                            normalized.fields;
+
+                                        applicationFormat =
+                                            normalized.format;
+                                    }
+
+                                    validateFixedCsvFormat(
+                                        kind,
+                                        parsedFields,
                                         file.name
                                     );
 
@@ -2270,7 +2762,7 @@ async function parseCSV(
                                     }
 
                                     resolve(
-                                        results.data
+                                        parsedRows
                                     );
 
                                 } catch (
@@ -2294,7 +2786,9 @@ async function parseCSV(
     return {
         rows,
         encoding:
-            INPUT_CSV_ENCODING
+            detectedEncoding,
+        format:
+            applicationFormat
     };
 }
 
@@ -3001,7 +3495,7 @@ function buildNormalizedSheetsModel() {
             "応募媒体": normalizeString(row["応募媒体"]),
             "年齢": row["年齢"] ?? "",
             "年代": normalizeString(row["年代"]),
-            "性別": normalizeString(row["性別"]),
+            "性別": normalizeApplicationGender(row["性別"]),
             "氏名文字種区分": mapNameCharacterClass(row["国籍"]),
             "メールドメイン": normalizeMailDomain(row["メールアドレス"]),
             "居住都道府県": normalizeString(row["住所"]),
