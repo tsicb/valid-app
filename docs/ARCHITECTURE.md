@@ -201,6 +201,10 @@ The report already supports up to three row axes. Central API normalizes these d
 
 The hidden `34_カスタム分析設定` remains as a compatibility mirror for older workbooks and management paths. New configuration should be read from and written to the visible 30-sheet settings.
 
+Custom-axis choices are also gated by source-data capability. The capability check uses the stored application/job/master datasets before the current period or age filters are applied. Therefore an axis does not disappear merely because the current filter produces zero rows. Job-derived axes require their underlying job attribute to exist; application-only axes remain independent from job matching.
+
+`勤務地・居住都道府県一致` is application-level once a valid match result has been stored. It does not require a matched job record in the Viewer. New ETL runs store blank/unknown when either prefecture cannot be resolved, instead of treating missing prefecture data as a mismatch.
+
 ## 11. Image pipeline
 
 TOP-image flow uses a Cloudflare Worker against Tenichi job pages.

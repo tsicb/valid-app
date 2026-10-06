@@ -12401,7 +12401,8 @@ const viewerTab =
                         else if (col === "住所都道府県") {
                             const workPref = extractPrefecture(rowA["勤務地1"]);
                             const homePref = extractPrefecture(rowA["住所"]);
-                            val = (workPref !== "" && workPref === homePref) ? 1 : 0;
+                            if (!workPref || !homePref) val = "";
+                            else val = workPref === homePref ? 1 : 0;
                         }
                         else if (col === "年齢") {
                             const ageNum = parseInt(String(val).replace("歳", ""), 10);

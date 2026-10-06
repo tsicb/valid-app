@@ -321,6 +321,315 @@
         return { map, hasAnyDisplayName };
     }
 
+    function buildAnalysisSourceCapabilities({
+        apps,
+        jobs,
+        keywordMaster,
+        enterpriseInfo,
+        applicationHeaders
+    }) {
+        const applicationAvailable =
+            Array.isArray(apps) &&
+            apps.length > 0;
+
+        const jobRows =
+            Array.isArray(jobs)
+                ? jobs
+                : [];
+
+        const jobDataAvailable =
+            applicationAvailable &&
+            jobRows.length > 0;
+
+        const hasJobValue =
+            field =>
+                jobDataAvailable &&
+                jobRows.some(
+                    job =>
+                        s(
+                            job?.[field]
+                        ) !== ""
+                );
+
+        const hasNumericJobValue =
+            field =>
+                jobDataAvailable &&
+                jobRows.some(
+                    job =>
+                        n(
+                            job?.[field]
+                        ) !== null
+                );
+
+        const hasSalaryType =
+            salaryType =>
+                jobDataAvailable &&
+                jobRows.some(
+                    job =>
+                        s(
+                            job?.["給与区分"]
+                        ) === salaryType
+                );
+
+        const hasKeywordSource =
+            hasJobValue(
+                "仕事名"
+            ) &&
+            Array.isArray(
+                keywordMaster
+            ) &&
+            keywordMaster.length > 0;
+
+        const hasPrefectureMatch =
+            applicationAvailable &&
+            apps.some(
+                app =>
+                    yesNoMatchLabel(
+                        app?.[
+                            "勤務地・居住都道府県一致"
+                        ]
+                    ) !== "（不明）"
+            );
+
+        const capability =
+            (
+                available,
+                reason = ""
+            ) => ({
+                available:
+                    !!available,
+                reason:
+                    available
+                        ? ""
+                        : reason
+            });
+
+        return {
+            "対応状況":
+                capability(
+                    applicationAvailable,
+                    "NO_APPLICATION_DATA"
+                ),
+            "応募年月":
+                capability(
+                    applicationAvailable,
+                    "NO_APPLICATION_DATA"
+                ),
+            "応募媒体":
+                capability(
+                    applicationAvailable,
+                    "NO_APPLICATION_DATA"
+                ),
+            "性別":
+                capability(
+                    applicationAvailable &&
+                    Array.isArray(
+                        applicationHeaders
+                    ) &&
+                    applicationHeaders.includes(
+                        "性別"
+                    ),
+                    "GENDER_FIELD_UNAVAILABLE"
+                ),
+            "氏名文字種区分":
+                capability(
+                    applicationAvailable,
+                    "NO_APPLICATION_DATA"
+                ),
+            "居住都道府県":
+                capability(
+                    applicationAvailable,
+                    "NO_APPLICATION_DATA"
+                ),
+            "企業ID":
+                capability(
+                    applicationAvailable &&
+                    !!enterpriseInfo
+                        ?.hasAnyDisplayName,
+                    "ENTERPRISE_DISPLAY_NAME_UNAVAILABLE"
+                ),
+            "月内応募日":
+                capability(
+                    applicationAvailable,
+                    "NO_APPLICATION_DATA"
+                ),
+            "応募曜日":
+                capability(
+                    applicationAvailable,
+                    "NO_APPLICATION_DATA"
+                ),
+            "応募時間帯":
+                capability(
+                    applicationAvailable,
+                    "NO_APPLICATION_DATA"
+                ),
+            "勤務地・居住都道府県一致":
+                capability(
+                    hasPrefectureMatch,
+                    "PREFECTURE_MATCH_UNAVAILABLE"
+                ),
+            "職種":
+                capability(
+                    hasJobValue(
+                        "職種"
+                    ),
+                    "JOB_CATEGORY_UNAVAILABLE"
+                ),
+            "雇用形態":
+                capability(
+                    hasJobValue(
+                        "雇用形態"
+                    ),
+                    "EMPLOYMENT_UNAVAILABLE"
+                ),
+            "求人勤務地名称":
+                capability(
+                    hasJobValue(
+                        "求人勤務地名称"
+                    ),
+                    "JOB_LOCATION_NAME_UNAVAILABLE"
+                ),
+            "勤務地都道府県":
+                capability(
+                    hasJobValue(
+                        "勤務地都道府県"
+                    ),
+                    "JOB_PREFECTURE_UNAVAILABLE"
+                ),
+            "募集背景":
+                capability(
+                    hasJobValue(
+                        "募集背景"
+                    ),
+                    "RECRUIT_BACKGROUND_UNAVAILABLE"
+                ),
+            "仕事名KW":
+                capability(
+                    hasKeywordSource,
+                    "JOB_KEYWORD_UNAVAILABLE"
+                ),
+            "仕事名フルKW":
+                capability(
+                    hasKeywordSource,
+                    "JOB_KEYWORD_UNAVAILABLE"
+                ),
+            "求人備考1行目":
+                capability(
+                    hasJobValue(
+                        "求人備考"
+                    ),
+                    "JOB_NOTE_UNAVAILABLE"
+                ),
+            "給与区分":
+                capability(
+                    hasJobValue(
+                        "給与区分"
+                    ),
+                    "SALARY_TYPE_UNAVAILABLE"
+                ),
+            "時給下限":
+                capability(
+                    hasSalaryType(
+                        "時給"
+                    ),
+                    "HOURLY_SALARY_UNAVAILABLE"
+                ),
+            "日給下限":
+                capability(
+                    hasSalaryType(
+                        "日給"
+                    ),
+                    "DAILY_SALARY_UNAVAILABLE"
+                ),
+            "月給下限":
+                capability(
+                    hasSalaryType(
+                        "月給"
+                    ),
+                    "MONTHLY_SALARY_UNAVAILABLE"
+                ),
+            "年収下限":
+                capability(
+                    hasSalaryType(
+                        "年収"
+                    ),
+                    "ANNUAL_SALARY_UNAVAILABLE"
+                ),
+            "求人原稿文字数":
+                capability(
+                    hasNumericJobValue(
+                        "求人原稿文字数"
+                    ),
+                    "JOB_TEXT_LENGTH_UNAVAILABLE"
+                ),
+            "メイン画像有無":
+                capability(
+                    jobDataAvailable,
+                    "JOB_DATA_UNAVAILABLE"
+                ),
+            "求人画像枚数":
+                capability(
+                    jobDataAvailable,
+                    "JOB_DATA_UNAVAILABLE"
+                ),
+            "TOP画像ファイル名":
+                capability(
+                    hasJobValue(
+                        "メイン画像ファイル名"
+                    ),
+                    "TOP_IMAGE_UNAVAILABLE"
+                ),
+            "求人動画有無":
+                capability(
+                    jobDataAvailable,
+                    "JOB_DATA_UNAVAILABLE"
+                ),
+            "Indeed求人タグ数":
+                capability(
+                    jobDataAvailable,
+                    "JOB_DATA_UNAVAILABLE"
+                )
+        };
+    }
+
+    function analysisAxisCapability(
+        context,
+        axis
+    ) {
+        const key =
+            s(axis);
+
+        const capability =
+            context
+                ?.sourceCapabilities
+                ?.[key];
+
+        return (
+            capability &&
+            typeof capability ===
+                "object"
+        )
+            ? capability
+            : {
+                available: false,
+                reason:
+                    "AXIS_CAPABILITY_UNDEFINED"
+            };
+    }
+
+    function analysisAxisAvailable(
+        context,
+        axis
+    ) {
+        return (
+            analysisAxisCapability(
+                context,
+                axis
+            ).available ===
+            true
+        );
+    }
+
 
 function noteFirstLine(value) {
     const text = s(value);
@@ -519,6 +828,15 @@ function buildImageMap(dataset) {
             viewerResponse?.datasets?.enterpriseMaster || {}
         );
 
+        const sourceCapabilities =
+            buildAnalysisSourceCapabilities({
+                apps,
+                jobs,
+                keywordMaster,
+                enterpriseInfo,
+                applicationHeaders
+            });
+
         const timelineRecords = [];
         const filteredTimelineRecords = [];
         const recordsAll = [];
@@ -620,6 +938,7 @@ function buildImageMap(dataset) {
             topImageLimit,
             enterpriseInfo,
             hasGenderField,
+            sourceCapabilities,
             timelineRecords,
             filteredTimelineRecords,
             recordsAll,
@@ -891,8 +1210,8 @@ function buildImageMap(dataset) {
         definitions.push({
             id: "prefecture-match",
             label: "勤務地・居住都道府県一致別",
-            baseLabel: "求人突合済応募",
-            records: matched,
+            baseLabel: "全応募",
+            records: all,
             sort: "fixed",
             order: ["一致", "不一致", "（不明）"],
             categoryFn: record =>
@@ -1365,8 +1684,57 @@ function buildImageMap(dataset) {
                 context.settings?.["基本表列軸"] || "age"
             );
 
+        const axisByDefinitionId = {
+            "status": "対応状況",
+            "month": "応募年月",
+            "media": "応募媒体",
+            "enterprise": "企業ID",
+            "gender": "性別",
+            "name-script": "氏名文字種区分",
+            "residence": "居住都道府県",
+            "job-category": "職種",
+            "employment": "雇用形態",
+            "job-location-name": "求人勤務地名称",
+            "job-prefecture": "勤務地都道府県",
+            "prefecture-match": "勤務地・居住都道府県一致",
+            "job-keyword": "仕事名KW",
+            "job-full-keyword": "仕事名フルKW",
+            "recruit-background": "募集背景",
+            "month-day": "月内応募日",
+            "weekday": "応募曜日",
+            "hour": "応募時間帯",
+            "hourly-salary": "時給下限",
+            "daily-salary": "日給下限",
+            "monthly-salary": "月給下限",
+            "annual-salary": "年収下限",
+            "text-length": "求人原稿文字数",
+            "main-image": "メイン画像有無",
+            "image-count": "求人画像枚数",
+            "job-video": "求人動画有無",
+            "indeed-tag-count": "Indeed求人タグ数"
+        };
+
         return buildBasicTableDefinitions(context)
-            .filter(def => def.records.length > 0)
+            .filter(def => {
+                if (
+                    !def.records.length
+                ) {
+                    return false;
+                }
+
+                const axis =
+                    axisByDefinitionId[
+                        def.id
+                    ];
+
+                return (
+                    !axis ||
+                    analysisAxisAvailable(
+                        context,
+                        axis
+                    )
+                );
+            })
             .map(def => {
                 const isDistribution =
                     columnState.key !== "age" &&
@@ -2047,13 +2415,13 @@ function customAxisOptions(
         rules
             .filter(
                 ([axis, settingId]) =>
-                    (
-                        axis !== "性別" ||
-                        context.hasGenderField
-                    ) &&
                     viewerDisplaySettingEnabled(
                         visibility,
                         settingId
+                    ) &&
+                    analysisAxisAvailable(
+                        context,
+                        axis
                     )
             )
             .map(
@@ -2075,7 +2443,13 @@ function customAxisOptions(
                 )
         );
 
-    if (salaryVisible) {
+    if (
+        salaryVisible &&
+        analysisAxisAvailable(
+            context,
+            "給与区分"
+        )
+    ) {
         const firstSalaryIndex =
             [
                 "時給下限",
@@ -2101,15 +2475,17 @@ function customAxisOptions(
         }
     }
 
-    if (
-        context.keywordMaster.length > 0
-    ) {
+    {
         const keywordAxes = [];
 
         if (
             viewerDisplaySettingEnabled(
                 visibility,
                 "job-keyword"
+            ) &&
+            analysisAxisAvailable(
+                context,
+                "仕事名KW"
             )
         ) {
             keywordAxes.push(
@@ -2121,6 +2497,10 @@ function customAxisOptions(
             viewerDisplaySettingEnabled(
                 visibility,
                 "job-full-keyword"
+            ) &&
+            analysisAxisAvailable(
+                context,
+                "仕事名フルKW"
             )
         ) {
             keywordAxes.push(
@@ -2157,6 +2537,7 @@ function customAxisRequiresJob(axis) {
         "氏名文字種区分",
         "居住都道府県",
         "企業ID",
+        "勤務地・居住都道府県一致",
         "月内応募日",
         "応募曜日",
         "応募時間帯"
@@ -2272,6 +2653,20 @@ function customAxisValue(record, axis, context) {
         );
     }
 
+    if (axis === "勤務地・居住都道府県一致") {
+        const label = yesNoMatchLabel(
+            record.app["勤務地・居住都道府県一致"]
+        );
+
+        return category(
+            label,
+            fixedSortValue(
+                label,
+                ["一致", "不一致", "（不明）"]
+            )
+        );
+    }
+
     if (!record.matched) return null;
 
     if (axis === "職種") {
@@ -2288,20 +2683,6 @@ function customAxisValue(record, axis, context) {
 
     if (axis === "勤務地都道府県") {
         return category(record.job?.["勤務地都道府県"] || "（未設定）");
-    }
-
-    if (axis === "勤務地・居住都道府県一致") {
-        const label = yesNoMatchLabel(
-            record.app["勤務地・居住都道府県一致"]
-        );
-
-        return category(
-            label,
-            fixedSortValue(
-                label,
-                ["一致", "不一致", "（不明）"]
-            )
-        );
     }
 
     if (axis === "仕事名KW") {
@@ -3145,6 +3526,9 @@ function aggregateCustom(context, options = {}) {
         aggregateTopImages,
         viewerDisplaySettingsMap,
         viewerDisplaySettingEnabled,
+        buildAnalysisSourceCapabilities,
+        analysisAxisCapability,
+        analysisAxisAvailable,
         customAxisOptions,
         customAxisRequiresJob,
         customAxisValue,

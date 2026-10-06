@@ -1,12 +1,12 @@
 # Current State
 
-Last updated: 2026-10-02
+Last updated: 2026-10-06
 
 This file describes the **repository baseline**, not a guarantee that each external runtime has already been deployed to the same version.
 
 ## Versions
 
-- GitHub Pages: **v30.43**
+- GitHub Pages: **v30.44**
 - Central API source baseline: **v2.47**
 - Cloudflare image Worker: **v2**
 - Spreadsheet schema: **3.0**
@@ -23,7 +23,7 @@ The complete 11-file GAS source was then provided from the current Apps Script p
 
 The raw upload used CRLF line endings, while most of the prior package used LF. After line-ending normalization, the code is identical. The repository now stores the canonical Central API source under `central-api/*.gs` with LF line endings.
 
-The four root Pages files on `main` are the Pages v30.43 source baseline:
+The four root Pages files on `main` are the Pages v30.44 source baseline:
 
 - `index.html`
 - `report.html`
@@ -112,6 +112,17 @@ The four root Pages files on `main` are the Pages v30.43 source baseline:
 - applicant `都道府県` and `住所` are handled after parsing instead of header aliasing, avoiding duplicate `住所` headers in CSV_B
 - multiple application CSV files can still be uploaded together; each file is decoded and normalized independently before concatenation
 - job CSV parsing remains on the existing header-alias path
+
+### Effective analysis-axis availability (Pages v30.44)
+
+- custom-analysis axis choices now require both the corresponding `31_分析レポート表示項目` setting and source-data capability
+- capability is evaluated from the stored source datasets before the current period/age filters, so temporary zero-result filters do not make axis choices appear/disappear
+- job-derived axes such as 職種 / 雇用形態 / 勤務地都道府県 / 募集背景 are hidden when their required source values do not exist
+- basic-analysis tables use the same capability rule for job-derived axes, avoiding tables that contain only an unavailable source attribute
+- 勤務地・居住都道府県一致 no longer requires a matched job record when the application dataset already contains a valid match result
+- new ETL runs store an unknown prefecture match as blank when either prefecture cannot be resolved; report presentation renders that value as `（不明）`
+- existing DataStore rows are not rewritten automatically; companies receive the corrected prefecture-match values after their CSV data is updated again
+- this is a Pages-only change; Central API v2.47 and spreadsheet schema 3.0 are unchanged
 
 ### Central API GitHub Actions
 

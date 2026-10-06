@@ -4408,7 +4408,7 @@
             <div>
                 <h2>カスタム分析</h2>
                 <div class="section-note">
-                    分析レポート表示設定でONになっている分析だけを軸として選択できます。分析レポート上の変更は個社管理シートの設定には保存されません。
+                    分析レポート表示設定でONかつ、現在のデータで利用できる分析だけを軸として選択できます。分析レポート上の変更は個社管理シートの設定には保存されません。
                 </div>
             </div>
         </div>
@@ -4833,7 +4833,7 @@
 
 
 const VIEWER_UI_RELEASE =
-    "2026.10.06-viewer-ui-v30.43-application-csv-normalization";
+    "2026.10.06-viewer-ui-v30.44-axis-capabilities";
 const VIEWER_SIDEBAR_STATE_KEY =
     "validApplicationAnalysis.viewerSidebarCollapsed.v1";
 
@@ -9925,7 +9925,7 @@ function initializeCustomAnalysis(data, viewerResult, core) {
     const message = document.getElementById("customMessage");
     if (currentCustomAxisOptions.length < 2) {
         ["customRowAxis1","customRowAxis2","customRowAxis3","customColAxis"].map(id => document.getElementById(id)).forEach(control => { if (control) control.disabled = true; });
-        if (message) { message.textContent = "カスタム分析には、分析レポート表示設定でONになっている分析軸が2種類以上必要です。"; message.classList.remove("hidden"); }
+        if (message) { message.textContent = "カスタム分析には、表示設定でONかつ現在のデータで利用できる分析軸が2種類以上必要です。"; message.classList.remove("hidden"); }
         document.getElementById("customMeta")?.classList.add("hidden");
         const output = document.getElementById("customResult"); if (output) output.innerHTML = "";
         refreshTableCopyActions(document.getElementById("reportMain"));
