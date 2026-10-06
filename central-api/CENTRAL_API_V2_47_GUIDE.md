@@ -6,10 +6,10 @@
 
 ## Data flow
 
-- Pages v30.42 が応募CSVの `性別` を取得
+- Pages v30.43 が応募CSV_A / CSV_Bをcanonical化し、`性別` を取得
 - `applicationData` では `年代` の次、`氏名文字種区分` の前に保存
-- 元値は加工せず保持し、現在の想定値は `女性` / `男性` / `未回答` / 空欄
-- 空欄はreport表示時だけ `（空欄）` と表示
+- 性別は `男` / `男性` -> `男性`、`女` / `女性` -> `女性`、空欄 / `不明` -> `不明` に統一し、`未回答` は別区分として保持
+- legacyデータに空欄が残っている場合もreportでは `不明` と表示
 
 ## Viewer / display settings
 
@@ -41,7 +41,7 @@ indexの「データの取り扱い」に性別を追加し、応募傾向の分
 
 ## Deployment
 
-1. Pages v30.42 はGitHub Pagesへ反映
+1. Pages v30.43 はGitHub Pagesへ反映
 2. GitHub Actions `Central API sync to GAS` を手動実行
 3. Apps Script側でv2.47ソースを確認
 4. 既存Web App deploymentをv2.47へ更新
