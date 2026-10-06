@@ -169,16 +169,26 @@ Application-month column safety limit is currently **36 months**.
 
 The chart's **10-series** limit is a separate safety/readability rule for the number of plotted series, not the number of month columns.
 
-## 8. Application demographic analysis
+## 8. Application CSV adapters
+
+Pages normalizes supported application CSV exports before the existing ETL pipeline.
+
+- CSV_A: UTF-8 BOM in the current export, legacy names such as `お仕事NO`, `就業形態`, `掲載仕事備考`, `勤務地名1`
+- CSV_B: Shift_JIS/CP932 in the current export, names such as `応募先企業ID`, `応募日`, `応募者名`, `応募媒体名`, `MAIL`, `応募者対応ステータス（企業）`
+- encoding is detected per file before Papa Parse runs
+- application headers are kept raw during parsing; canonical fields are created at row level so CSV_B `都道府県` and `住所` cannot collapse into duplicate headers
+- normalized rows then enter the same dedupe, JOIN, applicationData and jobAnalysisMaster pipeline as before
+
+## 9. Application demographic analysis
 
 `applicationData` may contain aggregate-analysis attributes derived from the application CSV. As of Pages v30.42, `性別` is retained as an application-level analysis attribute.
 
-- raw supported values are preserved; blank stays blank in storage
-- report presentation maps blank gender to `（空欄）` while keeping `未回答` distinct
+- source gender labels are normalized for analysis (`男` / `男性` -> `男性`, `女` / `女性` -> `女性`, blank / `不明` -> `不明`; `未回答` remains distinct)
+- report presentation maps legacy blank gender to `不明` while keeping `未回答` distinct
 - gender is shown only when the application dataset actually contains the `性別` header, so older datasets remain backward compatible
 - gender and `氏名文字種区分` use the ordinary category sort rule rather than a fixed semantic order
 
-## 9. Custom analysis defaults
+## 10. Custom analysis defaults
 
 `30_分析レポート初期設定` is the user-facing source for company-specific custom-analysis defaults:
 
@@ -191,7 +201,7 @@ The report already supports up to three row axes. Central API normalizes these d
 
 The hidden `34_カスタム分析設定` remains as a compatibility mirror for older workbooks and management paths. New configuration should be read from and written to the visible 30-sheet settings.
 
-## 10. Image pipeline
+## 11. Image pipeline
 
 TOP-image flow uses a Cloudflare Worker against Tenichi job pages.
 
@@ -211,7 +221,7 @@ Normalization also exists defensively in Pages and Central API. Existing relativ
 
 The Worker success cache is 6 hours. Worker v2 changed the internal cache key so stale relative-URL cache entries are naturally bypassed.
 
-## 11. `viewer-admin.html`
+## 12. `viewer-admin.html`
 
 Deprecated and removed.
 

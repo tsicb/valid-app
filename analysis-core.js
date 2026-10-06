@@ -824,7 +824,7 @@ function buildImageMap(dataset) {
                 records: all,
                 sort: "countDesc",
                 categoryFn: record =>
-                    category(record.app["性別"] || "（空欄）")
+                    category(record.app["性別"] || "不明")
             });
         }
 
@@ -2210,7 +2210,7 @@ function customAxisValue(record, axis, context) {
     }
 
     if (axis === "性別") {
-        return category(record.app["性別"] || "（空欄）");
+        return category(record.app["性別"] || "不明");
     }
 
     if (axis === "氏名文字種区分") {

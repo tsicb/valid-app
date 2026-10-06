@@ -6,7 +6,7 @@ This file describes the **repository baseline**, not a guarantee that each exter
 
 ## Versions
 
-- GitHub Pages: **v30.42**
+- GitHub Pages: **v30.43**
 - Central API source baseline: **v2.47**
 - Cloudflare image Worker: **v2**
 - Spreadsheet schema: **3.0**
@@ -23,7 +23,7 @@ The complete 11-file GAS source was then provided from the current Apps Script p
 
 The raw upload used CRLF line endings, while most of the prior package used LF. After line-ending normalization, the code is identical. The repository now stores the canonical Central API source under `central-api/*.gs` with LF line endings.
 
-The four root Pages files on `main` are the Pages v30.42 source baseline:
+The four root Pages files on `main` are the Pages v30.43 source baseline:
 
 - `index.html`
 - `report.html`
@@ -92,15 +92,26 @@ The four root Pages files on `main` are the Pages v30.42 source baseline:
 ### Gender analysis (Pages v30.42 / Central API v2.47)
 
 - application CSV column `性別` is now retained in `applicationData` after `年代`
-- source values are preserved as supplied; current expected patterns are `女性`, `男性`, `未回答`, and blank
+- source gender values are normalized for analysis: `男` / `男性` -> `男性`, `女` / `女性` -> `女性`, blank / `不明` -> `不明`, while `未回答` remains distinct
 - gender is a basic-analysis item under the `求職者` group and is available as a custom-analysis axis
 - the report title is `性別ごとの応募傾向`
-- blank gender values are displayed as `（空欄）`; `未回答` remains a separate category
+- gender analysis uses `男性` / `女性` / `未回答` / `不明`; old blank gender values are displayed as `不明`
 - generic category sorting is used: total applications descending, then target applications descending, then Japanese label order
 - `氏名文字種区分` now uses the same generic category sorting instead of a fixed label order
 - legacy application datasets without a `性別` header do not show the gender table or gender custom axis
 - index help now explains that gender is stored for aggregate application-trend analysis
 - spreadsheet schema remains 3.0; `SHEETS_APP_VERSION` / `EXPECTED_PAGES_VERSION` remain the existing internal compatibility values
+
+### Application CSV normalization (Pages v30.43)
+
+- application CSV_A and CSV_B are normalized before the existing ETL/JOIN pipeline
+- encoding is detected per file: UTF-8 BOM / valid UTF-8 first, otherwise Shift_JIS fallback
+- CSV_A aliases such as `お仕事NO`, `就業形態`, `掲載仕事備考`, `勤務地名1` are converted to the existing canonical fields
+- CSV_B fields such as `応募先企業ID`, `応募日`, `応募者名`, `応募媒体名`, `MAIL`, `応募者対応ステータス（企業）` are converted to the same canonical fields
+- CSV_B job-location parts (`求人都道府県` / `求人市区町村` / `求人勤務地住所`) are joined into the canonical `勤務地1` value
+- applicant `都道府県` and `住所` are handled after parsing instead of header aliasing, avoiding duplicate `住所` headers in CSV_B
+- multiple application CSV files can still be uploaded together; each file is decoded and normalized independently before concatenation
+- job CSV parsing remains on the existing header-alias path
 
 ### Central API GitHub Actions
 
