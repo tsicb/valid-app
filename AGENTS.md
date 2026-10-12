@@ -2,7 +2,7 @@
 
 This repository is the working source for the **有効応募分析 (Valid Application Analysis)** tool.
 
-Read this file first, then read `docs/CURRENT_STATE.md` and `docs/ARCHITECTURE.md` before making changes.
+Read this file first, then read `docs/CURRENT_STATE.md` and `docs/ARCHITECTURE.md` before making changes. For changes involving report analysis axes or CSV-derived job fallback, also read `docs/ANALYSIS_AXIS_AVAILABILITY.md`.
 
 ## Source of truth
 
