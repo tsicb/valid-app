@@ -21,6 +21,7 @@
 - `central-api/` - Google Apps Script Central API の正本ミラー
 - `cloudflare-worker/` - Tenichi TOP画像取得Workerの開発ソース
 - `docs/ARCHITECTURE.md` - システム構成・責務
+- `docs/ANALYSIS_AXIS_AVAILABILITY.md` - カスタム分析30軸の取得元・利用可能条件・テスト観点
 - `docs/CURRENT_STATE.md` - 現在のリリース状態・直近設計
 - `docs/DEPLOYMENT.md` - 反映順・確認手順
 - `AGENTS.md` - AI/開発者向けの変更ルール
