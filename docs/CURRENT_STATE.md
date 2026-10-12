@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-10-06
+Last updated: 2026-10-12
 
 This file describes the **repository baseline**, not a guarantee that each external runtime has already been deployed to the same version.
 
@@ -158,6 +158,11 @@ GitHub currently contains v2.47 source. The v2.46 behavior was confirmed before 
 
 If Apps Script is edited outside GitHub, reconcile those edits back into GitHub before the next development change.
 
+## Documentation checkpoint (2026-10-12)
+
+- Added `docs/ANALYSIS_AXIS_AVAILABILITY.md` as the current 30-axis source/availability contract and a future smoke-test checklist.
+- This checkpoint is documentation-only. No Pages, Central API, Worker, or spreadsheet schema code was changed; runtime deployment status is unchanged.
+
 ## Next-chat startup
 
 A new AI/chat should begin by reading:
@@ -165,6 +170,7 @@ A new AI/chat should begin by reading:
 1. `AGENTS.md`
 2. this file
 3. `docs/ARCHITECTURE.md`
-4. the current files involved in the requested change
+4. `docs/ANALYSIS_AXIS_AVAILABILITY.md` when analysis axes, availability, or application-embedded job information are relevant
+5. the current files involved in the requested change
 
 Do not reconstruct state from old ZIPs if the repository is available.
