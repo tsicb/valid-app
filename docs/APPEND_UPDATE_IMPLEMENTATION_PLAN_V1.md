@@ -2,7 +2,7 @@
 
 作成日: 2026-10-23  
 状態: **設計確定候補 / 未実装**  
-対象: \`tsicb/valid-app\`、GitHub Pages \`index.html\` と \`central-api/*.gs\`。 \`report.html\` の画面仕様は原則変更しない。
+対象: `tsicb/valid-app`、GitHub Pages `index.html` と `central-api/*.gs`。 `report.html` の画面仕様は原則変更しない。
 
 ## 1. 目的と確定方針
 
@@ -11,54 +11,54 @@
 - **差分追加（APPEND）**：応募は重複判定後に新規分のみ追加。既存応募の属性・対応状況は変更しない。
 - **全件入れ替え（REPLACE）**：応募・求人分析データを今回のCSVで作り直す。既存の個社管理シート自体・共有URL・分析初期設定・表示設定・ユーザーマスタは維持。
 - **新規作成（CREATE）**：従来どおり。新しい識別キーは新規作成時から付与する。
-- **求人**：同じ「企業ID + 正規化仕事番号」の既存 \`jobAnalysisMaster\` 行を保持（空欄補完も行わない）。新規キーだけ追加する。求人参照IDは維持。
+- **求人**：同じ「企業ID + 正規化仕事番号」の既存 `jobAnalysisMaster` 行を保持（空欄補完も行わない）。新規キーだけ追加する。求人参照IDは維持。
 - **移行**：旧DataStoreに識別キーがない企業はAPPENDを拒否し、REPLACEを案内する。事前に既存データを手動削除しない。
-- 正式なデータ正本はDataStore、\`91_求人分析マスタ\` はその投影（ミラー）とする。
+- 正式なデータ正本はDataStore、`91_求人分析マスタ` はその投影（ミラー）とする。
 - 応募者氏名・応募者IDはDataStore/Sheetsに保存しない。識別キーは仮名化された情報として保護する。
 
 ## 2. 現行mainの実装位置（2026-10-23調査）
 
 | 現行関数・データ | ファイル | 変更点 |
 |---|---|---|
-| \`normalizeApplicationCsv\`, CSV_A/B判定 | \`index.html\` | CSV_Bの\`応募者ID\`とソース種別を安全に識別し、ETLまで一時保持 |
-| CSV読み込み後の\`seenKeys\`による重複除外（約12751行） | \`index.html\` | 新しい識別キー生成方針と一致させ、氏名なし行は誤って1件にまとめない |
-| \`buildNormalizedSheetsModel\`（約3799行） | \`index.html\` | 応募行に識別キー・識別方式を付与。新規求人IDは暫定IDで送信 |
-| \`APPLICATION_DATA_HEADERS\` | \`index.html\` | 識別キー列を増設 |
-| \`buildSheetsPayloadV3\` | \`index.html\` | 更新方式・対応プロトコルを付加 |
-| \`runBtn\`周辺、\`reserveViewerTab\`/Fast Handoff | \`index.html\` | 更新モードUI・実行前モーダル・APPEND中の早期プレビュー抑止 |
-| \`validateEnvelope_\`, \`doPost\`のUPDATE分岐 | \`central-api/02_EntryPoint.gs\` | APPEND/REPLACE検証と統合処理の呼び出し |
-| \`readAnalysisDataStore_\`, \`writeAnalysisDataStore_\` | \`central-api/01_DataStore_Performance.gs\` | 既存行読込・統合・検証・置換・バックアップ |
-| \`DATASET_SHEETS\`, \`writeDataset_\` | \`central-api/00_Config.gs\`, \`03_Workbook.gs\` | 求人分析マスタの内容を最終保存データに合わせる |
-| \`buildReadyResponse_\`, Registry更新、監査 | \`central-api/04_Request_Target.gs\`, \`02_EntryPoint.gs\` | 最終総数・差分統計を応答 |
-| \`report.html\` と \`analysis-core.js\` | レポート側 | **原則変更しない**。従来の列を維持して識別列だけ追加する |
+| `normalizeApplicationCsv`, CSV_A/B判定 | `index.html` | CSV_Bの`応募者ID`とソース種別を安全に識別し、ETLまで一時保持 |
+| CSV読み込み後の`seenKeys`による重複除外（約12751行） | `index.html` | 新しい識別キー生成方針と一致させ、氏名なし行は誤って1件にまとめない |
+| `buildNormalizedSheetsModel`（約3799行） | `index.html` | 応募行に識別キー・識別方式を付与。新規求人IDは暫定IDで送信 |
+| `APPLICATION_DATA_HEADERS` | `index.html` | 識別キー列を増設 |
+| `buildSheetsPayloadV3` | `index.html` | 更新方式・対応プロトコルを付加 |
+| `runBtn`周辺、`reserveViewerTab`/Fast Handoff | `index.html` | 更新モードUI・実行前モーダル・APPEND中の早期プレビュー抑止 |
+| `validateEnvelope_`, `doPost`のUPDATE分岐 | `central-api/02_EntryPoint.gs` | APPEND/REPLACE検証と統合処理の呼び出し |
+| `readAnalysisDataStore_`, `writeAnalysisDataStore_` | `central-api/01_DataStore_Performance.gs` | 既存行読込・統合・検証・置換・バックアップ |
+| `DATASET_SHEETS`, `writeDataset_` | `central-api/00_Config.gs`, `03_Workbook.gs` | 求人分析マスタの内容を最終保存データに合わせる |
+| `buildReadyResponse_`, Registry更新、監査 | `central-api/04_Request_Target.gs`, `02_EntryPoint.gs` | 最終総数・差分統計を応答 |
+| `report.html` と `analysis-core.js` | レポート側 | **原則変更しない**。従来の列を維持して識別列だけ追加する |
 
-現行APP/ JOB ID（\`APP000001\` / \`JOB000001\`）はアップロード単位で再採番される。APPEND時はGAS側で既存IDを固定し、新規分のみ未使用IDを付与し直す必要がある。
+現行APP/ JOB ID（`APP000001` / `JOB000001`）はアップロード単位で再採番される。APPEND時はGAS側で既存IDを固定し、新規分のみ未使用IDを付与し直す必要がある。
 
 ## 3. 識別キー仕様（Application Identity v1）
 
-追加する \`applicationData\` 列：
+追加する `applicationData` 列：
 
 | 列名 | 値 | 備考 |
 |---|---|---|
-| \`応募識別キー\` | \`I1:<HMAC hex>\` 等 | 長さ固定、秘密値や氏名を含まない |
-| \`応募識別方式\` | \`PERSON_ID\`, \`PERSON_NAME\`, \`AGG_DAILY\`, \`UNIDENTIFIED\` | 業務上の判定区分 |
+| `応募識別キー` | `I1:<HMAC hex>` 等 | 長さ固定、秘密値や氏名を含まない |
+| `応募識別方式` | `PERSON_ID`, `PERSON_NAME`, `AGG_DAILY`, `UNIDENTIFIED` | 業務上の判定区分 |
 
-保存形式（DataStore JSON）に\`applicationIdentityVersion: "1"\`を持たせる。旧形式には存在しない。DataStoreや個社管理シートのグローバルなバージョンは一律に変更しない（旧レポートの閲覧を壊さない）。
+保存形式（DataStore JSON）に`applicationIdentityVersion: "1"`を持たせる。旧形式には存在しない。DataStoreや個社管理シートのグローバルなバージョンは一律に変更しない（旧レポートの閲覧を壊さない）。
 
 ### 3-1. 判定優先順位
 
-1. CSV_B等、\`応募者ID\`が存在する場合（そのIDが「応募1件」でなく「人」を指す可能性があるため） → \`PERSON_ID\`。企業ID+応募年月+応募者IDを正規化してHMAC。
-2. 上記がなく氏名がある場合 → \`PERSON_NAME\`。企業ID+応募年月+正規化氏名をHMAC。
-3. 明示的な集計由来行の場合 → \`AGG_DAILY\`。詳細は下記。
-4. それ以外 → \`UNIDENTIFIED\`。APPENDでは推測で重複判定せずエラー。REPLACEは許容し、以後APPENDに同じ判定不能行が混ざる場合はエラーとする。
+1. CSV_B等、`応募者ID`が存在する場合（そのIDが「応募1件」でなく「人」を指す可能性があるため） → `PERSON_ID`。企業ID+応募年月+応募者IDを正規化してHMAC。
+2. 上記がなく氏名がある場合 → `PERSON_NAME`。企業ID+応募年月+正規化氏名をHMAC。
+3. 明示的な集計由来行の場合 → `AGG_DAILY`。詳細は下記。
+4. それ以外 → `UNIDENTIFIED`。APPENDでは推測で重複判定せずエラー。REPLACEは許容し、以後APPENDに同じ判定不能行が混ざる場合はエラーとする。
 
-\`PERSON_ID\` も \`PERSON_NAME\` も「同一企業・同一月の同一人物を1件」とする現行の重複基準を基本とする。同じ人が同月に別求人へ応募しても現行同様に1件扱いとなる。**応募者IDの実際の意味が判明したら変更できるよう、キーのバージョンを付す。** A/B間で異なる種別のキーを横断同一視はしない。
+`PERSON_ID` も `PERSON_NAME` も「同一企業・同一月の同一人物を1件」とする現行の重複基準を基本とする。同じ人が同月に別求人へ応募しても現行同様に1件扱いとなる。**応募者IDの実際の意味が判明したら変更できるよう、キーのバージョンを付す。** A/B間で異なる種別のキーを横断同一視はしない。
 
-名前正規化はUnicode NFKC、前後空白除去と空白種別の統一を基本とし、漢字の異体字・姓と名の実質同一性は推定しない。企業IDは現行JOINの扱いに合わせてtrim/大文字化。応募年月は応募日時から年月を抽出し、表示書式と独立させ\`YYYY-MM\`にする。応募日時の不正・欠落はAPPEND時に警告・拒否（キーを推測生成しない）。
+名前正規化はUnicode NFKC、前後空白除去と空白種別の統一を基本とし、漢字の異体字・姓と名の実質同一性は推定しない。企業IDは現行JOINの扱いに合わせてtrim/大文字化。応募年月は応募日時から年月を抽出し、表示書式と独立させ`YYYY-MM`にする。応募日時の不正・欠落はAPPEND時に警告・拒否（キーを推測生成しない）。
 
 ### 3-2. HMAC鍵管理
 
-- 通常の \`SHA-256(氏名)\` は辞書攻撃の余地があるため採用しない。
+- 通常の `SHA-256(氏名)` は辞書攻撃の余地があるため採用しない。
 - Central APIのScript Propertiesに**固定の識別鍵**を生成して管理。既存ACCESS_KEYとは分離し、ACCESS_KEYの変更で識別キーが変わらないようにする。
 - 追加の認証済み管理アクションからのみ、ETL実行中のブラウザへ鍵を渡し、ブラウザで Web Crypto の HMAC-SHA-256 により生成する。鍵はlocalStorage・URL・ログ・DataStoreへ保存しない。閲覧専用のViewer tokenでは取得できない。
 - **留意**：認証済みブラウザには鍵が渡るため、ブラウザを含めた完全な秘密保持ではない。識別キーは匿名情報とみなさず、アクセス権と運用で保護する。
@@ -66,13 +66,13 @@
 
 ### 3-3. AirWork型の集計行
 
-既存 \`yamato-airwork-attach\` 出力の次の組合せに限って判定する。
+既存 `yamato-airwork-attach` 出力の次の組合せに限って判定する。
 
 - 氏名も応募者IDも空欄。
-- \`応募媒体=AirWork\`、\`仕事名=AirWork（応募実績）\`、\`対応状況=AirWork（状況未取得）\`。
-- \`企業ID\`、\`仕事番号\`、実在する配信日（時刻がなくても可）を持つ。
+- `応募媒体=AirWork`、`仕事名=AirWork（応募実績）`、`対応状況=AirWork（状況未取得）`。
+- `企業ID`、`仕事番号`、実在する配信日（時刻がなくても可）を持つ。
 
-同じ \`企業ID + 正規化仕事番号 + 媒体 + YYYY-MM-DD\` を **日次集計グループ** とする。受信した1応募1行をグループ内の連番1..Nに展開した識別キーにする。
+同じ `企業ID + 正規化仕事番号 + 媒体 + YYYY-MM-DD` を **日次集計グループ** とする。受信した1応募1行をグループ内の連番1..Nに展開した識別キーにする。
 
 - 保存済み5件、今回7件 → 連番6・7の**2件追加**。
 - 保存済み5件、今回5件 → 0件追加。
@@ -82,31 +82,31 @@
 - **前提**：新しい集計CSVはその日の全件を再掲載する累積スナップショット。増分だけが載るファイルにはこの方式を適用しない。
 - AirWork以外の匿名応募は自動的にAGG_DAILYとみなさない。
 
-\`AGG_DAILY\`では日付、仕事番号、媒体、ordinalを含むデータから決定的キーを計算し、再アップロード時に同じキーを再現する。匿名データのため氏名HMACとは用途を分離する。
+`AGG_DAILY`では日付、仕事番号、媒体、ordinalを含むデータから決定的キーを計算し、再アップロード時に同じキーを再現する。匿名データのため氏名HMACとは用途を分離する。
 
 ## 4. 求人マスタと応募参照の統合（GAS）
 
-統合対象は既存DataStoreの\`applicationData\` / \`jobAnalysisMaster\` と今回のペイロード。
+統合対象は既存DataStoreの`applicationData` / `jobAnalysisMaster` と今回のペイロード。
 
-- **求人キー**：\`企業ID + 正規化した仕事番号\`。正規化はPagesの\`preprocessKey\`と一致させる（現行末尾枝番処理を恣意的に変更しない）。
-- GASに既存求人キー→既存\`求人参照ID\` Mapを作る。既存求人行の全属性は変更しない。
-- 今回送信された\`jobAnalysisMaster\`のうち未登録キーだけ、新しい\`求人参照ID\`で追加。
-- 今回送信された\`applicationData\`について、**採用された新規応募のみ**を最終求人キーMapへ突合し、\`求人参照ID\`を最終IDへ書き換えて追加。
-- 既存応募の\`レコードID\`/\`求人参照ID\`は維持。
-- 新規応募の\`レコードID\`は既存の最大連番より大きい未使用IDに採番。求人参照IDも同様。削除済みIDの再利用・重複はしない。
-- 新しい求人情報がない応募は\`求人参照ID\`空欄とし、仮の求人を捏造しない。
-- \`求人データ突合フラグ\`は**その応募行のCSV取り込み時に実際に求人CSV突合したか**を示す既存の意味を維持する。単に既存\`JOB_CSV\`マスタへ紐づいたからといって1にしない（\`docs/CURRENT_STATE.md\`準拠）。
-- 既存の求人は追加分の値で空欄補完もしない。\`JOB_CSV\` ↔ \`APPLICATION_EMBEDDED\`の既存ソース種別も変えない。
+- **求人キー**：`企業ID + 正規化した仕事番号`。正規化はPagesの`preprocessKey`と一致させる（現行末尾枝番処理を恣意的に変更しない）。
+- GASに既存求人キー→既存`求人参照ID` Mapを作る。既存求人行の全属性は変更しない。
+- 今回送信された`jobAnalysisMaster`のうち未登録キーだけ、新しい`求人参照ID`で追加。
+- 今回送信された`applicationData`について、**採用された新規応募のみ**を最終求人キーMapへ突合し、`求人参照ID`を最終IDへ書き換えて追加。
+- 既存応募の`レコードID`/`求人参照ID`は維持。
+- 新規応募の`レコードID`は既存の最大連番より大きい未使用IDに採番。求人参照IDも同様。削除済みIDの再利用・重複はしない。
+- 新しい求人情報がない応募は`求人参照ID`空欄とし、仮の求人を捏造しない。
+- `求人データ突合フラグ`は**その応募行のCSV取り込み時に実際に求人CSV突合したか**を示す既存の意味を維持する。単に既存`JOB_CSV`マスタへ紐づいたからといって1にしない（`docs/CURRENT_STATE.md`準拠）。
+- 既存の求人は追加分の値で空欄補完もしない。`JOB_CSV` ↔ `APPLICATION_EMBEDDED`の既存ソース種別も変えない。
 - 一度保存済みの求人キーが後日違う仕事番号で再掲載された場合は**別求人**と扱う。履歴バージョン管理は初版対象外。
 
 ## 5. UI・処理プロトコル
 
 ### 5-1. index.html
 
-既存企業専用ページ（\`#sheet=...\`）のCSV選択欄付近、実行ボタン直前にモード選択を出す。
+既存企業専用ページ（`#sheet=...`）のCSV選択欄付近、実行ボタン直前にモード選択を出す。
 
-- \`差分追加（おすすめ）\`（初期選択、毎回この選択にリセット）
-- \`全件入れ替え\`（ユーザー選択時のみ）
+- `差分追加（おすすめ）`（初期選択、毎回この選択にリセット）
+- `全件入れ替え`（ユーザー選択時のみ）
 - クリックで即実行せず、モーダルを開く。
 - モーダルでは保存先企業の正式表示名、選択方式、CSVファイル件数・応募行数、追加方式の意味、共有URL・設定は維持されることを表示。
 - APPENDでは実行前に厳密な差分件数を取得しない（サーバー側で処理し、完了時に結果表示）。
@@ -115,47 +115,47 @@
 - 旧形式レポートはAPPEND不可・REPLACEでの移行案内を出す。**バックエンド側でも必ず拒否**する。
 - モーダル確定後に処理中タブを確保し、最終レポートに遷移。
 
-**Fast Handoff注意**：現行\`beginFastViewerHandoff\`は今回ブラウザで生成したデータのみを先に表示できる。APPENDでは保存済みとの統合前データで誤表示するため、**APPEND時は早期プレビューを行わず待機画面→保存完了したレポート**にする。REPLACE/CREATEは現行維持。
+**Fast Handoff注意**：現行`beginFastViewerHandoff`は今回ブラウザで生成したデータのみを先に表示できる。APPENDでは保存済みとの統合前データで誤表示するため、**APPEND時は早期プレビューを行わず待機画面→保存完了したレポート**にする。REPLACE/CREATEは現行維持。
 
 ### 5-2. API要求・レスポンス
 
 UPDATE要求に新規フィールドを必須付与：
 
-- \`updateStrategy: "APPEND" | "REPLACE"\`（CREATEには不要）
-- \`updateProtocol: "IDENTITY_V1"\`
+- `updateStrategy: "APPEND" | "REPLACE"`（CREATEには不要）
+- `updateProtocol: "IDENTITY_V1"`
 
 **旧Pagesと新API / 新Pagesと旧APIの組み合わせに対する安全対策が必須**：
 
 1. APIはUPDATEでupdateStrategy未指定・不正時に**必ずエラー**。旧Pagesによる無意識な置き換えを防止。
-2. Pagesは認証時のAPI応答でAPPEND対応 capability を取得・検証し、旧APIなら更新ボタンを無効化する。単に従来APIに\`updateStrategy\`を送っても旧APIが無視して置き換える危険があるため。
-3. 既存レポートを表示不能にするグローバルな\`schemaVersion\` / \`ANALYSIS_DATASTORE_VERSION\`の一括変更を初版で行わない。識別仕様は独立したバージョン・ヘッダーで管理する。
+2. Pagesは認証時のAPI応答でAPPEND対応 capability を取得・検証し、旧APIなら更新ボタンを無効化する。単に従来APIに`updateStrategy`を送っても旧APIが無視して置き換える危険があるため。
+3. 既存レポートを表示不能にするグローバルな`schemaVersion` / `ANALYSIS_DATASTORE_VERSION`の一括変更を初版で行わない。識別仕様は独立したバージョン・ヘッダーで管理する。
 4. CREATEでも識別キーを付けるので将来APPEND可能。動作確認済みのPages/API組のみ運用に使用。
 
 完了応答の例（statsのキー名は実装時決定）：
 
 | 指標 | 意味 |
 |---|---|
-| \`oldApplications\` | 保存済み応募数 |
-| \`uploadedApplications\` | アップロード内で一次重複除外後の行数 |
-| \`skippedAsExisting\` | 過去保存済みと一致したため追加しなかった応募数 |
-| \`addedApplications\` | 新規追加した応募数 |
-| \`finalApplications\` | 最終応募数 |
-| \`addedJobs\` | 新規求人キー数 |
-| \`aggregateDecreases\` | 集計由来で件数が減少したグループ |
+| `oldApplications` | 保存済み応募数 |
+| `uploadedApplications` | アップロード内で一次重複除外後の行数 |
+| `skippedAsExisting` | 過去保存済みと一致したため追加しなかった応募数 |
+| `addedApplications` | 新規追加した応募数 |
+| `finalApplications` | 最終応募数 |
+| `addedJobs` | 新規求人キー数 |
+| `aggregateDecreases` | 集計由来で件数が減少したグループ |
 
 処理履歴/Registryの応募数は**最終DataStore件数**を使用し、今回アップロード行数を誤って保存しない。完了UIにも上記を表示する。
 
 ## 6. 書込・安全性・競合
 
-- APPENDでは最新DataStoreをGASで読み、\`applicationIdentityVersion\`と応募識別キー列を確認する。旧データなら\`MIGRATION_REQUIRED\`（REPLACEへ案内）。
-- \`applicationData\`は現行20列に2列を追加。ヘッダー名を使って既存＋新規を統合。異なる列順にも安全に対応する。
-- \`jobAnalysisMaster\`は現行列を維持。追加後の件数が\`MAX_DATASET_ROWS=100000\`を超える場合、保存前にエラーにする。
-- 新しいDataStore JSONを生成・検証した**あとに**\`99_内部状態\`のポインタを変更する。途中失敗では現行DataStoreを保持。
+- APPENDでは最新DataStoreをGASで読み、`applicationIdentityVersion`と応募識別キー列を確認する。旧データなら`MIGRATION_REQUIRED`（REPLACEへ案内）。
+- `applicationData`は現行20列に2列を追加。ヘッダー名を使って既存＋新規を統合。異なる列順にも安全に対応する。
+- `jobAnalysisMaster`は現行列を維持。追加後の件数が`MAX_DATASET_ROWS=100000`を超える場合、保存前にエラーにする。
+- 新しいDataStore JSONを生成・検証した**あとに**`99_内部状態`のポインタを変更する。途中失敗では現行DataStoreを保持。
 - 別のリクエストが同じ企業を更新する競合に備え、統合開始時のFile IDとcommit直前のFile IDを照合する。ScriptLockで切替操作を保護し、変化していたら**競合エラー**で停止して再確認を促す。古い状態を元に上書きしない。状態キャッシュはcommit時に再取得する。
-- \`requestId\`での再試行を維持。同じIDに異なる更新方式/対象/データを流用しない（リクエスト内容署名の検証を推奨）。
+- `requestId`での再試行を維持。同じIDに異なる更新方式/対象/データを流用しない（リクエスト内容署名の検証を推奨）。
 - 保存直前のDataStoreを**1世代バックアップとして維持**し、旧旧バックアップは安全に整理。誤更新時の復元操作UIは初版対象外、管理者による回復を想定。
-- \`91_求人分析マスタ\`は統合後の最終DataStoreから再構築する。書き込む順序/失敗時再試行を定義し、DataStoreとマスタで参照IDがずれないようにする。
-- \`93_処理情報\`は今回の処理統計、\`94_入力ファイル情報\`は取り込み履歴として用途を明示し、完了履歴は\`98_運用ログ\`でも保持する。分析対象件数との混同を防ぐ。
+- `91_求人分析マスタ`は統合後の最終DataStoreから再構築する。書き込む順序/失敗時再試行を定義し、DataStoreとマスタで参照IDがずれないようにする。
+- `93_処理情報`は今回の処理統計、`94_入力ファイル情報`は取り込み履歴として用途を明示し、完了履歴は`98_運用ログ`でも保持する。分析対象件数との混同を防ぐ。
 - 旧版レポートの閲覧は移行前も継続可能にする。共有トークン・個社の表示設定・40/41/42の既存マスタは初版の更新ロジックによって削除しない。
 
 ## 7. 初回移行
@@ -164,7 +164,7 @@ UPDATE要求に新規フィールドを必須付与：
 2. 新Pagesを反映。
 3. 既存個社管理シートでは旧DataStoreに識別キーがないため、APPEND不可を表示。
 4. 過去の必要期間を含むCSVを揃え、REPLACEで更新する。既存DataStoreは正常書込/検証/切替まで使用し続ける。
-5. \`applicationIdentityVersion:1\`付き保存完了後、次回以降APPENDを初期選択にできる。
+5. `applicationIdentityVersion:1`付き保存完了後、次回以降APPENDを初期選択にできる。
 6. 新規企業はCREATE時から識別キーを保存するので移行不要。
 
 ## 8. 自動テストと受入条件
@@ -172,12 +172,12 @@ UPDATE要求に新規フィールドを必須付与：
 1. 同じCSVを2回APPEND → 2回目は応募0件追加。
 2. 1000件保存・800件重複・200件新規 → 200件追加。最終1200件。
 3. 同月同姓同名でも企業IDが異なれば別件。同月同一人物が別求人へ応募した場合は現行ルールどおり重複。
-4. CSV_Bの同一\`応募者ID\`を同月再取得 → 重複。別月 → 新規。A/B形式混在でも各種キー生成・列正規化が壊れない。
+4. CSV_Bの同一`応募者ID`を同月再取得 → 重複。別月 → 新規。A/B形式混在でも各種キー生成・列正規化が壊れない。
 5. AirWork日次 5→7→7→3 → 順に+5,+2,+0,+0（減少警告）。別日・別媒体・別企業は混ぜない。
 6. 氏名なし不明種別行で推測による誤トリミングをしない。APPENDは理由を表示して停止。
 7. 保存済み求人の時給/職種/名称変更 → 既存求人行・既存応募の求人参照IDは不変。未登録仕事番号だけ新求人として追加。
 8. 新規応募の求人参照IDを既存マスタに付け替える。APP/JOBレコードIDは重複しない。
-9. 新規応募が求人CSV未突合の場合、既存JOB_CSV求人があっても\`求人データ突合フラグ\`を1へ上書きしない。
+9. 新規応募が求人CSV未突合の場合、既存JOB_CSV求人があっても`求人データ突合フラグ`を1へ上書きしない。
 10. 旧DataStoreはAPPEND不可、REPLACE移行可。移行まで既存レポート閲覧可。
 11. 旧Pages↔新API / 新Pages↔旧APIの組み合わせで誤って全件入れ替えが起きない。
 12. 保存途中の例外・ポインタ競合でも直前の有効DataStoreを維持。再試行で二重追加なし。
@@ -191,7 +191,7 @@ UPDATE要求に新規フィールドを必須付与：
 2. **GAS保存統合**：旧データ読込、統合検証、旧形式判定、排他・バックアップ・commit、最終マスタ反映。レスポンス統計。
 3. **Pagesのキー付与と更新方式UI**：CSV_A/Bでのメタ保持、認証済み鍵取得、更新方式デフォルト、確認モーダル、更新結果、Fast Handoff切替。
 4. **デプロイ互換性テストと段階的公開**：新APIを先にデプロイ。旧PagesからのUPDATEを拒否する仕組みを先に確認してから新Pagesへ。テスト用個社データでAPPEND/REPLACE/初回移行を一通り確認。
-5. **ドキュメント更新**：\`docs/CURRENT_STATE.md\`、中央APIガイド、必要に応じて本設計書を実態へ更新。\`SOURCE_SHA256SUMS.txt\`を忘れず更新。
+5. **ドキュメント更新**：`docs/CURRENT_STATE.md`、中央APIガイド、必要に応じて本設計書を実態へ更新。`SOURCE_SHA256SUMS.txt`を忘れず更新。
 
 ## 10. v1対象外（意図的な非機能）
 
@@ -200,4 +200,4 @@ UPDATE要求に新規フィールドを必須付与：
 - 他システム由来の異なる応募IDと氏名を自動同一人物判定すること。
 - AirWork以外の匿名行に推測で件数差分ルールを適用すること。
 - 自動ロールバック画面や完全な編集履歴UI。
-- CSV_Bの\`応募者ID\`を「1応募につき必ず1つ」とみなすこと。
+- CSV_Bの`応募者ID`を「1応募につき必ず1つ」とみなすこと。
