@@ -35,7 +35,7 @@ jobs:
           node-version: "22"
 
       - name: Run isolated incremental merge regression tests
-        run: node --test tests/append-merge-core.test.cjs tests/append-datastore.test.cjs
+        run: node --test tests/append-merge-core.test.cjs tests/append-datastore.test.cjs tests/append-update-guard.test.cjs
 
       - name: Check GAS JavaScript syntax
         shell: bash
