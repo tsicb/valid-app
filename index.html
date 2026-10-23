@@ -1767,6 +1767,12 @@ function resetCsvSessionState() {
 
     invalidateEtlDerivedStateForCsvChange();
     refreshCsvSelectionSummaries();
+    // Never restore a previously chosen destructive mode on page reload.
+    const appendOption = document.querySelector(
+        'input[name="vaaUpdateMode"][value="APPEND"]'
+    );
+    if (appendOption) appendOption.checked = true;
+    globalLastUpdateStrategy = "APPEND";
 
     const message =
         document.getElementById(
