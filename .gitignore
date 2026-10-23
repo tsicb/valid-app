@@ -2,6 +2,7 @@
 .clasprc.json
 .clasp.json
 .gas-stage/
+.gas-test/
 
 # local environment
 .env
