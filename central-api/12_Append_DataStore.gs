@@ -127,6 +127,9 @@ function vaaStageAppendDataStore_(ss, plan, requestId, expectedSourceFileId) {
   dataObject.applicationIdentityVersion =
     plan.applicationIdentityVersion;
   dataObject.updateStrategy = plan.strategy;
+  // Persist completion statistics so same-request retries can resume
+  // downstream mirror/Registry finalization without creating another blob.
+  dataObject.updateStats = plan.stats;
 
   const contents = JSON.stringify(dataObject);
   const folder = getOrCreateAnalysisDataStoreFolder_();
@@ -303,6 +306,50 @@ function vaaCommitStagedAppendDataStore_(ss, stage) {
  */
 function vaaExecuteAppendDataStoreUpdate_(ss, payload, requestId, strategy) {
   const source = vaaReadAppendStoreSource_(ss);
+  const requestedId = normalizeString_(requestId);
+  const normalizedStrategy = normalizeString_(strategy).toUpperCase();
+  // The DataStore pointer may have been committed even when the previous
+  // HTTP response timed out or the sheet mirror was still being updated.
+  if (source.dataObject &&
+      normalizeString_(source.dataObject.requestId) === requestedId &&
+      String(source.dataObject.applicationIdentityVersion) ===
+        VAAAppendMergeCore.VERSION) {
+    if (normalizeString_(source.dataObject.updateStrategy) !==
+        normalizedStrategy) {
+      throw vaaAppendStoreError_(
+        'REQUEST_STRATEGY_MISMATCH',
+        '同じrequestIdを異なる更新方法で再利用できません。'
+      );
+    }
+    return {
+      plan: {
+        strategy: normalizedStrategy,
+        applicationIdentityVersion: VAAAppendMergeCore.VERSION,
+        datasets: Object.assign({}, payload.datasets, {
+          applicationData: source.dataObject.datasets.applicationData,
+          jobAnalysisMaster: source.dataObject.datasets.jobAnalysisMaster
+        }),
+        stats: source.dataObject.updateStats || null,
+        payload: Object.assign({}, payload, {
+          datasets: Object.assign({}, payload.datasets, {
+            applicationData: source.dataObject.datasets.applicationData,
+            jobAnalysisMaster: source.dataObject.datasets.jobAnalysisMaster
+          })
+        })
+      },
+      stage: {
+        fileId: source.fileId,
+        spreadsheetId: ss.getId(),
+        requestId: requestedId
+      },
+      commit: {
+        ok: true,
+        reused: true,
+        fileId: source.fileId,
+        stats: source.dataObject.updateStats || null
+      }
+    };
+  }
   const plan = vaaBuildAppendStorePlan_(
     payload,
     source.dataObject,
