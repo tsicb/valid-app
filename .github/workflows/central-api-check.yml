@@ -6,11 +6,13 @@ on:
       - main
     paths:
       - "central-api/**"
+      - "tests/**"
       - ".github/workflows/central-api-check.yml"
       - ".github/workflows/central-api-sync.yml"
   pull_request:
     paths:
       - "central-api/**"
+      - "tests/**"
       - ".github/workflows/central-api-check.yml"
       - ".github/workflows/central-api-sync.yml"
   workflow_dispatch:
@@ -31,6 +33,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+
+      - name: Run isolated incremental merge regression tests
+        run: node --test tests/append-merge-core.test.cjs
 
       - name: Check GAS JavaScript syntax
         shell: bash
