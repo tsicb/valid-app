@@ -6,3 +6,6 @@
 # local environment
 .env
 .env.*
+
+# generated local incremental-update test site
+.smoke-pages/
