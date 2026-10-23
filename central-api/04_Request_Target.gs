@@ -148,6 +148,10 @@ function buildReadyResponse_(
     storageLayout:
       record.storageLayout ||
       API_CONFIG.CURRENT_STORAGE_LAYOUT,
+    updateStrategy:
+      normalizeString_(record.updateStrategy) || '',
+    updateStats:
+      record.updateStats || null,
     elapsedMs:
       Date.now() - startedAt,
     performance:
