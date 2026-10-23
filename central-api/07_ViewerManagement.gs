@@ -38,6 +38,9 @@ function handleManageAuthCheck_(payload) {
       API_CONFIG.EXPECTED_PAGES_VERSION,
     outputFolderId:
       API_CONFIG.SHEET_OUTPUT_FOLDER_ID,
+    capabilities: {
+      incrementalUpdate: vaaUpdateCapabilities_()
+    },
     timestamp:
       new Date()
         .toISOString()
