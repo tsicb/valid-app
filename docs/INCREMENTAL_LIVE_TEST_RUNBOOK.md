@@ -21,6 +21,23 @@
 
 現在のリポジトリにある `.github/workflows/central-api-sync.yml` は本番 `GAS_SCRIPT_ID` に同期するため、**実地検証の準備目的で実行しないこと**。
 
+### テスト専用GASへソースを配置する方法（ローカルclasp）
+
+1. Apps Scriptで本番とは別の**新規スタンドアロンプロジェクト**を作り、Script IDを控える。
+2. このfeatureブランチをローカルにチェックアウトし、`npm install -g @google/clasp@3.3.0` と `clasp login` を行う。
+3. 以下のコマンドで **テスト専用Script ID** を指定した `.clasp.json` を作る。本番Script IDは絶対に指定しない。
+
+```bash
+node -e "const fs=require('fs');fs.writeFileSync('.clasp.json',JSON.stringify({scriptId:process.argv[1],rootDir:'.gas-test',scriptExtensions:['.gs','.js']},null,2)+'\n')" "TEST_GAS_SCRIPT_ID"
+clasp pull
+node scripts/stage-append-test-gas.mjs "TEST_ROOT_FOLDER_ID" "TEST_OUTPUT_FOLDER_ID"
+```
+
+4. `.clasp.json` がテスト専用Script IDを指すこと、`.gas-test/00_Config.gs` が**テスト用フォルダ**を指すことを確認してから `clasp push --force` を行う。このコマンドが変更するのは指定した**テスト用GASプロジェクトのソースのみ**であり、Web Appのデプロイは別操作。
+5. テストGASのScript Propertiesを設定し、Apps Script側でWeb Appを新規デプロイしてテスト用の `/exec` URLを得る。
+
+`stage-append-test-gas.mjs` は本番root/outputフォルダIDを拒否する。また、取得済みの `.gas-test/appsscript.json` がなければ作業を開始しない。テスト用フォルダIDは生成したローカルの `.gas-test/00_Config.gs` のみに保持し、GitHubへコミットしない。
+
 ## 2. ブラウザのテスト用画面を生成
 
 テスト用GASを別プロジェクトでデプロイしたら、このブランチの作業ディレクトリで実行する。
