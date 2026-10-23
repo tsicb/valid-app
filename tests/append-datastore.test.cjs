@@ -239,3 +239,17 @@ test("invalid update mode is rejected before staging or pointers change",()=>{
   ),{code:"INVALID_UPDATE_STRATEGY"});
   assert.equal(h.files.size,0);
 });
+
+test("same requestId reuses committed blob and stored stats instead of rewriting",()=>{
+  const h=makeHarness();
+  const run=h.u("vaaExecuteAppendDataStoreUpdate_");
+  const first=run(h.ss,payload([app("山田")],[job()]),"same-req","REPLACE");
+  const count=h.files.size;
+  const again=run(h.ss,payload([app("山田")],[job()]),"same-req","REPLACE");
+  assert.equal(again.commit.reused,true);
+  assert.equal(again.stage.fileId,first.stage.fileId);
+  assert.equal(h.files.size,count);
+  assert.equal(again.plan.stats.finalApplications,1);
+  assert.equal(h.current,first.stage.fileId);
+  assert.throws(()=>run(h.ss,payload([app("山田")],[job()]),"same-req","APPEND"),{code:"REQUEST_STRATEGY_MISMATCH"});
+});
