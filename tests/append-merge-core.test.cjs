@@ -55,10 +55,10 @@ test("APPEND is idempotent and preserves existing applications",()=>{
 
 test("overlapping exports keep 1000 existing rows, exclude 800, and append 200",()=>{
   const existingApps=Array.from({length:1000},(_,i)=>app(person("name"+i)));
+  // Populate unique stable IDs before snapshotting the existing dataset.
+  existingApps.forEach((row,i)=>row[0]="APP"+String(i+1).padStart(6,"0"));
   const existing=wrap(existingApps,[job()]);
   const inputApps=Array.from({length:1000},(_,i)=>app(person("name"+(i+200))));
-  // Populate unique legacy-friendly stable IDs to avoid corrupt fixture.
-  existingApps.forEach((row,i)=>row[0]="APP"+String(i+1).padStart(6,"0"));
   const out=run("APPEND",existing,inputApps,[job()]);
   assert.equal(out.stats.skippedAsExisting,800);
   assert.equal(out.stats.addedApplications,200);
