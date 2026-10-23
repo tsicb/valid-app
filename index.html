@@ -4129,6 +4129,113 @@ function buildSheetsPayloadV3(accessKey = "", requestId = "", targetSpreadsheetU
     };
 }
 
+/**
+ * Obtain session HMAC key from the authenticated API. It is intentionally
+ * never stored in localStorage, a URL, an input file or a DataStore payload.
+ */
+async function vaaFetchIdentitySecret(accessKey) {
+    if (!globalIncrementalCapabilityAvailable ||
+        globalIdentityKeyVersion !== "1") {
+        throw new Error("中央APIの差分追加機能が確認できません。公開バージョンを確認してください。");
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    try {
+        const response = await fetch(SHEETS_API_URL, {
+            method: "POST",
+            mode: "cors",
+            credentials: "omit",
+            headers: {"Content-Type": "text/plain;charset=UTF-8"},
+            body: JSON.stringify({
+                action: "manageIdentityKey",
+                accessKey,
+                pagesVersion: SHEETS_APP_VERSION,
+                schemaVersion: SHEETS_SCHEMA_VERSION
+            }),
+            signal: controller.signal
+        });
+        if (!response.ok) throw new Error("応募識別キーの認証に失敗しました。");
+        const data = await response.json();
+        if (!data?.ok || data?.keyVersion !== "1" ||
+            !data?.identitySecret || data?.updateProtocol !== "IDENTITY_V1") {
+            throw new Error(data?.message || "応募識別キーを取得できませんでした。");
+        }
+        return data.identitySecret;
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+async function vaaApplyApplicationIdentities(accessKey) {
+    const secret = await vaaFetchIdentitySecret(accessKey);
+    return VAAClientIdentity.assign(globalFinalData, secret);
+}
+
+function vaaAwaitUpdateConfirmation({
+    mode, spreadsheetId, appRows, appFiles, jobFiles
+}) {
+    const modal = document.getElementById("vaaUpdateConfirmModal");
+    const ack = document.getElementById("vaaUpdateConfirmAck");
+    const accept = document.getElementById("vaaUpdateConfirmAccept");
+    const isReplace = mode === "REPLACE";
+    const company = vaaUpdateTargetDisplayName(spreadsheetId) || "この企業";
+    document.getElementById("vaaUpdateConfirmCompany").textContent =
+        "対象企業：" + company;
+    document.getElementById("vaaUpdateConfirmStats").textContent =
+        "読み込み済み応募 " + appRows.toLocaleString() + "件 ／ 応募CSV " +
+        appFiles + "ファイル ／ 求人CSV " + jobFiles + "ファイル";
+    document.getElementById("vaaUpdateConfirmTitle").textContent =
+        isReplace ? "応募・求人データを全件入れ替えますか？" :
+            "保存済みデータへ差分を追加しますか？";
+    document.getElementById("vaaUpdateConfirmMessage").textContent =
+        isReplace ?
+        "保存済みの応募・求人分析データを今回のCSVで再構築します。今回のCSVにない過去の応募は分析対象から外れます。分析設定・共有URLは維持します。" :
+        "保存済み応募と求人情報は維持し、未登録の応募と求人だけ追加します。重複件数は保存先と照合したあとに計算します。";
+    document.getElementById("vaaUpdateConfirmAckWrap").classList
+        .toggle("hidden", !isReplace);
+    ack.checked = false;
+    accept.className =
+        "rounded-xl px-4 py-2 text-xs font-extrabold text-white disabled:opacity-40 " +
+        (isReplace ? "bg-red-600" : "bg-[#148ecc]");
+    accept.textContent = isReplace ? "全件入れ替えを実行" : "差分追加を実行";
+    accept.disabled = isReplace;
+    modal.classList.remove("hidden");
+    modal.classList.add("flex");
+    modal.setAttribute("aria-hidden", "false");
+    return new Promise(resolve => {
+        const cancel = document.getElementById("vaaUpdateConfirmCancel");
+        const close = document.getElementById("vaaUpdateConfirmClose");
+        const backdrop = document.getElementById("vaaUpdateConfirmBackdrop");
+        const updateAck = () => { accept.disabled = isReplace && !ack.checked; };
+        const onKey = event => {
+            if (event.key === "Escape") finish(false);
+        };
+        const onCancel = () => finish(false);
+        const onAccept = () => {
+            if (!accept.disabled) finish(true);
+        };
+        function finish(result) {
+            modal.classList.add("hidden");
+            modal.classList.remove("flex");
+            modal.setAttribute("aria-hidden","true");
+            ack.removeEventListener("change",updateAck);
+            cancel.removeEventListener("click",onCancel);
+            close.removeEventListener("click",onCancel);
+            backdrop.removeEventListener("click",onCancel);
+            accept.removeEventListener("click",onAccept);
+            document.removeEventListener("keydown",onKey);
+            resolve(result);
+        }
+        ack.addEventListener("change",updateAck);
+        cancel.addEventListener("click",onCancel);
+        close.addEventListener("click",onCancel);
+        backdrop.addEventListener("click",onCancel);
+        accept.addEventListener("click",onAccept);
+        document.addEventListener("keydown",onKey);
+        accept.focus();
+    });
+}
+
 function measureJsonBytes(value) {
     return new Blob([JSON.stringify(value)]).size;
 }
