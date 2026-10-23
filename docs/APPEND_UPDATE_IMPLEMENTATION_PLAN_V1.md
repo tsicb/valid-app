@@ -216,7 +216,7 @@ UPDATE要求に新規フィールドを必須付与：
 
 - `central-api/11_Append_Merge.gs`：第1段階の純粋統合コアをGAS向けソースとして配置。Node側の`append-merge-core.js`はこのファイルを読み込む薄いアダプターに変更し、GASソースとテスト対象を一致させた。
 - `central-api/12_Append_DataStore.gs`：更新元DataStoreの検証付読込、ネスト形式の統合入力への変換、統合結果の作成、**ポインタ切替前の新JSON作成＋読戻し検証**、ScriptLockを使ったFile ID比較・切替、直前DataStoreの1世代バックアップ管理を追加。
-- `tests/append-datastore.test.cjs`：10件のGASモックテストを追加。ステージング、同一リクエスト再確定、同時更新競合、失敗時の旧ファイル維持、旧形式移行、1世代バックアップをカバー。既存21件と合わせて31件をCIで実行。
+- `tests/append-datastore.test.cjs`：11件のGASモックテストを追加。ステージング、同一リクエスト再確定、同時更新競合、失敗時の旧ファイル維持、旧形式移行、1世代バックアップ、同じrequestIdの再送で二重保存しないことをカバー。既存21件と合わせて32件をCIで実行。
 - `.github/workflows/central-api-check.yml`：新テストも実行。`central-api/SOURCE_SHA256SUMS.txt`に新GASファイルを登録。
 - **重要**：これらのGAS関数は**現行`doPost`からは呼び出されていない**。そのため現在の更新機能は従来どおり全件入れ替えであり、差分追加はまだ利用できない。GitHubからGASへの手動同期・Web App再デプロイも未実施。
 - 既存の `writeAnalysisDataStore_` は今回変更していない。これは意図的で、旧Pages→新API間の互換性・競合リスクを生まないよう、本番切替と新Pagesリリースの準備を次工程でまとめるため。
