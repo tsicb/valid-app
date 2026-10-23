@@ -330,6 +330,21 @@ function writeAnalysisDataStore_(
       requestId
     );
 
+  // New CREATE requests include browser-generated identity columns and must
+  // remain APPEND-compatible. Old legacy CREATE snapshots keep old metadata.
+  if (normalizeString_(payload.updateProtocol) === 'IDENTITY_V1') {
+    const validatedCreate = VAAAppendMergeCore.merge({
+      mode: 'REPLACE',
+      incoming: payload.datasets,
+      maxRows: API_CONFIG.MAX_DATASET_ROWS
+    });
+    dataObject.datasets.applicationData = validatedCreate.applicationData;
+    dataObject.datasets.jobAnalysisMaster = validatedCreate.jobAnalysisMaster;
+    dataObject.applicationIdentityVersion = VAAAppendMergeCore.VERSION;
+    dataObject.updateStrategy = 'CREATE';
+    dataObject.updateStats = validatedCreate.stats;
+  }
+
   const buildObjectMs =
     perfMs_(
       buildObjectStartedAt
