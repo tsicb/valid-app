@@ -8272,13 +8272,16 @@ async function createGoogleSpreadsheet({
             makeRequestId();
     }
 
+    // An APPEND report must not preview only this upload as if it
+    // were the fully merged historical dataset.
     fastViewerHandoffActive =
-        await beginFastViewerHandoff({
-            viewerTab,
-            handoffId:
-                globalPendingSheetsRequestId,
-            targetSpreadsheetId
-        });
+        targetSpreadsheetId && globalLastUpdateStrategy === "APPEND"
+            ? false
+            : await beginFastViewerHandoff({
+                viewerTab,
+                handoffId: globalPendingSheetsRequestId,
+                targetSpreadsheetId
+            });
 
     if (
         fastViewerHandoffActive
@@ -8355,6 +8358,19 @@ async function createGoogleSpreadsheet({
             "info"
         );
 
+        // HMAC identifiers are generated only after user confirmation
+        // and never leave the browser as raw names / person IDs.
+        globalIdentityStats = await vaaApplyApplicationIdentities(accessKey);
+        if (targetSpreadsheetId &&
+            globalLastUpdateStrategy === "APPEND" &&
+            globalIdentityStats.unidentifiable > 0) {
+            const error = new Error(
+                globalIdentityStats.unidentifiable +
+                "件の応募は氏名・応募者IDがなく、集計データとも判定できません。全件入れ替えを利用してください。"
+            );
+            error.code = "UNIDENTIFIED_APPEND";
+            throw error;
+        }
         const payloadBuildStartedAt =
             performance.now();
 
@@ -12734,8 +12750,14 @@ const viewerTab =
 
                 const dataA_arrays =
                     parsedA.map(
-                        item =>
-                            item.rows
+                        (item, fileIndex) => {
+                            item.rows.forEach(row => {
+                                Object.defineProperty(row, "__vaaInputFileIndex", {
+                                    value: fileIndex, enumerable: false, configurable: true
+                                });
+                            });
+                            return item.rows;
+                        }
                     );
 
                 // 読み込んだ配列を1つのフラットな配列に結合する
@@ -12823,9 +12845,15 @@ const viewerTab =
                 const uniqueDataA = dataA.filter(rowA => {
                     const dateStr = rowA["応募日時"];
                     const name = rowA["氏名"] || "";
+                    const applicantId = normalizeString(rowA["応募者ID"]);
+                    const enterpriseId = getEnterpriseIdFromRow(rowA).toUpperCase();
                     const yyyymm = getYYYYMM(dateStr);
-                    if (yyyymm !== "" && name !== "") {
-                        const dedupeKey = `${yyyymm}_${name}`;
+                    if (yyyymm !== "" && (applicantId || name)) {
+                        const dedupeKey = JSON.stringify([
+                            enterpriseId, yyyymm,
+                            applicantId ? "PERSON_ID" : "PERSON_NAME",
+                            applicantId || String(name).normalize("NFKC").trim().replace(/[\s\u3000]+/g, " ")
+                        ]);
                         if (seenKeys.has(dedupeKey)) { 
                             duplicateCount++; 
                             duplicateList.push(rowA);
@@ -12941,6 +12969,18 @@ const viewerTab =
 
                     // Sheet送信用に元コードを保持する。非列挙プロパティのため、
                     // 現行CSVダウンロードやブラウザ表の列構成は変えない。
+                    // Raw person identifiers remain browser-only. Never send
+                    // them in the normalized datasets or export CSV.
+                    Object.defineProperty(newRow, "__vaaIdentityRaw", {
+                        value: {
+                            applicantId: normalizeString(rowA["応募者ID"]),
+                            name: normalizeString(rowA["氏名"]),
+                            inputFileIndex: rowA.__vaaInputFileIndex
+                        },
+                        enumerable: false,
+                        configurable: true
+                    });
+
                     Object.defineProperty(newRow, "__sheetMeta", {
                         value: {
                             salaryTypeCode: normalizeString(sourceB["給与区分"]),
@@ -13076,6 +13116,31 @@ msgEl.innerHTML = `
                 ? "分析レポートを更新しています..."
                 : "分析レポートを作成しています...";
 
+        if (targetSpreadsheetId) {
+            globalLastUpdateStrategy = document.querySelector(
+                'input[name="vaaUpdateMode"]:checked'
+            )?.value === "REPLACE" ? "REPLACE" : "APPEND";
+            stopEtlProcessingOverlay();
+            const confirmed = await vaaAwaitUpdateConfirmation({
+                mode: globalLastUpdateStrategy,
+                spreadsheetId: targetSpreadsheetId,
+                appRows: globalFinalData.length,
+                jobFiles: filesB.length,
+                appFiles: filesA.length
+            });
+            if (!confirmed) {
+                try { viewerTab?.close(); } catch (_) {}
+                msgEl.textContent = "データ更新はキャンセルされました。保存データは変更していません。";
+                msgEl.className =
+                    "mt-5 text-center text-sm font-bold text-slate-700 bg-slate-50 p-4 rounded-xl border border-slate-200 block";
+                return;
+            }
+            startEtlProcessingOverlay();
+            updateEtlProcessingStage("image","更新方法を確認しました。保存準備を開始します。");
+        } else {
+            globalLastUpdateStrategy = "";
+        }
+
         const published =
             await createGoogleSpreadsheet({
                 viewerTab
@@ -13099,7 +13164,11 @@ msgEl.innerHTML = `
                 <div class="flex flex-col items-center">
                     <span class="text-lg font-extrabold">分析レポートへの反映が完了しました</span>
                     <span class="mt-1 text-sm text-slate-600">
-                        ${globalFinalData.length.toLocaleString()}応募を処理しました。
+                        ${published.updateStats
+                            ? ("今回の新規追加 " + Number(published.updateStats.addedApplications || 0).toLocaleString() +
+                                "件 ／ 更新後の応募 " + Number(published.updateStats.finalApplications || 0).toLocaleString() + "件" +
+                                " ／ 既存と重複して追加しなかった応募 " + Number(published.updateStats.skippedAsExisting || 0).toLocaleString() + "件")
+                            : (globalFinalData.length.toLocaleString() + "応募を処理しました。")}
                     </span>
                 </div>
             `;
