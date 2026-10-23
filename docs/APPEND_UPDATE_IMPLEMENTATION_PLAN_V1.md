@@ -1,7 +1,7 @@
 # 既存レポート差分追加・全件入れ替え 実装設計 v1
 
 作成日: 2026-10-23  
-状態: **第1段階と第2段階のGAS保存補助関数まで実装済み / doPost未接続・本番未反映**  
+状態: **第1・第2段階およびGAS doPostのUPDATE接続まで実装済み / Pages未対応・本番未反映**  
 対象: `tsicb/valid-app`、GitHub Pages `index.html` と `central-api/*.gs`。 `report.html` の画面仕様は原則変更しない。
 
 ## 1. 目的と確定方針
@@ -222,3 +222,14 @@ UPDATE要求に新規フィールドを必須付与：
 - 既存の `writeAnalysisDataStore_` は今回変更していない。これは意図的で、旧Pages→新API間の互換性・競合リスクを生まないよう、本番切替と新Pagesリリースの準備を次工程でまとめるため。
 - **次工程で必須**：`02_EntryPoint.gs`の新プロトコル分岐、`requestId`のステージング・リトライ整合、他のUPDATEと排他的な保存、最終統合結果による`91_求人分析マスタ`更新、Registry/監査の総数統一、旧Pages誤更新防止、Pagesからのcapability確認。
 - 書込途中で`99_内部状態`の状態が不明になる例外が出た場合は、新ファイルを自動削除しない。Pointerを再読込して再試行/管理者修復する安全側の扱いにする。
+
+## 13. GAS UPDATE入口への接続（2026-10-23）
+
+- `central-api/02_EntryPoint.gs`：UPDATE時に `updateStrategy: APPEND|REPLACE` と `updateProtocol: IDENTITY_V1` を要求。古いPagesのUPDATEは `UPDATE_PROTOCOL_REQUIRED` で安全停止。まず新DataStoreを統合・検証・コミットし、その結果を使って `91_求人分析マスタ` を書く。99-sheetのrequest-local状態キャッシュはポインタ更新後に無効化。
+- `central-api/13_Append_Update_Guard.gs`：同一requestIdによる異なるCSV/更新モードの再利用拒否、企業単位の更新リース、軽量な最終集計統計を追加。企業単位のリースはScriptLockで操作し、処理終了時・失敗時に解放する。
+- `central-api/04_Request_Target.gs`：READY応答へ `updateStrategy` / `updateStats` を追加。処理リプレイでも保存済み統計を返す。
+- `central-api/07_ViewerManagement.gs`：認証済み `manageAuthCheck` が対応能力を通知。`doGet` も対応プロトコルを公開（秘密情報なし）。
+- 監査 `98_運用ログ` とReport Registryの応募・求人件数は**アップロード分ではなく統合後の保存データ件数**を使う。
+- `tests/append-update-guard.test.cjs`：プロトコル拒否、リース、requestId内容ダイジェスト、件数集計および入口コードの回帰チェックを追加。
+- **本番稼働不可**：まだGitHub Pages `index.html` は識別キーと更新方法を送信しない。現時点で中央APIだけ公開すると旧Pagesの更新が拒否されるため、ユーザー向け画面とCREATE時の識別キー対応を実装・検証してからまとめてリリースすること。
+- スキーマ `3.0`、viewer token、`report.html` のUIは変更していない。GitHub ActionsチェックはSyntax/Source SHA/自動テストを対象とし、Google実API上の統合テストは後続工程。
