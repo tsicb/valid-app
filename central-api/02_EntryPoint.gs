@@ -15,7 +15,10 @@ function doGet() {
       API_CONFIG.SHEET_OUTPUT_FOLDER_ID,
     rootFolderId:
       API_CONFIG.ROOT_FOLDER_ID,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    capabilities: {
+      incrementalUpdate: vaaUpdateCapabilities_()
+    }
   });
 }
 
@@ -28,6 +31,10 @@ function doPost(e) {
   let operationMode = 'CREATE';
   let targetSpreadsheetId = '';
   let requestPerformance = null;
+  let updateStrategy = '';
+  let updateRequestDigest = '';
+  let updateLeaseHeld = false;
+  let appendWriteResult = null;
   const pipelineTrace = {
     transportMode:
       'PLAIN_JSON',
@@ -354,6 +361,13 @@ function doPost(e) {
       );
     }
 
+    if (operationMode === 'UPDATE') {
+      updateStrategy =
+        normalizeString_(payload.updateStrategy).toUpperCase();
+      updateRequestDigest =
+        vaaDigestUpdateRequest_(payload);
+    }
+
     const propertiesStartedAt =
       Date.now();
 
@@ -432,6 +446,21 @@ function doPost(e) {
             'REQUEST_TARGET_MISMATCH',
             '同じrequestIdに別の処理対象が指定されています.'
           );
+        }
+
+        if (operationMode === 'UPDATE') {
+          const replayValidation =
+            vaaValidateUpdateRequestRecord_(
+              requestRecord,
+              updateStrategy,
+              updateRequestDigest
+            );
+          if (!replayValidation.ok) {
+            return errorOutput_(
+              replayValidation.code,
+              replayValidation.message
+            );
+          }
         }
       }
 
@@ -558,6 +587,8 @@ function doPost(e) {
           requestRecord = {
             requestId,
             operationMode: 'UPDATE',
+            updateStrategy: updateStrategy,
+            updatePayloadDigest: updateRequestDigest,
             targetSpreadsheetId:
               targetSpreadsheetId,
             status: 'TARGET_VALIDATED',
@@ -688,6 +719,16 @@ function doPost(e) {
               .performance ||
             {}
         });
+      }
+
+      if (operationMode === 'UPDATE') {
+        const claim = vaaClaimTargetUpdateLease_(
+          props, targetSpreadsheetId, requestId
+        );
+        if (!claim.ok) {
+          return errorOutput_(claim.code, claim.message);
+        }
+        updateLeaseHeld = true;
       }
 
       const now =
@@ -866,6 +907,18 @@ function doPost(e) {
       if (
         operationMode === 'UPDATE'
       ) {
+        // Commit the validated merged DataStore FIRST. On replay with the
+        // same requestId the DataStore is reused, allowing mirror repair.
+        appendWriteResult = vaaExecuteAppendDataStoreUpdate_(
+          ss, payload, requestId, updateStrategy
+        );
+        payload = appendWriteResult.plan.payload;
+        requestRecord.updateStats = vaaSummarizeUpdateStats_(
+          appendWriteResult.plan.stats
+        );
+        // CAS writes 99_内部状態 independently, so discard stale cache.
+        requestStateContext.stateData = null;
+
         const updateDatasetKeys = [
           'jobAnalysisMaster',
           'processInfo',
@@ -1222,12 +1275,19 @@ const analysisDataStoreWriteStartedAt =
   Date.now();
 
 const analysisDataStoreInfo =
-  writeAnalysisDataStore_(
-    ss,
-    payload,
-    requestId,
-    requestStateContext
-  );
+  operationMode === 'UPDATE'
+    ? {
+        fileId: appendWriteResult.stage.fileId,
+        mode: updateStrategy,
+        chars: appendWriteResult.stage.chars || 0,
+        totalMs: 0
+      }
+    : writeAnalysisDataStore_(
+        ss,
+        payload,
+        requestId,
+        requestStateContext
+      );
 
 requestPerformance
   .analysisDataStoreWriteMs =
@@ -1521,6 +1581,9 @@ requestPerformance
           ? viewerInfo.changedKeys
           : [];
 
+      const savedCounts =
+        vaaFinalDatasetCounts_(payload, requestRecord);
+
       const auditEventStartedAt =
         Date.now();
 
@@ -1532,17 +1595,9 @@ requestPerformance
         'SUCCESS',
         'PAGES_ETL',
         '応募 ' +
-          Number(
-            payload.datasets
-              .applicationData
-              .rows.length || 0
-          ) +
+          savedCounts.applications +
           '件 / 求人分析 ' +
-          Number(
-            payload.datasets
-              .jobAnalysisMaster
-              .rows.length || 0
-          ) +
+          savedCounts.jobs +
           '件',
         requestId,
         finalizeInfo.auditSheet
@@ -1566,17 +1621,9 @@ requestPerformance
               finalizeInfo.stateData,
             viewerInfo,
             applicationCount:
-              Number(
-                payload.datasets
-                  .applicationData
-                  .rows.length || 0
-              ),
+              savedCounts.applications,
             jobAnalysisCount:
-              Number(
-                payload.datasets
-                  .jobAnalysisMaster
-                  .rows.length || 0
-              )
+              savedCounts.jobs
           }
         );
 
@@ -1827,6 +1874,18 @@ requestPerformance
         )
       );
 
+    if (updateLeaseHeld) {
+      try {
+        vaaReleaseTargetUpdateLease_(
+          props, targetSpreadsheetId, requestId
+        );
+        updateLeaseHeld = false;
+      } catch (releaseError) {
+        console.error('Target lease cleanup: ' +
+          safeErrorMessage_(releaseError));
+      }
+    }
+
     return jsonOutput_(
       Object.assign(
         buildReadyResponse_(
@@ -1844,6 +1903,19 @@ requestPerformance
     );
 
   } catch (err) {
+    if (updateLeaseHeld) {
+      try {
+        vaaReleaseTargetUpdateLease_(
+          PropertiesService.getScriptProperties(),
+          targetSpreadsheetId,
+          requestId
+        );
+        updateLeaseHeld = false;
+      } catch (releaseError) {
+        console.error('Target lease cleanup: ' +
+          safeErrorMessage_(releaseError));
+      }
+    }
     console.error(
       err && err.stack
         ? err.stack
@@ -2068,6 +2140,13 @@ function validateEnvelope_(payload) {
       'NO_APPLICATION_DATA',
       '応募データが0件です.'
     );
+  }
+
+  if (extractSpreadsheetId_(
+    payload.targetSpreadsheetUrl || payload.targetSpreadsheetId
+  )) {
+    const updateValidation = vaaValidateUpdateProtocol_(payload);
+    if (!updateValidation.ok) return updateValidation;
   }
 
   return { ok: true };
