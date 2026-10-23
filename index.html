@@ -13307,6 +13307,11 @@ msgEl.innerHTML = `
                                 " ／ 既存と重複して追加しなかった応募 " + Number(published.updateStats.skippedAsExisting || 0).toLocaleString() + "件")
                             : (globalFinalData.length.toLocaleString() + "応募を処理しました。")}
                     </span>
+                    ${Number(published.updateStats?.aggregateDecreaseGroups || 0) > 0
+                        ? ('<span class="mt-2 text-[11px] font-bold text-amber-800">AirWork日次実績が保存済み件数より少ない日が ' +
+                            Number(published.updateStats.aggregateDecreaseGroups).toLocaleString() +
+                            '件ありました。過去分は自動削除していません。</span>')
+                        : ""}
                 </div>
             `;
 
