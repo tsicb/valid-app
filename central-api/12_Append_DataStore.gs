@@ -31,9 +31,24 @@ function vaaBuildAppendStorePlan_(payload, existingData, strategy) {
     );
   }
 
+  // Stored DataStore JSON wraps analysis data under `datasets`.
+  // The pure merge core deliberately accepts only the two normalized
+  // datasets directly; translate at this boundary rather than duplicating
+  // storage concerns in the merge algorithm.
+  const existing = existingData
+    ? {
+        applicationIdentityVersion:
+          existingData.applicationIdentityVersion,
+        applicationData:
+          existingData.datasets && existingData.datasets.applicationData,
+        jobAnalysisMaster:
+          existingData.datasets && existingData.datasets.jobAnalysisMaster
+      }
+    : null;
+
   const merge = VAAAppendMergeCore.merge({
     mode: mode,
-    existing: existingData || null,
+    existing: existing,
     incoming: payload.datasets,
     maxRows: API_CONFIG.MAX_DATASET_ROWS
   });
