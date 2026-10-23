@@ -14,6 +14,7 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="./common-masters-v1.js"></script>
+<script src="./append-identity-v1.js"></script>
     <style>
         /* スクロールバー装飾 */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -943,6 +944,21 @@
                     </label>
                 </section>
 
+                <section id="vaaUpdateModeSection" class="hidden mb-4 rounded-2xl border border-slate-200 bg-white p-4">
+                    <div class="text-xs font-extrabold text-slate-900">今回のデータ更新方法</div>
+                    <div class="mt-2 space-y-2 text-[11px]">
+                        <label class="flex cursor-pointer items-start gap-2 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
+                            <input type="radio" name="vaaUpdateMode" value="APPEND" checked class="mt-0.5">
+                            <span><strong>差分追加（おすすめ）</strong><span class="mt-1 block text-slate-600">保存済みの応募・求人情報は残し、重複していない応募と新しい求人を追加します。</span></span>
+                        </label>
+                        <label class="flex cursor-pointer items-start gap-2 rounded-xl border border-slate-200 bg-white p-3">
+                            <input type="radio" name="vaaUpdateMode" value="REPLACE" class="mt-0.5">
+                            <span><strong>全件入れ替え</strong><span class="mt-1 block text-slate-600">応募・求人分析データを今回のCSVで作り直します。初回移行や内容の訂正に使います。</span></span>
+                        </label>
+                    </div>
+                    <div class="mt-2 text-[10px] text-slate-500">分析設定・共有URL・個社管理シートの情報は維持されます。</div>
+                </section>
+
                 <button id="runBtn" class="vaa-primary-action w-full text-white py-4 rounded-2xl font-extrabold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-lg md:text-xl">
                     <span id="runBtnLabel" class="tracking-wide">データを保存して分析レポートを作る</span>
                 </button>
@@ -1027,6 +1043,29 @@
                     <button id="reloadReportFinderBtn" type="button" class="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-extrabold text-slate-600 hover:bg-slate-50">一覧を再取得</button>
                 </div>
                 <div id="reportFinderResults" class="grid grid-cols-1 gap-3 md:grid-cols-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="vaaUpdateConfirmModal" class="hidden fixed inset-0 z-[10050] items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="vaaUpdateConfirmTitle" aria-hidden="true">
+        <div id="vaaUpdateConfirmBackdrop" class="absolute inset-0 bg-slate-950/50"></div>
+        <div class="relative z-10 w-full max-w-lg rounded-3xl bg-white shadow-2xl">
+            <div class="p-5 md:p-6">
+                <div class="flex items-center justify-between gap-3">
+                    <h2 id="vaaUpdateConfirmTitle" class="text-base font-extrabold text-slate-950">更新内容を確認</h2>
+                    <button id="vaaUpdateConfirmClose" type="button" aria-label="閉じる" class="rounded-full border border-slate-200 px-3 py-1 text-slate-600">×</button>
+                </div>
+                <p id="vaaUpdateConfirmCompany" class="mt-3 break-words text-xs font-bold text-slate-800"></p>
+                <p id="vaaUpdateConfirmStats" class="mt-2 text-[11px] text-slate-600"></p>
+                <p id="vaaUpdateConfirmMessage" class="mt-3 rounded-xl bg-slate-50 p-3 text-[11px] leading-relaxed text-slate-700"></p>
+                <label id="vaaUpdateConfirmAckWrap" class="hidden mt-3 flex items-start gap-2 text-[11px] font-bold text-red-700">
+                    <input id="vaaUpdateConfirmAck" type="checkbox" class="mt-0.5">
+                    今回のCSVに含まれない過去の応募・求人分析データが削除されることを確認しました
+                </label>
+            </div>
+            <div class="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 p-4">
+                <button id="vaaUpdateConfirmCancel" type="button" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold">キャンセル</button>
+                <button id="vaaUpdateConfirmAccept" type="button" class="rounded-xl bg-[#148ecc] px-4 py-2 text-xs font-extrabold text-white disabled:opacity-40">更新を実行</button>
             </div>
         </div>
     </div>
@@ -1341,6 +1380,10 @@ const SHEETS_MAX_AUTO_RESUME_ROUNDS = 12;
         let globalPendingSheetsRequestId = "";
         let globalSheetsCreateInFlight = false;
 
+        let globalIncrementalCapabilityAvailable = false;
+        let globalIdentityKeyVersion = "";
+        let globalIdentityStats = null;
+        let globalLastUpdateStrategy = "APPEND";
         let globalDuplicateCount = 0;
         let globalDuplicateData = [];
 
@@ -1666,6 +1709,7 @@ function invalidateEtlDerivedStateForCsvChange() {
     globalEtlExecutedAt = "";
     globalDuplicateCount = 0;
     globalDuplicateData = [];
+    globalIdentityStats = null;
     globalPendingSheetsRequestId = "";
     globalPerformanceTrace = {};
 
@@ -3267,7 +3311,9 @@ const APPLICATION_DATA_HEADERS = [
     "氏名文字種区分",
     "メールドメイン",
     "居住都道府県",
-    "勤務地・居住都道府県一致"
+    "勤務地・居住都道府県一致",
+    "応募識別キー",
+    "応募識別方式"
 ];
 
 // 初回のSheet分析で実際に参照する求人属性だけを保持する。
@@ -3912,7 +3958,9 @@ function buildNormalizedSheetsModel() {
             "氏名文字種区分": mapNameCharacterClass(row["国籍"]),
             "メールドメイン": normalizeMailDomain(row["メールアドレス"]),
             "居住都道府県": normalizeString(row["住所"]),
-            "勤務地・居住都道府県一致": row["住所都道府県"] ?? ""
+            "勤務地・居住都道府県一致": row["住所都道府県"] ?? "",
+            "応募識別キー": row.__vaaIdentity?.key || "",
+            "応募識別方式": row.__vaaIdentity?.mode || "UNIDENTIFIED"
         };
 
         return APPLICATION_DATA_HEADERS.map(header => record[header] ?? "");
@@ -4047,6 +4095,8 @@ function buildSheetsPayloadV3(accessKey = "", requestId = "", targetSpreadsheetU
         viewerBaseUrl: new URL("report.html", window.location.href).href.split("#")[0].split("?")[0],
         manageBaseUrl: new URL("index.html", window.location.href).href.split("#")[0].split("?")[0],
         operationMode: normalizeString(targetSpreadsheetUrl) ? "update" : "create",
+        updateStrategy: normalizeString(targetSpreadsheetUrl) ? globalLastUpdateStrategy : "",
+        updateProtocol: "IDENTITY_V1",
         targetSpreadsheetUrl: normalizeString(targetSpreadsheetUrl),
         companyDisplayName:
             normalizeString(targetSpreadsheetUrl)
@@ -4480,6 +4530,7 @@ function setAccessKeyUiState(
     globalAccessKeyUiState = state;
     globalAccessKeyVerified =
         state === "ok";
+    if (state !== "ok") globalIncrementalCapabilityAvailable = false;
 
     if (card) {
         card.dataset.accessState = state;
@@ -5002,6 +5053,21 @@ async function verifyStoredAccessKey(options = {}) {
             try {
                 const data = await fetchAccessKeyAuthCheck(accessKey);
 
+                const capability = data?.capabilities?.incrementalUpdate;
+                globalIncrementalCapabilityAvailable =
+                    capability?.updateProtocol === "IDENTITY_V1" &&
+                    capability?.applicationIdentityVersion === "1" &&
+                    Array.isArray(capability?.updateStrategies) &&
+                    capability.updateStrategies.includes("APPEND") &&
+                    capability.updateStrategies.includes("REPLACE");
+                if (!globalIncrementalCapabilityAvailable) {
+                    setAccessKeyUiState(
+                        "incompatible",
+                        "中央APIが差分更新に対応していません。GAS側の公開状況を確認してください。"
+                    );
+                    return false;
+                }
+                globalIdentityKeyVersion = capability.applicationIdentityVersion;
                 rememberAccessKeySuccessNow();
 
                 setAccessKeyUiState(
@@ -5381,6 +5447,8 @@ function updateSheetsOperationUi() {
             "hidden",
             !!raw
         );
+    document.getElementById("vaaUpdateModeSection")
+        ?.classList.toggle("hidden", !id);
 
     if (!raw) {
         selector.dataset.mode =
