@@ -4174,7 +4174,27 @@ async function vaaFetchIdentitySecret(accessKey) {
 
 async function vaaApplyApplicationIdentities(accessKey) {
     const secret = await vaaFetchIdentitySecret(accessKey);
-    return VAAClientIdentity.assign(globalFinalData, secret);
+    const stats = await VAAClientIdentity.assign(globalFinalData, secret);
+    // The upload-level dedupe also uses the exact persisted identity key.
+    // This catches equivalent Unicode person ID representations and keeps
+    // CREATE/REPLACE previews and the hidden job mirror consistent.
+    const seen = new Set();
+    let removed = 0;
+    let removedMatches = 0;
+    globalFinalData = globalFinalData.filter(row => {
+        const key = row.__vaaIdentity?.key;
+        if (!key) return true;
+        if (seen.has(key)) {
+            removed++;
+            if (Number(row["ファイルB結合フラグ"]) === 1) removedMatches++;
+            return false;
+        }
+        seen.add(key);
+        return true;
+    });
+    globalDuplicateCount += removed;
+    globalJoinCount = Math.max(0, globalJoinCount - removedMatches);
+    return {...stats,duplicateWithinUpload:removed};
 }
 
 function vaaAwaitUpdateConfirmation({
@@ -8387,25 +8407,40 @@ async function createGoogleSpreadsheet({
 
     // An APPEND report must not preview only this upload as if it
     // were the fully merged historical dataset.
-    fastViewerHandoffActive =
-        targetSpreadsheetId && globalLastUpdateStrategy === "APPEND"
-            ? false
-            : await beginFastViewerHandoff({
-                viewerTab,
-                handoffId: globalPendingSheetsRequestId,
-                targetSpreadsheetId
-            });
-
-    if (
-        fastViewerHandoffActive
-    ) {
-        updateEtlProcessingStage(
-            "viewer",
-            "分析レポートをブラウザ内データから先に表示しました。保存処理は続いています。"
-        );
-    }
-
     try {
+        // Fingerprinting must precede preview/image scanning/payload creation.
+        // It may fail safely without committing anything.
+        globalIdentityStats = await vaaApplyApplicationIdentities(accessKey);
+        if (targetSpreadsheetId &&
+            globalLastUpdateStrategy === "APPEND" &&
+            globalIdentityStats.unidentifiable > 0) {
+            const error = new Error(
+                globalIdentityStats.unidentifiable +
+                "件の応募は氏名・応募者IDがなく、集計データとも判定できません。全件入れ替えを利用してください。"
+            );
+            error.code = "UNIDENTIFIED_APPEND";
+            throw error;
+        }
+        if (!globalFinalData.length) {
+            throw new Error("重複除外後の応募件数が0件です。CSVの内容を確認してください。");
+        }
+
+        fastViewerHandoffActive =
+            targetSpreadsheetId && globalLastUpdateStrategy === "APPEND"
+                ? false
+                : await beginFastViewerHandoff({
+                    viewerTab,
+                    handoffId: globalPendingSheetsRequestId,
+                    targetSpreadsheetId
+                });
+
+        if (fastViewerHandoffActive) {
+            updateEtlProcessingStage(
+                "viewer",
+                "分析レポートをブラウザ内データから先に表示しました。保存処理は続いています。"
+            );
+        }
+
         const planSummary =
             getImageLookupPlanSummary();
 
@@ -8473,17 +8508,6 @@ async function createGoogleSpreadsheet({
 
         // HMAC identifiers are generated only after user confirmation
         // and never leave the browser as raw names / person IDs.
-        globalIdentityStats = await vaaApplyApplicationIdentities(accessKey);
-        if (targetSpreadsheetId &&
-            globalLastUpdateStrategy === "APPEND" &&
-            globalIdentityStats.unidentifiable > 0) {
-            const error = new Error(
-                globalIdentityStats.unidentifiable +
-                "件の応募は氏名・応募者IDがなく、集計データとも判定できません。全件入れ替えを利用してください。"
-            );
-            error.code = "UNIDENTIFIED_APPEND";
-            throw error;
-        }
         const payloadBuildStartedAt =
             performance.now();
 
