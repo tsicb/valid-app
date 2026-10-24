@@ -5,7 +5,7 @@
  *
  * Usage:
  *   node scripts/build-append-smoke-site.mjs "https://script.google.com/macros/s/TEST_ID/exec"
- *   cd .smoke-pages && python -m http.server 8765
+ *   cd .smoke-pages && python serve_isolated_test.py
  *   open http://localhost:8765/index.html
  */
 import {readFileSync,writeFileSync,mkdirSync,copyFileSync,existsSync} from "node:fs";
@@ -27,6 +27,7 @@ if(test.href===prod) {
   throw Error("本番GAS URLは使用できません。別プロジェクトのテスト用GASを指定してください。");
 }
 mkdirSync(out,{recursive:true});
+const localEndpoint="http://localhost:8765/__test_api__";
 const sources=["index.html","report.html","common-masters-v1.js","analysis-core.js","append-identity-v1.js",
   "assets/favicon-index.svg","assets/favicon-index-32.png","assets/favicon-report.svg","assets/favicon-report-32.png"];
 for(const name of sources){
@@ -38,19 +39,23 @@ for(const name of sources){
     if(original.split(prod).length!==2) {
       throw Error(name+"に想定外のGAS API URLがあります。手動で確認してください。");
     }
-    writeFileSync(dest,original.replace(prod,test.href),"utf8");
+    // Browser requests stay on the same localhost origin. Only the
+    // Python test relay contacts the explicitly fixed TEST Apps Script URL.
+    writeFileSync(dest,original.replace(prod,localEndpoint),"utf8");
   }else{
     copyFileSync(src,dest);
   }
 }
+copyFileSync(join(root,"scripts/serve-isolated-smoke.py"),join(out,"serve_isolated_test.py"));
+writeFileSync(join(out,"SMOKE_TEST_API_URL.txt"),test.href+"\n","utf8");
 writeFileSync(join(out,"SMOKE_BUILD_INFO.txt"),
   [
     "Synthetic test-only browser build",
     "This directory is generated and should never be deployed as production Pages.",
-    "Test API URL: "+test.href,
+    "Remote test API configured in: SMOKE_TEST_API_URL.txt",
     "Open: http://localhost:8765/index.html",
     "No access key, HMAC material or applicant data is written by this build."
   ].join("\n")+"\n");
 console.log("テスト用画面を生成しました: "+out);
-console.log("起動: cd .smoke-pages && python -m http.server 8765");
+console.log("起動: cd .smoke-pages && python serve_isolated_test.py");
 console.log("ブラウザ: http://localhost:8765/index.html");
