@@ -21,7 +21,22 @@
 
 現在のリポジトリにある `.github/workflows/central-api-sync.yml` は本番 `GAS_SCRIPT_ID` に同期するため、**実地検証の準備目的で実行しないこと**。
 
-### テスト専用GASへソースを配置する方法（ローカルclasp）
+### 推奨：GitHub Actionsからテスト用GASへ同期（PCでのclasp設定不要）
+
+テスト用Apps Scriptのスタンドアロンプロジェクトを新規作成したら、以下の手順でコードを配置する。
+
+1. [Apps Script](https://script.google.com/home/projects/create) で空の**テスト専用**スタンドアロンプロジェクトを作る。既存の本番プロジェクトを複製・上書きしない。プロジェクト設定でScript IDを控える。
+2. [GitHub Actions: Isolated test GAS sync](https://github.com/tsicb/valid-app/actions/workflows/isolated-gas-smoke-sync.yml) を開き、`Run workflow` のブランチを **`feature/incremental-update-pages`** にする。ワークフローファイルは実行ボタンを表示するためmainにも登録済みだが、アプリのmainコードには反映していない。
+3. 入力を設定：`test_script_id` = テスト用Script ID、`test_root_folder_id` = テスト用親フォルダID、`test_output_folder_id` = テスト用出力フォルダID、`confirm` = **TEST_ONLY**。
+4. `Run workflow` で実行。構文・SHA256・自動テストに合格したソースだけをテストGASへ同期する。既存の `GAS_SCRIPT_ID` と一致すると拒否し、**本番GASへの同期・Webアプリの公開は行わない**。
+5. Apps Scriptの**テスト用プロジェクト**でScript Propertiesに `ACCESS_KEY`（本番と異なるキー）、`SCHEMA_VERSION=3.0` を設定する。本番HMAC鍵や本番DataStoreフォルダIDをコピーしない。
+6. テストプロジェクトのWeb Appを新規デプロイして `/exec` URLを得る。公開範囲は実際のクロスオリジン画面が利用できる最小構成にし、実データを投入せず架空CSVのみを使用する。アクセスキーをGitHubのコード・Issue・PR本文に記載しない。
+
+GitHubで設定済みの `CLASPRC_JSON` と `GAS_SCRIPT_ID` は、OAuthと「本番Script IDではない」安全確認のために使用する。追加の認証情報はGitHubに公開しない。認証情報が有効でない場合、GitHub Actions側で安全に失敗するので、本番同期へ変更して回避しない。
+
+### 代替：ローカルclaspを使う方法
+
+
 
 1. Apps Scriptで本番とは別の**新規スタンドアロンプロジェクト**を作り、Script IDを控える。
 2. このfeatureブランチをローカルにチェックアウトし、`npm install -g @google/clasp@3.3.0` と `clasp login` を行う。
