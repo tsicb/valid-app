@@ -142,11 +142,26 @@ jobs:
           It was NOT deployed to your public GitHub Pages site.
           TXT
 
+      - name: Stage visible artifact folder for upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          # upload-artifact@v4 skips dot-prefixed paths by default.
+          # Keep the local smoke folder hidden, but publish an explicit
+          # non-hidden staging copy containing only the generated test UI.
+          mkdir -p isolated-pages-artifact
+          cp -a .smoke-pages/. isolated-pages-artifact/
+          test -s isolated-pages-artifact/index.html
+          test -s isolated-pages-artifact/report.html
+          test -s isolated-pages-artifact/START_TEST_WINDOWS.cmd
+          test -s isolated-pages-artifact/samples/01_初回応募.csv
+          echo "Test browser bundle contains $(find isolated-pages-artifact -type f | wc -l) files."
+
       - name: Upload private test bundle artifact
         uses: actions/upload-artifact@v4
         with:
           name: valid-app-isolated-pages-test
-          path: .smoke-pages/
+          path: isolated-pages-artifact/
           retention-days: 7
           if-no-files-found: error
 
