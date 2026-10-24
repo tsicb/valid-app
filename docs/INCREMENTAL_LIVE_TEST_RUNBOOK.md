@@ -62,10 +62,10 @@ GASをWebアプリとしてデプロイして `/exec` URLが発行されたら�
 3. `test_api_url` に**テストGASの** `https://script.google.com/macros/s/.../exec` を指定し、`confirm` に `TEST_ONLY` を入力して実行する。
 4. Actionsはまず公開GETで `IDENTITY_V1`、APPEND/REPLACE、Schema 3.0、およびテスト専用親/出力フォルダIDを検証する。不一致なら停止し、テスト画面を生成しない。
 5. 成功後、実行結果ページ下部のArtifactsから `valid-app-isolated-pages-test` をダウンロードする。
-6. ZIPをPCのフォルダに展開し、`START_TEST_WINDOWS.cmd` を実行する（WindowsのPythonが必要）。`http://localhost:8765/index.html` がテスト画面になる。
+6. ZIPをPCのフォルダに展開し、エクスプローラーで `index.html` があるフォルダのアドレスバーに `cmd` と入力して開く。そこで **`python serve_isolated_test.py`** を実行する（`python -m http.server 8765` は使わない）。`http://localhost:8765/index.html` がテスト画面になる。
 7. 展開された`samples`フォルダの架空CSVでテストする。
 
-生成物の `index.html` と `report.html` はテスト用GASへ接続するが、本番Pagesとは独立している。ZIPには**テスト用API URLは含まれるが、アクセスキーや応募者の個人情報は含まれない**。テストが終わったらZIPと展開フォルダは削除可能。
+生成物の `index.html` と `report.html` は同じ `localhost:8765/__test_api__` に送信し、付属の `serve_isolated_test.py` がテスト用GASへ転送する。これによりブラウザのCORS制約を回避する。Python側は `127.0.0.1` のみにバインドし、接続先GASは生成時に確定したテストURLに固定する。アクセスキーと送受信本文はログに記録しない。本番Pagesとは独立している。ZIPには**テスト用API URLは含まれるが、アクセスキーや応募者の個人情報は含まれない**。テストが終わったらZIPと展開フォルダは削除可能。
 
 ### 代替：ローカルでテスト用画面を生成
 
@@ -76,7 +76,7 @@ GASをWebアプリとしてデプロイして `/exec` URLが発行されたら�
 ```bash
 node scripts/build-append-smoke-site.mjs "https://script.google.com/macros/s/テスト用デプロイID/exec"
 cd .smoke-pages
-python -m http.server 8765
+python serve_isolated_test.py
 ```
 
 ChromeまたはFirefoxで `http://localhost:8765/index.html` を開き、**テスト専用アクセスキー**を登録する。
