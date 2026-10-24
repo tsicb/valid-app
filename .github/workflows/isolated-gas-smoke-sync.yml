@@ -1,0 +1,166 @@
+name: Isolated test GAS sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_script_id:
+        description: 'Standalone TEST Apps Script project ID (never production)'
+        required: true
+        type: string
+      test_root_folder_id:
+        description: 'Drive folder ID for isolated test system root'
+        required: true
+        type: string
+      test_output_folder_id:
+        description: 'Drive folder ID for isolated test company Sheets'
+        required: true
+        type: string
+      confirm:
+        description: 'Type TEST_ONLY to allow pushing source to the separate test GAS project'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: isolated-gas-smoke-sync
+  cancel-in-progress: false
+
+jobs:
+  sync_test_gas:
+    name: Sync checked-out code to isolated Apps Script (no Web App deploy)
+    runs-on: ubuntu-latest
+    env:
+      TEST_SCRIPT_ID: ${{ inputs.test_script_id }}
+      TEST_ROOT_FOLDER_ID: ${{ inputs.test_root_folder_id }}
+      TEST_OUTPUT_FOLDER_ID: ${{ inputs.test_output_folder_id }}
+      PRODUCTION_SCRIPT_ID: ${{ secrets.GAS_SCRIPT_ID }}
+      CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+
+    steps:
+      - name: Require explicit isolation confirmation
+        shell: bash
+        env:
+          USER_CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          if [ "${USER_CONFIRM}" != "TEST_ONLY" ]; then
+            echo 'Confirmation must be exactly TEST_ONLY.' >&2
+            exit 1
+          fi
+          if [ -z "${PRODUCTION_SCRIPT_ID}" ] || [ -z "${CLASPRC_JSON}" ]; then
+            echo 'The existing GAS_SCRIPT_ID and CLASPRC_JSON secrets are required for safety checks and OAuth.' >&2
+            exit 1
+          fi
+          if [[ ! "${TEST_SCRIPT_ID}" =~ ^[A-Za-z0-9_-]{20,}$ ]]; then
+            echo 'Invalid test project Script ID.' >&2
+            exit 1
+          fi
+          if [ "${TEST_SCRIPT_ID}" = "${PRODUCTION_SCRIPT_ID}" ]; then
+            echo 'Refusing to modify the production GAS Script ID.' >&2
+            exit 1
+          fi
+          if [[ ! "${TEST_ROOT_FOLDER_ID}" =~ ^[A-Za-z0-9_-]{20,}$ ]] ||
+             [[ ! "${TEST_OUTPUT_FOLDER_ID}" =~ ^[A-Za-z0-9_-]{20,}$ ]]; then
+            echo 'Test-only Drive folder IDs must be specified.' >&2
+            exit 1
+          fi
+
+      - name: Checkout selected source branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run pre-sync regression tests and syntax checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/*.test.cjs
+          temp_dir="$(mktemp -d)"
+          trap 'rm -rf "$temp_dir"' EXIT
+          for file in central-api/*.gs; do
+            cp "$file" "$temp_dir/$(basename "${file%.gs}").js"
+            node --check "$temp_dir/$(basename "${file%.gs}").js"
+          done
+
+      - name: Verify exact canonical Central API checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd central-api
+            sha256sum -c SOURCE_SHA256SUMS.txt
+          )
+
+      - name: Install clasp
+        run: npm install --global @google/clasp@3.3.0
+
+      - name: Restore clasp OAuth to isolated runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Bind temporary clasp config to TEST script only
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('node:fs');
+          fs.writeFileSync('.clasp.json', JSON.stringify({
+            scriptId: process.env.TEST_SCRIPT_ID,
+            rootDir: '.gas-test',
+            scriptExtensions: ['.gs', '.js']
+          }, null, 2) + '\n');
+          NODE
+          grep -Fq "${TEST_SCRIPT_ID}" .clasp.json
+          if grep -Fq "${PRODUCTION_SCRIPT_ID}" .clasp.json; then
+            echo 'Production GAS Script ID found in temporary clasp config.' >&2
+            exit 1
+          fi
+
+      - name: Pull TEST project to preserve appsscript manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .gas-test
+          mkdir -p .gas-test
+          clasp pull
+          test -f .gas-test/appsscript.json
+
+      - name: Stage canonical source with test-only Drive folders
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/stage-append-test-gas.mjs "${TEST_ROOT_FOLDER_ID}" "${TEST_OUTPUT_FOLDER_ID}"
+          if grep -Eq "ROOT_FOLDER_ID: '1pczMllofAeCpPsMKmaU0fDDUUXgkXy8f'|SHEET_OUTPUT_FOLDER_ID: '1izieBYn1U40y0sMkK2H5WzoILA1blYNb'" .gas-test/00_Config.gs; then
+            echo 'Production Drive folder IDs remain in the staged config.' >&2
+            exit 1
+          fi
+
+      - name: Push source to TEST GAS only (no deployment)
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq "${TEST_SCRIPT_ID}" .clasp.json
+          clasp push --force
+
+      - name: Summarize test-only source sync
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '## Test Apps Script source sync completed'
+            echo
+            echo '- Checked-out commit: ' "${GITHUB_SHA::8}"
+            echo '- Destination: the explicitly supplied TEST script ID (not printed)'
+            echo '- Drive source/output folders: explicitly supplied TEST folder IDs (not printed)'
+            echo '- No production GAS source was changed.'
+            echo '- No Web App was deployed.'
+            echo '- Next: set a test-only ACCESS_KEY/SCHEMA_VERSION and deploy from the test Apps Script editor.'
+          } >> "$GITHUB_STEP_SUMMARY"
