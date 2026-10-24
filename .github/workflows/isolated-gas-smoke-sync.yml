@@ -49,6 +49,10 @@ jobs:
             echo 'Confirmation must be exactly TEST_ONLY.' >&2
             exit 1
           fi
+          if [ "${GITHUB_REF}" != "refs/heads/feature/incremental-update-pages" ]; then
+            echo 'Select feature/incremental-update-pages from the Run workflow branch dropdown.' >&2
+            exit 1
+          fi
           if [ -z "${PRODUCTION_SCRIPT_ID}" ] || [ -z "${CLASPRC_JSON}" ]; then
             echo 'The existing GAS_SCRIPT_ID and CLASPRC_JSON secrets are required for safety checks and OAuth.' >&2
             exit 1
