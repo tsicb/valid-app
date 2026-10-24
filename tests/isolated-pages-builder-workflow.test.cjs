@@ -24,6 +24,14 @@ test("GET preflight validates API capability AND both test folder IDs before art
 });
 test("bundle retains fake CSV and starts a localhost site; does not deploy",()=>{
   assert.match(workflow,/actions\/upload-artifact@v4/);
+  // The generated .smoke-pages directory must be copied to a visible
+  // artifact directory because upload-artifact v4 ignores hidden paths.
+  assert.match(workflow,/cp -a \.smoke-pages\/\. isolated-pages-artifact\//);
+  assert.match(workflow,/path: isolated-pages-artifact\//);
+  assert.ok(workflow.indexOf("Stage visible artifact folder for upload") <
+    workflow.indexOf("Upload private test bundle artifact"));
+  assert.match(workflow,/test -s isolated-pages-artifact\/index\.html/);
+  assert.match(workflow,/test -s isolated-pages-artifact\/START_TEST_WINDOWS\.cmd/);
   assert.match(workflow,/tests\/fixtures\/append-smoke\/\*\.csv/);
   assert.match(workflow,/START_TEST_WINDOWS\.cmd/);
   assert.match(workflow,/localhost:8765/);
