@@ -41,6 +41,11 @@ jobs:
       - name: Run isolated incremental merge regression tests
         run: node --test tests/*.test.cjs
 
+      - name: Test fixed-target local Python relay
+        run: |
+          python -m unittest discover -s tests -p test_isolated_proxy.py
+          python -m py_compile scripts/serve-isolated-smoke.py
+
       - name: Check Pages identity script and main inline JavaScript
         run: |
           node --check append-identity-v1.js
