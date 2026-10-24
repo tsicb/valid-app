@@ -29,6 +29,7 @@ function fake(responseSequence,opts={}){
     prepareSheetsTransport:async()=>({mode:"PLAIN_JSON"}),
     sleepMs:async()=>{sleepCount++;},
     normalizeString:v=>v===null || v===undefined?"":String(v).trim(),
+    sheetsStageLabel:v=>v?.stage||"PROCESSING",
     mapSheetsApiError:v=>v?.message||"error",
     console:{warn:(...args)=>logs.push(args)}
   };
