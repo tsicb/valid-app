@@ -68,6 +68,7 @@ jobs:
           set -euo pipefail
           node --test tests/*.test.cjs
           node --check scripts/build-append-smoke-site.mjs
+          python -m unittest discover -s tests -p test_isolated_proxy.py
 
       - name: Probe deployed TEST Apps Script without an access key
         shell: bash
@@ -103,6 +104,31 @@ jobs:
             '- No access key or actual applicant data was sent\n');
           NODE
 
+      - name: Probe test GAS POST routing with an intentionally invalid key
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This checks doPost without sending any real credentials.
+          cat > "$RUNNER_TEMP/invalid-auth-probe.json" <<'JSON'
+          {"action":"manageAuthCheck","schemaVersion":"3.0","pagesVersion":"2026.09.03-etl-v2.22-prerelease-clean","accessKey":"INVALID_SMOKE_TEST_KEY_DO_NOT_ACCEPT"}
+          JSON
+          curl --location --fail --silent --show-error \
+            --max-time 40 --retry 2 --retry-all-errors \
+            -H "Content-Type: text/plain;charset=UTF-8" \
+            --data-binary "@$RUNNER_TEMP/invalid-auth-probe.json" \
+            --output "$RUNNER_TEMP/invalid-auth-response.json" "$TEST_API_URL"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          let data;
+          try { data=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/invalid-auth-response.json','utf8')); }
+          catch { throw Error('Test GAS POST did not return JSON. Check the Web App deployment.'); }
+          if (data?.ok!==false || data?.code!=='AUTH_INVALID') {
+            throw Error('Test GAS did not reject the intentionally invalid key as expected.');
+          }
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+            '- Test GAS POST rejects a deliberately invalid key with AUTH_INVALID (no actual credential was supplied)\\n');
+          NODE
+
       - name: Generate localhost browser test site
         shell: bash
         run: |
@@ -135,13 +161,13 @@ jobs:
              Apps Script API requests and will cause authentication failures.
           6. The Python server binds to 127.0.0.1 only and does not log
              POST bodies or access keys.
-          4. Enter ONLY the test GAS ACCESS_KEY from the test Apps Script project.
-          5. Use the fake CSV files in the samples subfolder.
-          6. CREATE: 01_初回応募.csv + 01_初回求人.csv
-          7. APPEND: 02_重複追加応募.csv + 02_改稿求人.csv
-          8. Repeat step 7; no new applications should be added.
-          9. APPEND: 03_日次数減少応募.csv (should not delete saved records).
-          10. REPLACE: 04_全件入れ替え応募.csv + 04_入れ替え求人.csv
+          7. Enter ONLY the test GAS ACCESS_KEY from the test Apps Script project.
+          8. Use the fake CSV files in the samples subfolder.
+          9. CREATE: 01_初回応募.csv + 01_初回求人.csv
+          10. APPEND: 02_重複追加応募.csv + 02_改稿求人.csv
+          11. Repeat step 10; no new applications should be added.
+          12. APPEND: 03_日次数減少応募.csv (should not delete saved records).
+          13. REPLACE: 04_全件入れ替え応募.csv + 04_入れ替え求人.csv
 
           Never upload production applicant files or production access keys.
           This site talks only to the test GAS URL supplied at build time.
