@@ -117,9 +117,9 @@ jobs:
           start "" "http://localhost:8765/index.html"
           where py >nul 2>nul
           if %errorlevel% == 0 (
-            py -m http.server 8765
+            py serve_isolated_test.py
           ) else (
-            python -m http.server 8765
+            python serve_isolated_test.py
           )
           pause
           CMD
@@ -127,8 +127,14 @@ jobs:
           valid-app: isolated incremental-update TEST site
 
           1. Extract this ZIP to a folder on your Windows PC.
-          2. Double-click START_TEST_WINDOWS.cmd (Python required).
-          3. Open http://localhost:8765/index.html if it did not open automatically.
+          2. Open that folder in File Explorer, type cmd in the address bar.
+          3. In Command Prompt, run: python serve_isolated_test.py
+             (If needed: py serve_isolated_test.py)
+          4. Open http://localhost:8765/index.html in your browser.
+          5. Do NOT use python -m http.server 8765: it cannot relay
+             Apps Script API requests and will cause authentication failures.
+          6. The Python server binds to 127.0.0.1 only and does not log
+             POST bodies or access keys.
           4. Enter ONLY the test GAS ACCESS_KEY from the test Apps Script project.
           5. Use the fake CSV files in the samples subfolder.
           6. CREATE: 01_初回応募.csv + 01_初回求人.csv
@@ -154,6 +160,8 @@ jobs:
           test -s isolated-pages-artifact/index.html
           test -s isolated-pages-artifact/report.html
           test -s isolated-pages-artifact/START_TEST_WINDOWS.cmd
+          test -s isolated-pages-artifact/serve_isolated_test.py
+          test -s isolated-pages-artifact/SMOKE_TEST_API_URL.txt
           test -s isolated-pages-artifact/samples/01_初回応募.csv
           echo "Test browser bundle contains $(find isolated-pages-artifact -type f | wc -l) files."
 
@@ -174,6 +182,6 @@ jobs:
             echo '### Browser test bundle ready'
             echo
             echo 'Download the valid-app-isolated-pages-test artifact at the bottom of this run.'
-            echo 'Unzip it, then launch START_TEST_WINDOWS.cmd.'
+            echo 'Unzip; open a Command Prompt in the folder; run python serve_isolated_test.py.'
             echo 'No production Pages or GAS deployment was changed.'
           } >> "$GITHUB_STEP_SUMMARY"
