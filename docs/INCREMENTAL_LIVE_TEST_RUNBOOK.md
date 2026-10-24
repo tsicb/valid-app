@@ -53,7 +53,23 @@ node scripts/stage-append-test-gas.mjs "TEST_ROOT_FOLDER_ID" "TEST_OUTPUT_FOLDER
 
 `stage-append-test-gas.mjs` は本番root/outputフォルダIDを拒否する。また、取得済みの `.gas-test/appsscript.json` がなければ作業を開始しない。テスト用フォルダIDは生成したローカルの `.gas-test/00_Config.gs` のみに保持し、GitHubへコミットしない。
 
-## 2. ブラウザのテスト用画面を生成
+## 2. 推奨：GitHub Actionsでテスト専用画面と架空CSVを取得
+
+GASをWebアプリとしてデプロイして `/exec` URLが発行されたら、**PCへのGit cloneやNode.jsのインストールなし**でテスト画面を用意できる。
+
+1. [Build isolated Pages test bundle](https://github.com/tsicb/valid-app/actions/workflows/build-isolated-pages-preview.yml) を開く。
+2. `Run workflow` のブランチに `feature/incremental-update-pages` を選択する。
+3. `test_api_url` に**テストGASの** `https://script.google.com/macros/s/.../exec` を指定し、`confirm` に `TEST_ONLY` を入力して実行する。
+4. Actionsはまず公開GETで `IDENTITY_V1`、APPEND/REPLACE、Schema 3.0、およびテスト専用親/出力フォルダIDを検証する。不一致なら停止し、テスト画面を生成しない。
+5. 成功後、実行結果ページ下部のArtifactsから `valid-app-isolated-pages-test` をダウンロードする。
+6. ZIPをPCのフォルダに展開し、`START_TEST_WINDOWS.cmd` を実行する（WindowsのPythonが必要）。`http://localhost:8765/index.html` がテスト画面になる。
+7. 展開された`samples`フォルダの架空CSVでテストする。
+
+生成物の `index.html` と `report.html` はテスト用GASへ接続するが、本番Pagesとは独立している。ZIPには**テスト用API URLは含まれるが、アクセスキーや応募者の個人情報は含まれない**。テストが終わったらZIPと展開フォルダは削除可能。
+
+### 代替：ローカルでテスト用画面を生成
+
+
 
 テスト用GASを別プロジェクトでデプロイしたら、このブランチの作業ディレクトリで実行する。
 
