@@ -239,6 +239,10 @@ function doPost(e) {
       return handleManageAuthCheck_(payload);
     }
 
+    if (actionName === 'MANAGEIDENTITYKEY') {
+      return vaaHandleIdentityKey_(payload);
+    }
+
     if (
       actionName ===
       'MANAGELISTOUTPUTFOLDERS'

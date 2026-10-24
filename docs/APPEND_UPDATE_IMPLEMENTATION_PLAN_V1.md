@@ -1,7 +1,7 @@
 # 既存レポート差分追加・全件入れ替え 実装設計 v1
 
 作成日: 2026-10-23  
-状態: **第1・第2段階およびGAS doPostのUPDATE接続まで実装済み / Pages未対応・本番未反映**  
+状態: **GAS連携とPages UI/ブラウザ識別キーの実装済み・PR検証中 / 本番未反映**  
 対象: `tsicb/valid-app`、GitHub Pages `index.html` と `central-api/*.gs`。 `report.html` の画面仕様は原則変更しない。
 
 ## 1. 目的と確定方針
@@ -233,3 +233,26 @@ UPDATE要求に新規フィールドを必須付与：
 - `tests/append-update-guard.test.cjs`：プロトコル拒否、リース、requestId内容ダイジェスト、件数集計および入口コードの回帰チェックを追加。
 - **本番稼働不可**：まだGitHub Pages `index.html` は識別キーと更新方法を送信しない。現時点で中央APIだけ公開すると旧Pagesの更新が拒否されるため、ユーザー向け画面とCREATE時の識別キー対応を実装・検証してからまとめてリリースすること。
 - スキーマ `3.0`、viewer token、`report.html` のUIは変更していない。GitHub ActionsチェックはSyntax/Source SHA/自動テストを対象とし、Google実API上の統合テストは後続工程。
+
+## 14. Pages更新UI・ブラウザ識別キー（featureブランチ、2026-10-23）
+
+- ブランチ: feature/incremental-update-pages、ドラフトPR #2。mainには未マージ、本番GitHub Pagesへ未反映。
+- append-identity-v1.js: Web Crypto HMAC-SHA-256を利用してブラウザで応募識別キーを生成。氏名・応募者IDは一時メタデータにのみ持ち、GAS保存データへ送らない。
+- AirWork: 日付＋企業＋仕事番号＋媒体の集計に連番を付与。同じ日・仕事番号・媒体の集計が複数ファイルに重複する場合は停止。
+- index.html: 既存企業のデフォルトは差分追加、全件入れ替えを選択可。実行直前に対象企業・方式・件数を確認、REPLACE時はチェック必須。
+- index.html: 更新API capabilityを認証済み応答で確認、未対応なら作成/更新を停止。APPEND時は未統合のFast Handoffプレビューを停止。
+- central-api/14_Append_Identity.gs: 認証済みアクションで秘密鍵を返す。鍵はScript PropertiesのVAA_APPLICATION_IDENTITY_HMAC_V1（値はGitHubに置かない）へ保存。
+- central-api/01_DataStore_Performance.gs: 新規CREATEにapplicationIdentityVersion 1を付け、将来APPEND可能にする。
+- central-api/02_EntryPoint.gs: manageIdentityKeyアクションを追加。
+- tests/append-client-identity.test.cjs: HMAC整合、AirWork日別連番、氏名非保存の回帰テストを追加。
+- .github/workflows/central-api-check.yml: PagesとGASの構文・テストをCIで検証。
+
+### 公開前必須の検証
+
+1. テスト用シートでCREATE→APPEND→再APPEND→REPLACE、旧形式からの初回移行を確認。
+2. AirWorkの日次5件→7件→7件→3件が5件→2件→0件→0件になること、保存レポート件数を照合。
+3. 認証のない鍵取得が拒否され、保存データとログに元の個人識別情報やHMAC鍵が出ないことを確認。
+4. 画像、表示設定、共有トークン、個社管理シート、レポートUIが維持されることを確認。
+5. GAS/APIとPagesのバージョンを同時に揃える。APIを先行公開した間は旧Pages UPDATEが停止するため運用調整が必要。
+
+注意: 鍵は認証済みブラウザへ渡すため、管理者には完全に秘匿できず、第三者スクリプトを含むブラウザ環境の信頼が前提。鍵を変えると既存の応募識別キーと一致しなくなる。

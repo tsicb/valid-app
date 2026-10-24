@@ -165,15 +165,15 @@ If Apps Script is edited outside GitHub, reconcile those edits back into GitHub 
 
 ## Incremental-update development checkpoint (2026-10-23; not deployed)
 
-The GitHub canonical Central API mirror now contains a staged incremental-update implementation. The existing Google Apps Script Web App was **not** synced or redeployed as part of this development.
-
-- New source modules: `11_Append_Merge.gs` (pure merge), `12_Append_DataStore.gs` (stage/verify/atomic pointer swap/one-generation backup), `13_Append_Update_Guard.gs` (explicit update protocol, request payload digest, per-company lease).
-- The canonical `02_EntryPoint.gs` UPDATE path now requires `updateStrategy: APPEND|REPLACE` and `updateProtocol: IDENTITY_V1`, merges and commits DataStore **before** synchronizing the hidden job-analysis mirror, refreshes its cached state, then records final dataset counts for audit and Registry. `04_Request_Target.gs` returns persisted update statistics; authenticated `manageAuthCheck` and `doGet` expose the new API capability.
-- These are source-only changes; **do not deploy this API by itself while existing index.html lacks identity-key creation and updateStrategy**. Old Pages UPDATE would receive `UPDATE_PROTOCOL_REQUIRED` rather than inadvertently replace existing data. CREATE retains its legacy path until Pages creation support is added.
-- `index.html`, `report.html`, `analysis-core.js` and `common-masters-v1.js` have not been changed. Live user experience still uses its prior update behavior.
-- Pure and mocked-GAS tests run in `Central API check`; live Google Drive/Sheets integration has not been run yet. Staged commit is verified by tests, but full real-service transactional semantics still require an end-to-end test before deployment.
-- Remaining: build browser HMAC / AirWork identity keys, API capability gate, update selection + confirm modal, disable early APPEND preview, extend CREATE to store identity version, regression tests in a test company, then staged GAS synchronization/redeployment and Pages publication.
-- Implementation plan and known limitations: `docs/APPEND_UPDATE_IMPLEMENTATION_PLAN_V1.md`.
+- Work remains on draft PR [#2](https://github.com/tsicb/valid-app/pull/2), branch `feature/incremental-update-pages`; the running GitHub Pages `main` and deployed GAS were **not** updated. The mainline documents/architecture remain the production baseline.
+- Central API modules: `11_Append_Merge.gs` (pure merge), `12_Append_DataStore.gs` (safe staged storage), `13_Append_Update_Guard.gs` (protocol/replay/company lease), `14_Append_Identity.gs` (authenticated stable HMAC key). `02_EntryPoint.gs` is wired to APPEND/REPLACE protocol; `01_DataStore_Performance.gs` marks new CREATE DataStores identity-v1.
+- Pages: `index.html` and `append-identity-v1.js` implement browser-only applicant HMAC, AirWork daily ordinal keys, APPEND/REPLACE selection and confirmation, API capability gate, and APPEND preview delay.
+- Local automated tests cover 69 checks (2026-10-24): pure merge, staged DataStore mock, protocol, auth, browser identity, synthetic cross-layer lifecycle, real Pages CSV_A/B normalization, localhost smoke-site builder, isolated test-GAS source stage and safeguards, syntax and SHA-256 source manifest. Do **not** describe this as a Google service integration test.
+- A dedicated manual **Isolated test GAS sync** workflow is registered on the default branch so the GitHub Actions Run workflow UI can start it. The workflow requires selecting the feature branch, TEST_ONLY confirmation, a test-only Script ID different from the production GAS_SCRIPT_ID, and separate test Drive folder IDs. It only pushes GAS source; does **not** deploy a Web App. Safety checks are tested.
+- Real Drive/Sheets/GAS smoke tests are **not yet done**. Isolated test Drive root/output folders are prepared outside GitHub (their IDs intentionally not committed). Test-only Apps Script deployment is not yet configured.
+- `tests/fixtures/append-smoke/` contains synthetic CSV_A/B and job files. `scripts/build-append-smoke-site.mjs` generates local Pages copies pointing at an explicitly test-only GAS URL and rejects the production GAS URL. Manual live test steps: `docs/INCREMENTAL_LIVE_TEST_RUNBOOK.md`.
+- **Do not run the production `Central API sync to GAS` workflow or merge PR #2 before isolated real-service verification**. The API must be deployed in tandem with new Pages: new API rejects old Pages UPDATE by design.
+- Core design: `docs/APPEND_UPDATE_IMPLEMENTATION_PLAN_V1.md`.
 
 ## Next-chat startup
 

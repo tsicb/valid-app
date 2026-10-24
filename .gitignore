@@ -2,7 +2,11 @@
 .clasprc.json
 .clasp.json
 .gas-stage/
+.gas-test/
 
 # local environment
 .env
 .env.*
+
+# generated local incremental-update test site
+.smoke-pages/
