@@ -1,0 +1,164 @@
+name: Build isolated Pages test bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_api_url:
+        description: 'TEST GAS Web App /exec URL (never production)'
+        required: true
+        type: string
+      confirm:
+        description: 'Type TEST_ONLY to validate the test API and build the Pages bundle'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-isolated-pages-bundle
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Verify isolated API and prepare downloadable test UI
+    runs-on: ubuntu-latest
+    env:
+      TEST_API_URL: ${{ inputs.test_api_url }}
+      TEST_CONFIRM: ${{ inputs.confirm }}
+      EXPECTED_TEST_ROOT: 1ZZs2xDXlgaKKtBr1ZbZuMnSR2RpEzJKU
+      EXPECTED_TEST_OUTPUT: 1WAcEG1AIrLvfwMYahgCLArmm9a0pcOu7
+
+    steps:
+      - name: Verify branch and test-only input
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF}" != "refs/heads/feature/incremental-update-pages" ]; then
+            echo 'Select feature/incremental-update-pages in Run workflow.' >&2
+            exit 1
+          fi
+          if [ "${TEST_CONFIRM}" != "TEST_ONLY" ]; then
+            echo 'Confirmation must be exactly TEST_ONLY.' >&2
+            exit 1
+          fi
+          node - <<'NODE'
+          const input = process.env.TEST_API_URL;
+          const prod = 'https://script.google.com/macros/s/AKfycbwS_-ptDyhVk5yrNtRB8I32WUJen-xdjKUtp-Rf7Dbdhhg4V9Vw3gneD9K7ErZgP_Y/exec';
+          let url;
+          try { url = new URL(input); } catch { throw Error('Invalid test URL'); }
+          if (url.protocol !== 'https:' || url.hostname !== 'script.google.com' ||
+              !/^\/macros\/s\/[a-zA-Z0-9_-]+\/exec$/.test(url.pathname) ||
+              url.search || url.hash || url.href === prod) {
+            throw Error('This workflow requires a different standalone TEST GAS /exec URL');
+          }
+          NODE
+
+      - name: Checkout selected feature branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate source and regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/*.test.cjs
+          node --check scripts/build-append-smoke-site.mjs
+
+      - name: Probe deployed TEST Apps Script without an access key
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --location --fail --silent --show-error \
+            --max-time 40 --retry 3 --retry-all-errors \
+            --output "$RUNNER_TEMP/isolated-gas-probe.json" \
+            "$TEST_API_URL"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          let data;
+          try { data=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/isolated-gas-probe.json','utf8')); }
+          catch { throw Error('Test GAS did not return JSON; confirm Web App access and deployment.'); }
+          const capability=data?.capabilities?.incrementalUpdate;
+          if (data.ok!==true || data.service!=='valid-application-analysis-sheet-api' ||
+              data.schemaVersion!=='3.0' || capability?.updateProtocol!=='IDENTITY_V1' ||
+              !Array.isArray(capability.updateStrategies) ||
+              !capability.updateStrategies.includes('APPEND') ||
+              !capability.updateStrategies.includes('REPLACE')) {
+            throw Error('Test GAS does not expose the expected IDENTITY_V1 version.');
+          }
+          if (data.rootFolderId !== process.env.EXPECTED_TEST_ROOT ||
+              data.sheetOutputFolderId !== process.env.EXPECTED_TEST_OUTPUT) {
+            throw Error('Test GAS Drive destinations are not the isolated test folders; refuse to proceed.');
+          }
+          console.log('TEST API capability, schema and isolated Drive destinations verified.');
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+            '### Test GAS preflight success\n\n' +
+            '- Schema 3.0 and IDENTITY_V1 supported\n' +
+            '- APPEND / REPLACE supported\n' +
+            '- Both Drive destination IDs match the isolated test folders\n' +
+            '- No access key or actual applicant data was sent\n');
+          NODE
+
+      - name: Generate localhost browser test site
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build-append-smoke-site.mjs "$TEST_API_URL"
+          mkdir -p .smoke-pages/samples
+          cp tests/fixtures/append-smoke/*.csv .smoke-pages/samples/
+          cat > .smoke-pages/START_TEST_WINDOWS.cmd <<'CMD'
+          @echo off
+          cd /d "%~dp0"
+          echo Serving isolated valid-app at http://localhost:8765/index.html
+          start "" "http://localhost:8765/index.html"
+          where py >nul 2>nul
+          if %errorlevel% == 0 (
+            py -m http.server 8765
+          ) else (
+            python -m http.server 8765
+          )
+          pause
+          CMD
+          cat > .smoke-pages/READ_ME_FIRST.txt <<'TXT'
+          valid-app: isolated incremental-update TEST site
+
+          1. Extract this ZIP to a folder on your Windows PC.
+          2. Double-click START_TEST_WINDOWS.cmd (Python required).
+          3. Open http://localhost:8765/index.html if it did not open automatically.
+          4. Enter ONLY the test GAS ACCESS_KEY from the test Apps Script project.
+          5. Use the fake CSV files in the samples subfolder.
+          6. CREATE: 01_初回応募.csv + 01_初回求人.csv
+          7. APPEND: 02_重複追加応募.csv + 02_改稿求人.csv
+          8. Repeat step 7; no new applications should be added.
+          9. APPEND: 03_日次数減少応募.csv (should not delete saved records).
+          10. REPLACE: 04_全件入れ替え応募.csv + 04_入れ替え求人.csv
+
+          Never upload production applicant files or production access keys.
+          This site talks only to the test GAS URL supplied at build time.
+          It was NOT deployed to your public GitHub Pages site.
+          TXT
+
+      - name: Upload private test bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: valid-app-isolated-pages-test
+          path: .smoke-pages/
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Report preparation complete
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo
+            echo '### Browser test bundle ready'
+            echo
+            echo 'Download the valid-app-isolated-pages-test artifact at the bottom of this run.'
+            echo 'Unzip it, then launch START_TEST_WINDOWS.cmd.'
+            echo 'No production Pages or GAS deployment was changed.'
+          } >> "$GITHUB_STEP_SUMMARY"
