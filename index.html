@@ -6803,6 +6803,44 @@ async function postSheetsPayloadUntilReady(
         }
 
         if (!data.pending) {
+            // A successful API reply is not necessarily the final READY
+            // response. Always require a target sheet before declaring that
+            // CREATE/UPDATE has completed. A retry uses the same requestId
+            // and is idempotent on the GAS side.
+            const responseStatus = normalizeString(data.status).toUpperCase();
+            const responseStage = normalizeString(data.stage).toUpperCase();
+            const sheetId = normalizeString(data.spreadsheetId);
+            const sheetUrl = normalizeString(data.spreadsheetUrl);
+            if (responseStatus === "READY" && sheetId && !sheetUrl) {
+                // The ID is provided by the validated GAS record. Constructing
+                // the standard Google Sheets URL is safe and avoids a false
+                // failure solely due to a missing URL field.
+                data.spreadsheetUrl =
+                    "https://docs.google.com/spreadsheets/d/" +
+                    encodeURIComponent(sheetId) + "/edit";
+            }
+
+            if (!normalizeString(data.spreadsheetUrl)) {
+                console.warn("[Sheets create/update] API returned without a usable sheet URL", {
+                    status: responseStatus || "(absent)",
+                    stage: responseStage || "(absent)",
+                    pending: data.pending ?? null,
+                    hasSpreadsheetId: Boolean(sheetId),
+                    requestIdMatched:
+                        normalizeString(data.requestId) ===
+                        normalizeString(payload.requestId)
+                });
+                // Do not create a second requestId. The server-side request
+                // record can be READY even if one response was incomplete.
+                const waitMs = 1500;
+                scheduledWaitMs += waitMs;
+                if (onStatus) {
+                    onStatus("Google Sheetの保存先情報を再確認しています...");
+                }
+                await sleepMs(waitMs);
+                continue;
+            }
+
             data.clientPerformance = {
                 totalCycleMs:
                     performance.now() -
@@ -8606,7 +8644,7 @@ async function createGoogleSpreadsheet({
 
         if (!data.spreadsheetUrl) {
             throw new Error(
-                "API処理は成功しましたが、保存先情報が返りませんでした。"
+                "Google Sheetの保存先を確認できませんでした。同じrequestIdで再開してください。"
             );
         }
 
