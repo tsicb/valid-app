@@ -34,6 +34,11 @@ test("bundle retains fake CSV and starts a localhost site; does not deploy",()=>
   assert.match(workflow,/test -s isolated-pages-artifact\/START_TEST_WINDOWS\.cmd/);
   assert.match(workflow,/tests\/fixtures\/append-smoke\/\*\.csv/);
   assert.match(workflow,/START_TEST_WINDOWS\.cmd/);
+  assert.match(workflow,/serve_isolated_test\.py/);
+  assert.match(workflow,/SMOKE_TEST_API_URL\.txt/);
+  assert.match(workflow,/test -s isolated-pages-artifact\/serve_isolated_test\.py/);
+  assert.match(workflow,/python serve_isolated_test\.py/);
+  assert.doesNotMatch(workflow,/^\s+py -m http\.server 8765$/m);
   assert.match(workflow,/localhost:8765/);
   assert.doesNotMatch(workflow,/\bclasp push\b|\bclasp deploy\b/);
   assert.doesNotMatch(workflow,/actions\/deploy-pages/);
