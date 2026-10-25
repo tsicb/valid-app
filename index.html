@@ -4198,7 +4198,7 @@ async function vaaApplyApplicationIdentities(accessKey) {
 }
 
 function vaaAwaitUpdateConfirmation({
-    mode, spreadsheetId, appRows, appFiles, jobFiles
+    mode, spreadsheetId, appRows, appFiles, jobFiles, onConfirmed = null
 }) {
     const modal = document.getElementById("vaaUpdateConfirmModal");
     const ack = document.getElementById("vaaUpdateConfirmAck");
@@ -4238,7 +4238,11 @@ function vaaAwaitUpdateConfirmation({
         };
         const onCancel = () => finish(false);
         const onAccept = () => {
-            if (!accept.disabled) finish(true);
+            if (accept.disabled) return;
+            // Reserve the viewer tab synchronously inside this explicit user
+            // click. Opening it after await would trigger popup blockers.
+            if (typeof onConfirmed === "function") onConfirmed();
+            finish(true);
         };
         function finish(result) {
             modal.classList.add("hidden");
@@ -12856,6 +12860,13 @@ document.getElementById('runBtn').addEventListener('click', async () => {
             targetSpreadsheetUrl
         );
 
+    // Freeze the chosen update strategy before any asynchronous CSV work.
+    // The same mode is used in the modal, preview decision and GAS payload.
+    globalLastUpdateStrategy = targetSpreadsheetId
+        ? (document.querySelector('input[name="vaaUpdateMode"]:checked')
+            ?.value === "REPLACE" ? "REPLACE" : "APPEND")
+        : "";
+
     const searchKeywords = [];
 
             if (filesA.length === 0 || !keyNameA) {
@@ -12924,11 +12935,12 @@ startEtlProcessingOverlay();
 runLabel.textContent =
     "CSVを読み込んでいます...";
 
-const viewerTab =
-    reserveViewerTab(
-        targetSpreadsheetId
-            ? "CSVを処理し、既存分析レポートへ反映しています。"
-            : "CSVを処理し、新しい分析レポートを準備しています。"
+// For UPDATE, keep the user on this index tab until confirmation.
+// CREATE retains the existing early-opening behavior.
+let viewerTab = targetSpreadsheetId
+    ? null
+    : reserveViewerTab(
+        "CSVを処理し、新しい分析レポートを準備しています。"
     );
 
             msgEl.innerHTML = "<span class='flex items-center justify-center'><svg class='animate-spin w-5 h-5 mr-2' xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24'><circle class='opacity-25' cx='12' cy='12' r='10' stroke='currentColor' stroke-width='4'></circle><path class='opacity-75' fill='currentColor' d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'></path></svg> CSVを読み込み、保存するデータを作成しています...</span>";
@@ -13268,7 +13280,9 @@ const viewerTab =
 
 msgEl.innerHTML = `
             <div class="flex flex-col items-center">
-                <span class="text-base font-extrabold">データを保存しました。分析レポートへ反映しています...</span>
+                <span class="text-base font-extrabold">${targetSpreadsheetId
+                    ? "CSVの処理が完了しました。更新内容をご確認ください。"
+                    : "CSVの処理が完了しました。保存処理へ進みます。"}</span>
                 <span class="mt-1 text-sm text-slate-600">
                     ${globalFinalData.length.toLocaleString()}応募 ／ 求人突合 ${matchCount.toLocaleString()}応募（${joinRate}%）
                 </span>
@@ -13318,19 +13332,22 @@ msgEl.innerHTML = `
                 : "分析レポートを作成しています...";
 
         if (targetSpreadsheetId) {
-            globalLastUpdateStrategy = document.querySelector(
-                'input[name="vaaUpdateMode"]:checked'
-            )?.value === "REPLACE" ? "REPLACE" : "APPEND";
             stopEtlProcessingOverlay();
             const confirmed = await vaaAwaitUpdateConfirmation({
                 mode: globalLastUpdateStrategy,
                 spreadsheetId: targetSpreadsheetId,
                 appRows: globalFinalData.length,
                 jobFiles: filesB.length,
-                appFiles: filesA.length
+                appFiles: filesA.length,
+                // Called synchronously by the confirmation button. Do not
+                // reserve a tab earlier (or after awaiting confirmation).
+                onConfirmed: () => {
+                    viewerTab = reserveViewerTab(
+                        "既存企業のデータを更新しています。完了後、このタブで分析レポートを読み込みます。"
+                    );
+                }
             });
             if (!confirmed) {
-                try { viewerTab?.close(); } catch (_) {}
                 msgEl.textContent = "データ更新はキャンセルされました。保存データは変更していません。";
                 msgEl.className =
                     "mt-5 text-center text-sm font-bold text-slate-700 bg-slate-50 p-4 rounded-xl border border-slate-200 block";
@@ -13338,8 +13355,6 @@ msgEl.innerHTML = `
             }
             startEtlProcessingOverlay();
             updateEtlProcessingStage("image","更新方法を確認しました。保存準備を開始します。");
-        } else {
-            globalLastUpdateStrategy = "";
         }
 
         const published =
