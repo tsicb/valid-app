@@ -1058,6 +1058,7 @@
                 <p id="vaaUpdateConfirmCompany" class="mt-3 break-words text-xs font-bold text-slate-800"></p>
                 <p id="vaaUpdateConfirmStats" class="mt-2 text-[11px] text-slate-600"></p>
                 <p id="vaaUpdateConfirmMessage" class="mt-3 rounded-xl bg-slate-50 p-3 text-[11px] leading-relaxed text-slate-700"></p>
+                <p id="vaaUpdateConfirmUnmatchedWarning" class="hidden mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] font-semibold leading-relaxed text-amber-900"></p>
                 <label id="vaaUpdateConfirmAckWrap" class="hidden mt-3 flex items-start gap-2 text-[11px] font-bold text-red-700">
                     <input id="vaaUpdateConfirmAck" type="checkbox" class="mt-0.5">
                     今回のCSVに含まれない過去の応募・求人分析データが削除されることを確認しました
@@ -4198,7 +4199,8 @@ async function vaaApplyApplicationIdentities(accessKey) {
 }
 
 function vaaAwaitUpdateConfirmation({
-    mode, spreadsheetId, appRows, appFiles, jobFiles, onConfirmed = null
+    mode, spreadsheetId, appRows, appFiles, jobFiles,
+    unmatchedJobWarning = false, onConfirmed = null
 }) {
     const modal = document.getElementById("vaaUpdateConfirmModal");
     const ack = document.getElementById("vaaUpdateConfirmAck");
@@ -4217,6 +4219,15 @@ function vaaAwaitUpdateConfirmation({
         isReplace ?
         "保存済みの応募・求人分析データを今回のCSVで再構築します。今回のCSVにない過去の応募は分析対象から外れます。分析設定・共有URLは維持します。" :
         "保存済み応募と求人情報は維持し、未登録の応募と求人だけ追加します。重複件数は保存先と照合したあとに計算します。";
+    const unmatchedWarning = document.getElementById(
+        "vaaUpdateConfirmUnmatchedWarning"
+    );
+    unmatchedWarning.classList.toggle("hidden", !unmatchedJobWarning);
+    unmatchedWarning.textContent = unmatchedJobWarning
+        ? "注意：求人CSVは読み込まれていますが、応募データとの求人突合が0件です。"
+          + "今回の求人CSVは分析に使わず、応募CSV内の求人情報を利用できる範囲で反映します。"
+          + "この条件も確認してから実行してください。"
+        : "";
     document.getElementById("vaaUpdateConfirmAckWrap").classList
         .toggle("hidden", !isReplace);
     ack.checked = false;
@@ -8322,7 +8333,8 @@ async function markFastViewerHandoffError(
 
 
 async function createGoogleSpreadsheet({
-    viewerTab: suppliedViewerTab = null
+    viewerTab: suppliedViewerTab = null,
+    unmatchedJobAcknowledged = false
 } = {}) {
     const publishStartedAt =
         performance.now();
@@ -8424,18 +8436,26 @@ async function createGoogleSpreadsheet({
         jobFileCount > 0 &&
         globalJoinCount === 0
     ) {
-        const proceed =
-            window.confirm(
+        if (targetSpreadsheetId) {
+            // UPDATE users have already reviewed this warning in the
+            // confirmation modal BEFORE their viewer tab was opened.
+            // Refuse to save if the calling flow did not acknowledge it.
+            if (!unmatchedJobAcknowledged) {
+                throw new Error(
+                    "求人突合が0件のため、更新前に確認が必要です。"
+                );
+            }
+        } else {
+            // Preserve existing CREATE behavior for now; UPDATE is covered
+            // by the consolidated modal above.
+            const proceed = window.confirm(
                 "求人CSVは読み込まれていますが、応募データとの求人突合が0件です。\n\n" +
                 "求人CSVは使わず、応募CSV内の求人情報を利用できる範囲で分析レポートへ反映しますか？"
             );
-
-        if (!proceed) {
-            try {
-                suppliedViewerTab?.close();
-            } catch (_) {}
-
-            return null;
+            if (!proceed) {
+                try { suppliedViewerTab?.close(); } catch (_) {}
+                return null;
+            }
         }
     }
 
@@ -13331,14 +13351,18 @@ msgEl.innerHTML = `
                 ? "分析レポートを更新しています..."
                 : "分析レポートを作成しています...";
 
+        let unmatchedJobAcknowledged = false;
         if (targetSpreadsheetId) {
             stopEtlProcessingOverlay();
+            const unmatchedJobWarning =
+                filesB.length > 0 && globalJoinCount === 0;
             const confirmed = await vaaAwaitUpdateConfirmation({
                 mode: globalLastUpdateStrategy,
                 spreadsheetId: targetSpreadsheetId,
                 appRows: globalFinalData.length,
                 jobFiles: filesB.length,
                 appFiles: filesA.length,
+                unmatchedJobWarning,
                 // Called synchronously by the confirmation button. Do not
                 // reserve a tab earlier (or after awaiting confirmation).
                 onConfirmed: () => {
@@ -13353,13 +13377,15 @@ msgEl.innerHTML = `
                     "mt-5 text-center text-sm font-bold text-slate-700 bg-slate-50 p-4 rounded-xl border border-slate-200 block";
                 return;
             }
+            unmatchedJobAcknowledged = unmatchedJobWarning;
             startEtlProcessingOverlay();
             updateEtlProcessingStage("image","更新方法を確認しました。保存準備を開始します。");
         }
 
         const published =
             await createGoogleSpreadsheet({
-                viewerTab
+                viewerTab,
+                unmatchedJobAcknowledged
             });
 
         if (published) {
