@@ -51,6 +51,18 @@
 - 本番GASの「デプロイ → デプロイを管理」で、現在稼働中の**デプロイID・版番号・版の説明**を記録する。Apps ScriptのDeployment一覧を取得できる連携がないため、現時点では公開版番号を確認できていない。
 - Apps Scriptエディタの現行HEADソースがGitHub mainと同内容か、同期前に比較する。GitHubの旧mainコミットは復旧基準として確保できるが、**現在公開中のGASソースと一致する保証ではない**。旧版はApps Scriptのプロジェクト履歴からも保持する。
 
+### 本番Web Appバージョン59の控え（2026-10-26）
+
+本番運用者から現在の公開Webアプリは**バージョン59**であると確認・共有された。以下は切替前の復旧基準として記録する。
+
+- 現行公開版：**Apps Script Web App デプロイのバージョン番号 59**（運用者申告）。これはGitHubの `APP_VERSION` 表示やGASプロジェクトのソースHEAD番号とは別。
+- 現行Web App URL：`https://script.google.com/macros/s/AKfycbwS_-ptDyhVk5yrNtRB8I32WUJen-xdjKUtp-Rf7Dbdhhg4V9Vw3gneD9K7ErZgP_Y/exec`
+- `main/index.html` と `feature/incremental-update-pages/index.html` の `SHEETS_API_URL` の双方で、上記URLに**文字列完全一致**したことを確認。
+- 復旧時は新規デプロイURLを作らず、**現在の既存Web Appデプロイの編集画面**からバージョン59を再選択する。既存バージョンを削除しない。
+- 残る事前確認：本番Apps Scriptの**Script ID**とGitHub Actions Secret `GAS_SCRIPT_ID` の一致、現行の実行権限・アクセス権限、ソース旧版の回復手段、同期前の書き込み有無。Secret値は公開リポジトリに記録しない。
+- 公開前mainの復旧基準SHA（この記録時）：`7aa3fae0f2280b91fbc9ae9ea27ffac2397bdff2`。本番公開直前にも必ず再確認する。
+- この記録は**本番GAS同期・Web Appデプロイ・PRマージを実施したことを意味しない**。
+
 ### 本番GAS既存デプロイの確認票（2026-10-26、読み取り専用）
 
 GitHub上で確認できた事項：
