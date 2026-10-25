@@ -2,7 +2,7 @@
 
 作成日: 2026-10-23
 対象ブランチ: `feature/incremental-update-pages`
-状態: **新規作成・差分追加・全件入れ替え・AirWork・CSV_BはGoogle実環境で検証済み。旧形式移行の専用テストは未実施。**
+状態: **主要な差分更新処理と旧形式からの移行を隔離Google実環境で検証済み。本番未公開。**
 
 ## 1. 公開前の安全条件
 
@@ -189,6 +189,23 @@ AirWorkの仮想仕事番号は `AIRWORK_ONLY`、通常求人は `DEMO_JOB`、�
 6. 同じ新規テストSheetで `01_初回応募.csv` + `01_初回求人.csv` を `全件入れ替え`。確認チェックとモーダル同意後、応募7件・求人2件、`applicationIdentityVersion=1`、元の旧形式DataStoreが`analysisDataStoreBackupFileId`に保持されることを確認する。
 7. 同じSheetへ `02_重複追加応募.csv` + `02_改稿求人.csv` を `差分追加`。期待：9件アップロード中、既存6件と重複、新規3件追加 → 合計10件。旧求人の給与1,200円維持。
 8. テスト終了後も、既存5件入り検証シートを削除・変更しない。新しく作成した移行テスト用Sheetは必要に応じて保持する。
+
+### 2026-10-25 実地検証結果（旧形式からの移行：成功）
+
+**移行テスト専用シート** `LEGACY_MIGRATION_TEST様_有効応募分析` を確認した。既存の5応募の検証シートとは別で、元のシートは5件のまま。
+
+| 操作 | 実地で保存された件数 | 証跡 |
+| --- | ---: | --- |
+| 旧形式CREATE | 7件 | `DATA_CREATE / SUCCESS`（23:15:23） |
+| 初回APPEND | 旧形式のため拒否 | `DATA_UPDATE / ERROR`、`MIGRATION_REQUIRED`（23:19:32） |
+| REPLACE | **4件**（予定の7件ではなく4件のCSVを使用したとみられる） | `DATA_UPDATE / SUCCESS`（23:20:50）、DataStore `applicationIdentityVersion=1` |
+| REPLACE後APPEND | **9件**（4件に5件追加） | `DATA_UPDATE / SUCCESS`（23:21:57）、DataStore統計 `uploaded=9, skipped=4, added=5, final=9` |
+
+移行後のDataStoreに識別キーがあり、通常の差分追加が機能することを実データで確認した。更新後の求人マスタ2件、通常求人時給1,600円を維持。元の5応募テストシートは変化なし。
+
+バックアップは**直前の1世代**を保持する仕様で、最終APPEND後はREPLACE時の4件のDataStoreがバックアップ先となる。旧形式の最初の7件は最新のバックアップ先ではなくなる（以前のバックアップをゴミ箱へ移す実装）。恒久的な旧データの保存保証と誤認しないこと。
+
+当初の計画どおりの「REPLACE7件 → APPEND10件」とは異なるが、旧形式拒否・REPLACEによる新方式移行・その後APPEND可能という本検証の核心は満たしている。
 
 ### 判断ポイント
 
