@@ -9,6 +9,30 @@ export function toLegacyCreatePayload(payload) {
       "旧形式テスト画面では新規作成のみ可能です。更新には通常のindex.htmlを使用してください。"
     );
   }
+  // Never allow arbitrary user CSVs in a purpose-built old-format fixture.
+  // Only the two known synthetic samples can create this test workbook.
+  const inputFiles = payload.datasets && payload.datasets.inputFiles;
+  if (!inputFiles || !Array.isArray(inputFiles.headers) ||
+      !Array.isArray(inputFiles.rows)) {
+    throw new Error("テスト用CSVの読込情報がありません。");
+  }
+  const typeColumn = inputFiles.headers.indexOf("種別");
+  const nameColumn = inputFiles.headers.indexOf("ファイル名");
+  if (typeColumn < 0 || nameColumn < 0) {
+    throw new Error("CSV入力ファイル情報の形式が不正です。");
+  }
+  const actual = inputFiles.rows.map(row =>
+    JSON.stringify([row[typeColumn],row[nameColumn]])
+  ).sort();
+  const expected = [
+    JSON.stringify(["応募CSV","01_初回応募.csv"]),
+    JSON.stringify(["求人CSV","01_初回求人.csv"])
+  ].sort();
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(
+      "旧形式移行テストではsamples内の01_初回応募.csvと01_初回求人.csvだけを使用してください。"
+    );
+  }
   const source = payload.datasets && payload.datasets.applicationData;
   if (!source || !Array.isArray(source.headers) || !Array.isArray(source.rows)) {
     throw new Error("応募データがありません。");
@@ -56,6 +80,9 @@ export function buildLegacyTestHtml(original) {
     "/* LEGACY_SMOKE_FIXTURE -- synthetic test-only CREATE page. */",
     toLegacyCreatePayload.toString(),
     "function buildSheetsPayloadV3(...args) {",
+    '  if (!["localhost","127.0.0.1"].includes(window.location.hostname)) {',
+    '    throw new Error("旧形式テスト画面はlocalhostでのみ使用できます。");',
+    '  }',
     "  return toLegacyCreatePayload(buildSheetsPayloadV3Modern(...args));",
     "}",
     'window.addEventListener("DOMContentLoaded", () => {',
