@@ -1,8 +1,22 @@
 # Current State
 
-Last updated: 2026-10-23
+Last updated: 2026-10-26
 
-This file describes the **repository baseline**, not a guarantee that each external runtime has already been deployed to the same version.
+This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
+
+## Production release: incremental APPEND/REPLACE (2026-10-26)
+
+**Status: RELEASED / PRODUCTION ACCEPTANCE PASSED / NORMAL CSV OPERATION RESUMED.** New Pages source and existing GAS Web App deployment are aligned.
+
+- GAS: Existing Web App deployment updated from **version 59** to **version 60** (operator-reported). Its public `/exec` GET was verified by the operator: `schemaVersion=3.0`, `updateProtocol=IDENTITY_V1`, strategies `APPEND/REPLACE`, identity version 1. Version 59 is retained as a rollback reference.
+- Source sync: [GitHub Actions #40212200066](https://github.com/tsicb/valid-app/actions/runs/40212200066), success at feature commit `b39c442d27ab635df98663a4528b87741e95e065` (`clasp push --force` 16 files).
+- GitHub: [PR #2](https://github.com/tsicb/valid-app/pull/2) merged; release merge commit `c68346af0567d12780f0288ec1b90254e4520022`. [Pages deployment #40212837619](https://github.com/tsicb/valid-app/actions/runs/40212837619) and [main CI #40212838082](https://github.com/tsicb/valid-app/actions/runs/40212838082) both succeeded. Previous main rollback baseline is `7aa3fae0f2280b91fbc9ae9ea27ffac2397bdff2`.
+- Production acceptance, **synthetic test company only**: CREATE 7 → APPEND 10 (+3) → identical APPEND 10 (+0) → AirWork daily reported decrease (7 to 3) still retained 10 → REPLACE 4 (hourly pay 1200 to 1600) → CSV_B APPEND 5 (+1, PERSON_ID). Each stage was verified with Sheets internal state/log and DataStore JSON, not merely a success message.
+- Operator confirmed a **pre-existing company report remains viewable** after rollout. All six synthetic data-write scenarios passed; normal CSV activity may resume.
+- Original 49 production DataStore files still matched all 49 independent private backup files by name and size after the acceptance tests; all 12 production management Sheets were separately backed up before deployment. This does not represent a full new hash comparison or a post-release snapshot of subsequent real updates.
+- **Legacy migration**: If a company DataStore lacks `applicationIdentityVersion=1`, its first APPEND intentionally returns `MIGRATION_REQUIRED`. Perform a carefully checked initial REPLACE **only when complete historical source CSVs are available**; do not use a partial CSV and accidentally discard earlier applications.
+- Other release cautions: reload older open `index.html` tabs before operating; preserve the long-lived HMAC Script Property; retain GAS v59 and the private baseline backup. UI visualization of the AirWork decrease warning was not independently observed, although detection in DataStore `aggregateDecreases` was verified.
+- Details and privacy-safe acceptance records: [production runbook](INCREMENTAL_PRODUCTION_RELEASE_RUNBOOK.md) and PR #2 conversation.
 
 ## Versions
 
@@ -163,7 +177,7 @@ If Apps Script is edited outside GitHub, reconcile those edits back into GitHub 
 - Added `docs/ANALYSIS_AXIS_AVAILABILITY.md` as the current 30-axis source/availability contract and a future smoke-test checklist.
 - This checkpoint is documentation-only. No Pages, Central API, Worker, or spreadsheet schema code was changed; runtime deployment status is unchanged.
 
-## Incremental-update development checkpoint (2026-10-23; not deployed)
+## Historical incremental-update development checkpoint (2026-10-23; not deployed at that time)
 
 - Work remains on draft PR [#2](https://github.com/tsicb/valid-app/pull/2), branch `feature/incremental-update-pages`; the running GitHub Pages `main` and deployed GAS were **not** updated. The mainline documents/architecture remain the production baseline.
 - Central API modules: `11_Append_Merge.gs` (pure merge), `12_Append_DataStore.gs` (safe staged storage), `13_Append_Update_Guard.gs` (protocol/replay/company lease), `14_Append_Identity.gs` (authenticated stable HMAC key). `02_EntryPoint.gs` is wired to APPEND/REPLACE protocol; `01_DataStore_Performance.gs` marks new CREATE DataStores identity-v1.
