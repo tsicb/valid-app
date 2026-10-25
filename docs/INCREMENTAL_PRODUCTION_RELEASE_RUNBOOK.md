@@ -2,7 +2,7 @@
 
 作成日：2026-10-25
 対象：`tsicb/valid-app`、PR #2（`feature/incremental-update-pages`）
-状態：**本番公開手順の整理のみ。未マージ・本番GAS未同期・本番Web App未再デプロイ。**
+状態：**PR競合解消・自動テスト完了。本番未マージ・本番GAS未同期・本番Web App未再デプロイ。**
 
 ## 1. 結論と切替方針
 
@@ -17,9 +17,9 @@
 ## 2. 公開のGo/No-Go条件
 
 現時点の **残作業**：
-- PR #2はGitHub上で `mergeable=false` / `mergeable_state=dirty`。2026-10-25確認時点では **マージ不可**。先に最新mainを作業ブランチへ取り込み、競合を解消する。
-- 競合候補：`.github/workflows/build-isolated-pages-preview.yml` はmain/feature双方に追加され内容が異なる。featureの方が新しい移行テストのZIP対応を含む。`.github/workflows/isolated-gas-smoke-sync.yml` はmain/featureで同内容。どちらもテスト補助用であり、本番アプリのコードに混ぜない。
-- 競合解消後のブランチで、`Central API check`（Node.js、Python、GAS構文、SOURCE_SHA256SUMS）を再実行して **全項目成功** を確認する。
+- **2026-10-26 00:10 JST：PR #2の競合は解消済み。GitHubの `mergeable=true` を確認**。マージ操作そのものは未実行。
+- 競合の解消内容：`.github/workflows/build-isolated-pages-preview.yml` はmainの全行を保持したまま、featureの旧形式テスト機能の追加行を採用。`.github/workflows/isolated-gas-smoke-sync.yml` はmainとfeatureで完全一致。統合コミットは `365a44e481999c026609936a772270b98aa13a51`。
+- **統合後の `Central API check` は全項目成功**：JavaScript 94件、Python 4件、Pages/GAS構文、SHA256照合。実行記録 https://github.com/tsicb/valid-app/actions/runs/40205673562 。本番切替直前には最新HEADについて再確認する。
 - `index.html` の本番GAS `SHEETS_API_URL` が既存の本番URLを指し、テスト用 `localhost:8765/__test_api__` になっていないことを確認する。`append-identity-v1.js` がルートに存在することを確認する。
 - 作業ブランチの最新コミットSHAとマージ前のmain SHAを記録。**GASに同期するソース** と **最終的にmainにマージするソース** が一致するよう、切替開始後はPR内容を固定する。
 - 本番GASの `scriptId` が `GAS_SCRIPT_ID` secretと一致すること、切替先が**テスト用GASではない**ことを確認する。
@@ -108,7 +108,7 @@ Apps Scriptデプロイは**削除しない**。既存デプロイの向き先�
 
 ## 9. 本番公開前に残す判断
 
-1. PR #2のマージ競合解消とCIの再実行。
+1. ~~PR #2のマージ競合解消とCIの再実行~~（2026-10-26完了。公開直前のHEAD確認は継続）。
 2. 本番App Scriptプロジェクトの現在の公開バージョン・Deployment IDの控え。
 3. DataStoreの独立バックアップ方法・保持場所の確定。
 4. 社内利用者への一時的なCSV作成／更新停止の案内と切替タイミング。
