@@ -6696,6 +6696,7 @@ async function postSheetsPayloadUntilReady(
 
     let rounds = 0;
     let timeoutCount = 0;
+    let incompleteSuccessCount = 0;
     let apiRoundTripMs = 0;
     let serverReportedMs = 0;
     let scheduledWaitMs = 0;
@@ -6821,6 +6822,7 @@ async function postSheetsPayloadUntilReady(
             }
 
             if (!normalizeString(data.spreadsheetUrl)) {
+                incompleteSuccessCount++;
                 console.warn("[Sheets create/update] API returned without a usable sheet URL", {
                     status: responseStatus || "(absent)",
                     stage: responseStage || "(absent)",
@@ -6828,14 +6830,38 @@ async function postSheetsPayloadUntilReady(
                     hasSpreadsheetId: Boolean(sheetId),
                     requestIdMatched:
                         normalizeString(data.requestId) ===
-                        normalizeString(payload.requestId)
+                        normalizeString(payload.requestId),
+                    incompleteSuccessCount
                 });
+                // Fail clearly after a small number of SAME-requestId
+                // retries. Otherwise ok=true + no target URL can silently
+                // consume the entire 15-minute resume window.
+                if (incompleteSuccessCount >= 3) {
+                    const err = new Error(
+                        "GASが保存先情報を返さない状態が続きました。" +
+                        " status=" + (responseStatus || "(なし)") +
+                        " / stage=" + (responseStage || "(なし)") +
+                        "。新しい更新を開始せず、テストGASの実行履歴を確認してください。"
+                    );
+                    err.code = "API_INCOMPLETE_READY";
+                    err.apiData = {
+                        status: responseStatus,
+                        stage: responseStage,
+                        pending: data.pending ?? null,
+                        hasSpreadsheetId: Boolean(sheetId),
+                        requestIdMatched:
+                            normalizeString(data.requestId) ===
+                            normalizeString(payload.requestId)
+                    };
+                    throw err;
+                }
                 // Do not create a second requestId. The server-side request
                 // record can be READY even if one response was incomplete.
                 const waitMs = 1500;
                 scheduledWaitMs += waitMs;
                 if (onStatus) {
-                    onStatus("Google Sheetの保存先情報を再確認しています...");
+                    onStatus("Google Sheetの保存先情報を再確認しています... (" +
+                        incompleteSuccessCount + "/3)");
                 }
                 await sleepMs(waitMs);
                 continue;
