@@ -11,6 +11,7 @@
 import {readFileSync,writeFileSync,mkdirSync,copyFileSync,existsSync} from "node:fs";
 import {join,dirname,resolve} from "node:path";
 import {fileURLToPath} from "node:url";
+import {buildLegacyTestHtml} from "./legacy-migration-test-page.mjs";
 const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const out=join(root,".smoke-pages");
 const incoming=process.argv[2] || "";
@@ -46,6 +47,10 @@ for(const name of sources){
     copyFileSync(src,dest);
   }
 }
+// This variant only exists in the isolated ZIP. It creates an old-format
+// sheet using fake CSVs, without modifying the connected production source.
+const currentIndex=readFileSync(join(out,"index.html"),"utf8");
+writeFileSync(join(out,"legacy-create.html"),buildLegacyTestHtml(currentIndex),"utf8");
 copyFileSync(join(root,"scripts/serve-isolated-smoke.py"),join(out,"serve_isolated_test.py"));
 writeFileSync(join(out,"SMOKE_TEST_API_URL.txt"),test.href+"\n","utf8");
 writeFileSync(join(out,"SMOKE_BUILD_INFO.txt"),
