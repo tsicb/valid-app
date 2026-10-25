@@ -174,6 +174,44 @@ jobs:
           It was NOT deployed to your public GitHub Pages site.
           TXT
 
+      - name: Include isolated legacy migration exercise
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s .smoke-pages/legacy-create.html
+          cat > .smoke-pages/LEGACY_MIGRATION_TEST.txt <<'TXT'
+          Legacy migration test (synthetic data only)
+
+          IMPORTANT: Do not update the already verified 5-application demo Sheet.
+          This exercise creates an entirely separate test-company workbook.
+
+          1. Start the Python server with: python serve_isolated_test.py
+          2. Visit http://localhost:8765/legacy-create.html
+          3. Enter the TEST ONLY access key. Create a new fake company named
+             LEGACY_MIGRATION_TEST and upload ONLY these two samples:
+               samples/01_初回応募.csv
+               samples/01_初回求人.csv
+          4. After saving, use the newly created company Sheet URL.
+             Expected old-format application total: 7.
+             Expected: applicationIdentityVersion is missing from 99_内部状態.
+             Do not operate on the previous 5-row demo company.
+          5. Visit http://localhost:8765/index.html#sheet=<NEW_SHEET_ID>
+             Upload 02_重複追加応募.csv and 02_改稿求人.csv.
+             Select APPEND; the API must report MIGRATION_REQUIRED.
+             The original 7 saved applications and DataStore pointer must remain.
+          6. With the SAME new test company, select REPLACE using
+             01_初回応募.csv and 01_初回求人.csv.
+             Confirm the destructive-operation checkbox.
+             Expected: 7 applicants, identity version 1, old legacy
+             DataStore retained as the backup.
+          7. APPEND 02_重複追加応募.csv and 02_改稿求人.csv.
+             Expected: 10 applicants (+3), 2 jobs, salary 1200 unchanged.
+
+          Record results without sharing any access key or applicant details.
+          The legacy-create.html variant refuses UPDATE and rejects any
+          filenames other than the two expected synthetic sample CSVs.
+          TXT
+
       - name: Stage visible artifact folder for upload
         shell: bash
         run: |
@@ -189,6 +227,8 @@ jobs:
           test -s isolated-pages-artifact/serve_isolated_test.py
           test -s isolated-pages-artifact/SMOKE_TEST_API_URL.txt
           test -s isolated-pages-artifact/samples/01_初回応募.csv
+          test -s isolated-pages-artifact/legacy-create.html
+          test -s isolated-pages-artifact/LEGACY_MIGRATION_TEST.txt
           echo "Test browser bundle contains $(find isolated-pages-artifact -type f | wc -l) files."
 
       - name: Upload private test bundle artifact

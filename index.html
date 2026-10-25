@@ -14,6 +14,7 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="./common-masters-v1.js"></script>
+<script src="./append-identity-v1.js"></script>
     <style>
         /* スクロールバー装飾 */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -943,6 +944,21 @@
                     </label>
                 </section>
 
+                <section id="vaaUpdateModeSection" class="hidden mb-4 rounded-2xl border border-slate-200 bg-white p-4">
+                    <div class="text-xs font-extrabold text-slate-900">今回のデータ更新方法</div>
+                    <div class="mt-2 space-y-2 text-[11px]">
+                        <label class="flex cursor-pointer items-start gap-2 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
+                            <input type="radio" name="vaaUpdateMode" value="APPEND" checked class="mt-0.5">
+                            <span><strong>差分追加（おすすめ）</strong><span class="mt-1 block text-slate-600">保存済みの応募・求人情報は残し、重複していない応募と新しい求人を追加します。</span></span>
+                        </label>
+                        <label class="flex cursor-pointer items-start gap-2 rounded-xl border border-slate-200 bg-white p-3">
+                            <input type="radio" name="vaaUpdateMode" value="REPLACE" class="mt-0.5">
+                            <span><strong>全件入れ替え</strong><span class="mt-1 block text-slate-600">応募・求人分析データを今回のCSVで作り直します。初回移行や内容の訂正に使います。</span></span>
+                        </label>
+                    </div>
+                    <div class="mt-2 text-[10px] text-slate-500">分析設定・共有URL・個社管理シートの情報は維持されます。</div>
+                </section>
+
                 <button id="runBtn" class="vaa-primary-action w-full text-white py-4 rounded-2xl font-extrabold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-lg md:text-xl">
                     <span id="runBtnLabel" class="tracking-wide">データを保存して分析レポートを作る</span>
                 </button>
@@ -1027,6 +1043,30 @@
                     <button id="reloadReportFinderBtn" type="button" class="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-extrabold text-slate-600 hover:bg-slate-50">一覧を再取得</button>
                 </div>
                 <div id="reportFinderResults" class="grid grid-cols-1 gap-3 md:grid-cols-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="vaaUpdateConfirmModal" class="hidden fixed inset-0 z-[10050] items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="vaaUpdateConfirmTitle" aria-hidden="true">
+        <div id="vaaUpdateConfirmBackdrop" class="absolute inset-0 bg-slate-950/50"></div>
+        <div class="relative z-10 w-full max-w-lg rounded-3xl bg-white shadow-2xl">
+            <div class="p-5 md:p-6">
+                <div class="flex items-center justify-between gap-3">
+                    <h2 id="vaaUpdateConfirmTitle" class="text-base font-extrabold text-slate-950">更新内容を確認</h2>
+                    <button id="vaaUpdateConfirmClose" type="button" aria-label="閉じる" class="rounded-full border border-slate-200 px-3 py-1 text-slate-600">×</button>
+                </div>
+                <p id="vaaUpdateConfirmCompany" class="mt-3 break-words text-xs font-bold text-slate-800"></p>
+                <p id="vaaUpdateConfirmStats" class="mt-2 text-[11px] text-slate-600"></p>
+                <p id="vaaUpdateConfirmMessage" class="mt-3 rounded-xl bg-slate-50 p-3 text-[11px] leading-relaxed text-slate-700"></p>
+                <p id="vaaUpdateConfirmUnmatchedWarning" class="hidden mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] font-semibold leading-relaxed text-amber-900"></p>
+                <label id="vaaUpdateConfirmAckWrap" class="hidden mt-3 flex items-start gap-2 text-[11px] font-bold text-red-700">
+                    <input id="vaaUpdateConfirmAck" type="checkbox" class="mt-0.5">
+                    今回のCSVに含まれない過去の応募・求人分析データが削除されることを確認しました
+                </label>
+            </div>
+            <div class="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 p-4">
+                <button id="vaaUpdateConfirmCancel" type="button" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold">キャンセル</button>
+                <button id="vaaUpdateConfirmAccept" type="button" class="rounded-xl bg-[#148ecc] px-4 py-2 text-xs font-extrabold text-white disabled:opacity-40">更新を実行</button>
             </div>
         </div>
     </div>
@@ -1341,6 +1381,10 @@ const SHEETS_MAX_AUTO_RESUME_ROUNDS = 12;
         let globalPendingSheetsRequestId = "";
         let globalSheetsCreateInFlight = false;
 
+        let globalIncrementalCapabilityAvailable = false;
+        let globalIdentityKeyVersion = "";
+        let globalIdentityStats = null;
+        let globalLastUpdateStrategy = "APPEND";
         let globalDuplicateCount = 0;
         let globalDuplicateData = [];
 
@@ -1666,6 +1710,7 @@ function invalidateEtlDerivedStateForCsvChange() {
     globalEtlExecutedAt = "";
     globalDuplicateCount = 0;
     globalDuplicateData = [];
+    globalIdentityStats = null;
     globalPendingSheetsRequestId = "";
     globalPerformanceTrace = {};
 
@@ -1723,6 +1768,12 @@ function resetCsvSessionState() {
 
     invalidateEtlDerivedStateForCsvChange();
     refreshCsvSelectionSummaries();
+    // Never restore a previously chosen destructive mode on page reload.
+    const appendOption = document.querySelector(
+        'input[name="vaaUpdateMode"][value="APPEND"]'
+    );
+    if (appendOption) appendOption.checked = true;
+    globalLastUpdateStrategy = "APPEND";
 
     const message =
         document.getElementById(
@@ -3267,7 +3318,9 @@ const APPLICATION_DATA_HEADERS = [
     "氏名文字種区分",
     "メールドメイン",
     "居住都道府県",
-    "勤務地・居住都道府県一致"
+    "勤務地・居住都道府県一致",
+    "応募識別キー",
+    "応募識別方式"
 ];
 
 // 初回のSheet分析で実際に参照する求人属性だけを保持する。
@@ -3912,7 +3965,9 @@ function buildNormalizedSheetsModel() {
             "氏名文字種区分": mapNameCharacterClass(row["国籍"]),
             "メールドメイン": normalizeMailDomain(row["メールアドレス"]),
             "居住都道府県": normalizeString(row["住所"]),
-            "勤務地・居住都道府県一致": row["住所都道府県"] ?? ""
+            "勤務地・居住都道府県一致": row["住所都道府県"] ?? "",
+            "応募識別キー": row.__vaaIdentity?.key || "",
+            "応募識別方式": row.__vaaIdentity?.mode || "UNIDENTIFIED"
         };
 
         return APPLICATION_DATA_HEADERS.map(header => record[header] ?? "");
@@ -4047,6 +4102,8 @@ function buildSheetsPayloadV3(accessKey = "", requestId = "", targetSpreadsheetU
         viewerBaseUrl: new URL("report.html", window.location.href).href.split("#")[0].split("?")[0],
         manageBaseUrl: new URL("index.html", window.location.href).href.split("#")[0].split("?")[0],
         operationMode: normalizeString(targetSpreadsheetUrl) ? "update" : "create",
+        updateStrategy: normalizeString(targetSpreadsheetUrl) ? globalLastUpdateStrategy : "",
+        updateProtocol: "IDENTITY_V1",
         targetSpreadsheetUrl: normalizeString(targetSpreadsheetUrl),
         companyDisplayName:
             normalizeString(targetSpreadsheetUrl)
@@ -4077,6 +4134,147 @@ function buildSheetsPayloadV3(accessKey = "", requestId = "", targetSpreadsheetU
             imageMasterInitial: buildImageMasterInitialDataset()
         }
     };
+}
+
+/**
+ * Obtain session HMAC key from the authenticated API. It is intentionally
+ * never stored in localStorage, a URL, an input file or a DataStore payload.
+ */
+async function vaaFetchIdentitySecret(accessKey) {
+    if (!globalIncrementalCapabilityAvailable ||
+        globalIdentityKeyVersion !== "1") {
+        throw new Error("中央APIの差分追加機能が確認できません。公開バージョンを確認してください。");
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    try {
+        const response = await fetch(SHEETS_API_URL, {
+            method: "POST",
+            mode: "cors",
+            credentials: "omit",
+            headers: {"Content-Type": "text/plain;charset=UTF-8"},
+            body: JSON.stringify({
+                action: "manageIdentityKey",
+                accessKey,
+                pagesVersion: SHEETS_APP_VERSION,
+                schemaVersion: SHEETS_SCHEMA_VERSION
+            }),
+            signal: controller.signal
+        });
+        if (!response.ok) throw new Error("応募識別キーの認証に失敗しました。");
+        const data = await response.json();
+        if (!data?.ok || data?.keyVersion !== "1" ||
+            !data?.identitySecret || data?.updateProtocol !== "IDENTITY_V1") {
+            throw new Error(data?.message || "応募識別キーを取得できませんでした。");
+        }
+        return data.identitySecret;
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+async function vaaApplyApplicationIdentities(accessKey) {
+    const secret = await vaaFetchIdentitySecret(accessKey);
+    const stats = await VAAClientIdentity.assign(globalFinalData, secret);
+    // The upload-level dedupe also uses the exact persisted identity key.
+    // This catches equivalent Unicode person ID representations and keeps
+    // CREATE/REPLACE previews and the hidden job mirror consistent.
+    const seen = new Set();
+    let removed = 0;
+    let removedMatches = 0;
+    globalFinalData = globalFinalData.filter(row => {
+        const key = row.__vaaIdentity?.key;
+        if (!key) return true;
+        if (seen.has(key)) {
+            removed++;
+            if (Number(row["ファイルB結合フラグ"]) === 1) removedMatches++;
+            return false;
+        }
+        seen.add(key);
+        return true;
+    });
+    globalDuplicateCount += removed;
+    globalJoinCount = Math.max(0, globalJoinCount - removedMatches);
+    return {...stats,duplicateWithinUpload:removed};
+}
+
+function vaaAwaitUpdateConfirmation({
+    mode, spreadsheetId, appRows, appFiles, jobFiles,
+    unmatchedJobWarning = false, onConfirmed = null
+}) {
+    const modal = document.getElementById("vaaUpdateConfirmModal");
+    const ack = document.getElementById("vaaUpdateConfirmAck");
+    const accept = document.getElementById("vaaUpdateConfirmAccept");
+    const isReplace = mode === "REPLACE";
+    const company = vaaUpdateTargetDisplayName(spreadsheetId) || "この企業";
+    document.getElementById("vaaUpdateConfirmCompany").textContent =
+        "対象企業：" + company;
+    document.getElementById("vaaUpdateConfirmStats").textContent =
+        "読み込み済み応募 " + appRows.toLocaleString() + "件 ／ 応募CSV " +
+        appFiles + "ファイル ／ 求人CSV " + jobFiles + "ファイル";
+    document.getElementById("vaaUpdateConfirmTitle").textContent =
+        isReplace ? "応募・求人データを全件入れ替えますか？" :
+            "保存済みデータへ差分を追加しますか？";
+    document.getElementById("vaaUpdateConfirmMessage").textContent =
+        isReplace ?
+        "保存済みの応募・求人分析データを今回のCSVで再構築します。今回のCSVにない過去の応募は分析対象から外れます。分析設定・共有URLは維持します。" :
+        "保存済み応募と求人情報は維持し、未登録の応募と求人だけ追加します。重複件数は保存先と照合したあとに計算します。";
+    const unmatchedWarning = document.getElementById(
+        "vaaUpdateConfirmUnmatchedWarning"
+    );
+    unmatchedWarning.classList.toggle("hidden", !unmatchedJobWarning);
+    unmatchedWarning.textContent = unmatchedJobWarning
+        ? "注意：求人CSVは読み込まれていますが、応募データとの求人突合が0件です。"
+          + "今回の求人CSVは分析に使わず、応募CSV内の求人情報を利用できる範囲で反映します。"
+          + "この条件も確認してから実行してください。"
+        : "";
+    document.getElementById("vaaUpdateConfirmAckWrap").classList
+        .toggle("hidden", !isReplace);
+    ack.checked = false;
+    accept.className =
+        "rounded-xl px-4 py-2 text-xs font-extrabold text-white disabled:opacity-40 " +
+        (isReplace ? "bg-red-600" : "bg-[#148ecc]");
+    accept.textContent = isReplace ? "全件入れ替えを実行" : "差分追加を実行";
+    accept.disabled = isReplace;
+    modal.classList.remove("hidden");
+    modal.classList.add("flex");
+    modal.setAttribute("aria-hidden", "false");
+    return new Promise(resolve => {
+        const cancel = document.getElementById("vaaUpdateConfirmCancel");
+        const close = document.getElementById("vaaUpdateConfirmClose");
+        const backdrop = document.getElementById("vaaUpdateConfirmBackdrop");
+        const updateAck = () => { accept.disabled = isReplace && !ack.checked; };
+        const onKey = event => {
+            if (event.key === "Escape") finish(false);
+        };
+        const onCancel = () => finish(false);
+        const onAccept = () => {
+            if (accept.disabled) return;
+            // Reserve the viewer tab synchronously inside this explicit user
+            // click. Opening it after await would trigger popup blockers.
+            if (typeof onConfirmed === "function") onConfirmed();
+            finish(true);
+        };
+        function finish(result) {
+            modal.classList.add("hidden");
+            modal.classList.remove("flex");
+            modal.setAttribute("aria-hidden","true");
+            ack.removeEventListener("change",updateAck);
+            cancel.removeEventListener("click",onCancel);
+            close.removeEventListener("click",onCancel);
+            backdrop.removeEventListener("click",onCancel);
+            accept.removeEventListener("click",onAccept);
+            document.removeEventListener("keydown",onKey);
+            resolve(result);
+        }
+        ack.addEventListener("change",updateAck);
+        cancel.addEventListener("click",onCancel);
+        close.addEventListener("click",onCancel);
+        backdrop.addEventListener("click",onCancel);
+        accept.addEventListener("click",onAccept);
+        document.addEventListener("keydown",onKey);
+        accept.focus();
+    });
 }
 
 function measureJsonBytes(value) {
@@ -4480,6 +4678,7 @@ function setAccessKeyUiState(
     globalAccessKeyUiState = state;
     globalAccessKeyVerified =
         state === "ok";
+    if (state !== "ok") globalIncrementalCapabilityAvailable = false;
 
     if (card) {
         card.dataset.accessState = state;
@@ -5002,6 +5201,21 @@ async function verifyStoredAccessKey(options = {}) {
             try {
                 const data = await fetchAccessKeyAuthCheck(accessKey);
 
+                const capability = data?.capabilities?.incrementalUpdate;
+                globalIncrementalCapabilityAvailable =
+                    capability?.updateProtocol === "IDENTITY_V1" &&
+                    capability?.applicationIdentityVersion === "1" &&
+                    Array.isArray(capability?.updateStrategies) &&
+                    capability.updateStrategies.includes("APPEND") &&
+                    capability.updateStrategies.includes("REPLACE");
+                if (!globalIncrementalCapabilityAvailable) {
+                    setAccessKeyUiState(
+                        "incompatible",
+                        "中央APIが差分更新に対応していません。GAS側の公開状況を確認してください。"
+                    );
+                    return false;
+                }
+                globalIdentityKeyVersion = capability.applicationIdentityVersion;
                 rememberAccessKeySuccessNow();
 
                 setAccessKeyUiState(
@@ -5381,6 +5595,8 @@ function updateSheetsOperationUi() {
             "hidden",
             !!raw
         );
+    document.getElementById("vaaUpdateModeSection")
+        ?.classList.toggle("hidden", !id);
 
     if (!raw) {
         selector.dataset.mode =
@@ -6495,6 +6711,7 @@ async function postSheetsPayloadUntilReady(
 
     let rounds = 0;
     let timeoutCount = 0;
+    let incompleteSuccessCount = 0;
     let apiRoundTripMs = 0;
     let serverReportedMs = 0;
     let scheduledWaitMs = 0;
@@ -6602,6 +6819,69 @@ async function postSheetsPayloadUntilReady(
         }
 
         if (!data.pending) {
+            // A successful API reply is not necessarily the final READY
+            // response. Always require a target sheet before declaring that
+            // CREATE/UPDATE has completed. A retry uses the same requestId
+            // and is idempotent on the GAS side.
+            const responseStatus = normalizeString(data.status).toUpperCase();
+            const responseStage = normalizeString(data.stage).toUpperCase();
+            const sheetId = normalizeString(data.spreadsheetId);
+            const sheetUrl = normalizeString(data.spreadsheetUrl);
+            if (responseStatus === "READY" && sheetId && !sheetUrl) {
+                // The ID is provided by the validated GAS record. Constructing
+                // the standard Google Sheets URL is safe and avoids a false
+                // failure solely due to a missing URL field.
+                data.spreadsheetUrl =
+                    "https://docs.google.com/spreadsheets/d/" +
+                    encodeURIComponent(sheetId) + "/edit";
+            }
+
+            if (!normalizeString(data.spreadsheetUrl)) {
+                incompleteSuccessCount++;
+                console.warn("[Sheets create/update] API returned without a usable sheet URL", {
+                    status: responseStatus || "(absent)",
+                    stage: responseStage || "(absent)",
+                    pending: data.pending ?? null,
+                    hasSpreadsheetId: Boolean(sheetId),
+                    requestIdMatched:
+                        normalizeString(data.requestId) ===
+                        normalizeString(payload.requestId),
+                    incompleteSuccessCount
+                });
+                // Fail clearly after a small number of SAME-requestId
+                // retries. Otherwise ok=true + no target URL can silently
+                // consume the entire 15-minute resume window.
+                if (incompleteSuccessCount >= 3) {
+                    const err = new Error(
+                        "GASが保存先情報を返さない状態が続きました。" +
+                        " status=" + (responseStatus || "(なし)") +
+                        " / stage=" + (responseStage || "(なし)") +
+                        "。新しい更新を開始せず、テストGASの実行履歴を確認してください。"
+                    );
+                    err.code = "API_INCOMPLETE_READY";
+                    err.apiData = {
+                        status: responseStatus,
+                        stage: responseStage,
+                        pending: data.pending ?? null,
+                        hasSpreadsheetId: Boolean(sheetId),
+                        requestIdMatched:
+                            normalizeString(data.requestId) ===
+                            normalizeString(payload.requestId)
+                    };
+                    throw err;
+                }
+                // Do not create a second requestId. The server-side request
+                // record can be READY even if one response was incomplete.
+                const waitMs = 1500;
+                scheduledWaitMs += waitMs;
+                if (onStatus) {
+                    onStatus("Google Sheetの保存先情報を再確認しています... (" +
+                        incompleteSuccessCount + "/3)");
+                }
+                await sleepMs(waitMs);
+                continue;
+            }
+
             data.clientPerformance = {
                 totalCycleMs:
                     performance.now() -
@@ -8053,7 +8333,8 @@ async function markFastViewerHandoffError(
 
 
 async function createGoogleSpreadsheet({
-    viewerTab: suppliedViewerTab = null
+    viewerTab: suppliedViewerTab = null,
+    unmatchedJobAcknowledged = false
 } = {}) {
     const publishStartedAt =
         performance.now();
@@ -8155,18 +8436,26 @@ async function createGoogleSpreadsheet({
         jobFileCount > 0 &&
         globalJoinCount === 0
     ) {
-        const proceed =
-            window.confirm(
+        if (targetSpreadsheetId) {
+            // UPDATE users have already reviewed this warning in the
+            // confirmation modal BEFORE their viewer tab was opened.
+            // Refuse to save if the calling flow did not acknowledge it.
+            if (!unmatchedJobAcknowledged) {
+                throw new Error(
+                    "求人突合が0件のため、更新前に確認が必要です。"
+                );
+            }
+        } else {
+            // Preserve existing CREATE behavior for now; UPDATE is covered
+            // by the consolidated modal above.
+            const proceed = window.confirm(
                 "求人CSVは読み込まれていますが、応募データとの求人突合が0件です。\n\n" +
                 "求人CSVは使わず、応募CSV内の求人情報を利用できる範囲で分析レポートへ反映しますか？"
             );
-
-        if (!proceed) {
-            try {
-                suppliedViewerTab?.close();
-            } catch (_) {}
-
-            return null;
+            if (!proceed) {
+                try { suppliedViewerTab?.close(); } catch (_) {}
+                return null;
+            }
         }
     }
 
@@ -8204,24 +8493,42 @@ async function createGoogleSpreadsheet({
             makeRequestId();
     }
 
-    fastViewerHandoffActive =
-        await beginFastViewerHandoff({
-            viewerTab,
-            handoffId:
-                globalPendingSheetsRequestId,
-            targetSpreadsheetId
-        });
-
-    if (
-        fastViewerHandoffActive
-    ) {
-        updateEtlProcessingStage(
-            "viewer",
-            "分析レポートをブラウザ内データから先に表示しました。保存処理は続いています。"
-        );
-    }
-
+    // An APPEND report must not preview only this upload as if it
+    // were the fully merged historical dataset.
     try {
+        // Fingerprinting must precede preview/image scanning/payload creation.
+        // It may fail safely without committing anything.
+        globalIdentityStats = await vaaApplyApplicationIdentities(accessKey);
+        if (targetSpreadsheetId &&
+            globalLastUpdateStrategy === "APPEND" &&
+            globalIdentityStats.unidentifiable > 0) {
+            const error = new Error(
+                globalIdentityStats.unidentifiable +
+                "件の応募は氏名・応募者IDがなく、集計データとも判定できません。全件入れ替えを利用してください。"
+            );
+            error.code = "UNIDENTIFIED_APPEND";
+            throw error;
+        }
+        if (!globalFinalData.length) {
+            throw new Error("重複除外後の応募件数が0件です。CSVの内容を確認してください。");
+        }
+
+        fastViewerHandoffActive =
+            targetSpreadsheetId && globalLastUpdateStrategy === "APPEND"
+                ? false
+                : await beginFastViewerHandoff({
+                    viewerTab,
+                    handoffId: globalPendingSheetsRequestId,
+                    targetSpreadsheetId
+                });
+
+        if (fastViewerHandoffActive) {
+            updateEtlProcessingStage(
+                "viewer",
+                "分析レポートをブラウザ内データから先に表示しました。保存処理は続いています。"
+            );
+        }
+
         const planSummary =
             getImageLookupPlanSummary();
 
@@ -8287,6 +8594,8 @@ async function createGoogleSpreadsheet({
             "info"
         );
 
+        // HMAC identifiers are generated only after user confirmation
+        // and never leave the browser as raw names / person IDs.
         const payloadBuildStartedAt =
             performance.now();
 
@@ -8385,7 +8694,7 @@ async function createGoogleSpreadsheet({
 
         if (!data.spreadsheetUrl) {
             throw new Error(
-                "API処理は成功しましたが、保存先情報が返りませんでした。"
+                "Google Sheetの保存先を確認できませんでした。同じrequestIdで再開してください。"
             );
         }
 
@@ -12571,6 +12880,13 @@ document.getElementById('runBtn').addEventListener('click', async () => {
             targetSpreadsheetUrl
         );
 
+    // Freeze the chosen update strategy before any asynchronous CSV work.
+    // The same mode is used in the modal, preview decision and GAS payload.
+    globalLastUpdateStrategy = targetSpreadsheetId
+        ? (document.querySelector('input[name="vaaUpdateMode"]:checked')
+            ?.value === "REPLACE" ? "REPLACE" : "APPEND")
+        : "";
+
     const searchKeywords = [];
 
             if (filesA.length === 0 || !keyNameA) {
@@ -12639,11 +12955,12 @@ startEtlProcessingOverlay();
 runLabel.textContent =
     "CSVを読み込んでいます...";
 
-const viewerTab =
-    reserveViewerTab(
-        targetSpreadsheetId
-            ? "CSVを処理し、既存分析レポートへ反映しています。"
-            : "CSVを処理し、新しい分析レポートを準備しています。"
+// For UPDATE, keep the user on this index tab until confirmation.
+// CREATE retains the existing early-opening behavior.
+let viewerTab = targetSpreadsheetId
+    ? null
+    : reserveViewerTab(
+        "CSVを処理し、新しい分析レポートを準備しています。"
     );
 
             msgEl.innerHTML = "<span class='flex items-center justify-center'><svg class='animate-spin w-5 h-5 mr-2' xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24'><circle class='opacity-25' cx='12' cy='12' r='10' stroke='currentColor' stroke-width='4'></circle><path class='opacity-75' fill='currentColor' d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'></path></svg> CSVを読み込み、保存するデータを作成しています...</span>";
@@ -12666,8 +12983,14 @@ const viewerTab =
 
                 const dataA_arrays =
                     parsedA.map(
-                        item =>
-                            item.rows
+                        (item, fileIndex) => {
+                            item.rows.forEach(row => {
+                                Object.defineProperty(row, "__vaaInputFileIndex", {
+                                    value: fileIndex, enumerable: false, configurable: true
+                                });
+                            });
+                            return item.rows;
+                        }
                     );
 
                 // 読み込んだ配列を1つのフラットな配列に結合する
@@ -12755,9 +13078,15 @@ const viewerTab =
                 const uniqueDataA = dataA.filter(rowA => {
                     const dateStr = rowA["応募日時"];
                     const name = rowA["氏名"] || "";
+                    const applicantId = normalizeString(rowA["応募者ID"]);
+                    const enterpriseId = getEnterpriseIdFromRow(rowA).toUpperCase();
                     const yyyymm = getYYYYMM(dateStr);
-                    if (yyyymm !== "" && name !== "") {
-                        const dedupeKey = `${yyyymm}_${name}`;
+                    if (yyyymm !== "" && (applicantId || name)) {
+                        const dedupeKey = JSON.stringify([
+                            enterpriseId, yyyymm,
+                            applicantId ? "PERSON_ID" : "PERSON_NAME",
+                            applicantId || String(name).normalize("NFKC").trim().replace(/[\s\u3000]+/g, " ")
+                        ]);
                         if (seenKeys.has(dedupeKey)) { 
                             duplicateCount++; 
                             duplicateList.push(rowA);
@@ -12873,6 +13202,18 @@ const viewerTab =
 
                     // Sheet送信用に元コードを保持する。非列挙プロパティのため、
                     // 現行CSVダウンロードやブラウザ表の列構成は変えない。
+                    // Raw person identifiers remain browser-only. Never send
+                    // them in the normalized datasets or export CSV.
+                    Object.defineProperty(newRow, "__vaaIdentityRaw", {
+                        value: {
+                            applicantId: normalizeString(rowA["応募者ID"]),
+                            name: normalizeString(rowA["氏名"]),
+                            inputFileIndex: rowA.__vaaInputFileIndex
+                        },
+                        enumerable: false,
+                        configurable: true
+                    });
+
                     Object.defineProperty(newRow, "__sheetMeta", {
                         value: {
                             salaryTypeCode: normalizeString(sourceB["給与区分"]),
@@ -12959,7 +13300,9 @@ const viewerTab =
 
 msgEl.innerHTML = `
             <div class="flex flex-col items-center">
-                <span class="text-base font-extrabold">データを保存しました。分析レポートへ反映しています...</span>
+                <span class="text-base font-extrabold">${targetSpreadsheetId
+                    ? "CSVの処理が完了しました。更新内容をご確認ください。"
+                    : "CSVの処理が完了しました。保存処理へ進みます。"}</span>
                 <span class="mt-1 text-sm text-slate-600">
                     ${globalFinalData.length.toLocaleString()}応募 ／ 求人突合 ${matchCount.toLocaleString()}応募（${joinRate}%）
                 </span>
@@ -13008,9 +13351,41 @@ msgEl.innerHTML = `
                 ? "分析レポートを更新しています..."
                 : "分析レポートを作成しています...";
 
+        let unmatchedJobAcknowledged = false;
+        if (targetSpreadsheetId) {
+            stopEtlProcessingOverlay();
+            const unmatchedJobWarning =
+                filesB.length > 0 && globalJoinCount === 0;
+            const confirmed = await vaaAwaitUpdateConfirmation({
+                mode: globalLastUpdateStrategy,
+                spreadsheetId: targetSpreadsheetId,
+                appRows: globalFinalData.length,
+                jobFiles: filesB.length,
+                appFiles: filesA.length,
+                unmatchedJobWarning,
+                // Called synchronously by the confirmation button. Do not
+                // reserve a tab earlier (or after awaiting confirmation).
+                onConfirmed: () => {
+                    viewerTab = reserveViewerTab(
+                        "既存企業のデータを更新しています。完了後、このタブで分析レポートを読み込みます。"
+                    );
+                }
+            });
+            if (!confirmed) {
+                msgEl.textContent = "データ更新はキャンセルされました。保存データは変更していません。";
+                msgEl.className =
+                    "mt-5 text-center text-sm font-bold text-slate-700 bg-slate-50 p-4 rounded-xl border border-slate-200 block";
+                return;
+            }
+            unmatchedJobAcknowledged = unmatchedJobWarning;
+            startEtlProcessingOverlay();
+            updateEtlProcessingStage("image","更新方法を確認しました。保存準備を開始します。");
+        }
+
         const published =
             await createGoogleSpreadsheet({
-                viewerTab
+                viewerTab,
+                unmatchedJobAcknowledged
             });
 
         if (published) {
@@ -13031,8 +13406,17 @@ msgEl.innerHTML = `
                 <div class="flex flex-col items-center">
                     <span class="text-lg font-extrabold">分析レポートへの反映が完了しました</span>
                     <span class="mt-1 text-sm text-slate-600">
-                        ${globalFinalData.length.toLocaleString()}応募を処理しました。
+                        ${published.updateStats
+                            ? ("今回の新規追加 " + Number(published.updateStats.addedApplications || 0).toLocaleString() +
+                                "件 ／ 更新後の応募 " + Number(published.updateStats.finalApplications || 0).toLocaleString() + "件" +
+                                " ／ 既存と重複して追加しなかった応募 " + Number(published.updateStats.skippedAsExisting || 0).toLocaleString() + "件")
+                            : (globalFinalData.length.toLocaleString() + "応募を処理しました。")}
                     </span>
+                    ${Number(published.updateStats?.aggregateDecreaseGroups || 0) > 0
+                        ? ('<span class="mt-2 text-[11px] font-bold text-amber-800">AirWork日次実績が保存済み件数より少ない日が ' +
+                            Number(published.updateStats.aggregateDecreaseGroups).toLocaleString() +
+                            '件ありました。過去分は自動削除していません。</span>')
+                        : ""}
                 </div>
             `;
 
