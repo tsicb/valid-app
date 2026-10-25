@@ -2,7 +2,7 @@
 
 作成日：2026-10-25
 対象：`tsicb/valid-app`、PR #2（`feature/incremental-update-pages`）
-状態：**PR競合解消・自動テスト完了。本番未マージ・本番GAS未同期・本番Web App未再デプロイ。**
+状態：**2026-10-26 本番公開・検証完了／通常運用再開。** 本文1～9節は当時の準備・切替手順を含む履歴として保持し、実施結果は末尾の「10. リリース完了記録」を正とする。
 
 ## 1. 結論と切替方針
 
@@ -159,7 +159,7 @@ Apps Scriptデプロイは**削除しない**。既存デプロイの向き先�
 - HMAC用Script Propertyは一度設定されたら変更・削除せず、ローテーションは別途移行設計を立てる。
 - 公開後の版・Commit SHA・GAS deployment version・トラブル有無を記録し、`docs/CURRENT_STATE.md` と必要に応じて `central-api/RELEASE_CHECKLIST.md` の現行運用欄を更新する。
 
-## 9. 本番公開前に残す判断
+## 9. 公開前の判断項目（履歴／すでに完了）
 
 1. ~~PR #2のマージ競合解消とCIの再実行~~（2026-10-26完了。公開直前のHEAD確認は継続）。
 2. 本番App Scriptプロジェクトの現在の公開バージョン・Deployment IDの控え。
@@ -167,9 +167,42 @@ Apps Scriptデプロイは**削除しない**。既存デプロイの向き先�
 4. 社内利用者への一時的なCSV作成／更新停止の案内と切替タイミング。
 5. 公開後の限定的な架空CSVテストの扱い（本番にテスト会社を作成するか、読み取り確認のみとするか）。
 
-これらが揃うまでは **本番切替を開始しない**。
+上記は公開前の判断項目を保存した**履歴**。2026-10-26の本番切替・受入検証は完了し、結果は次節に記録する。
 
 関連文書：
 - `docs/INCREMENTAL_LIVE_TEST_RUNBOOK.md`（隔離テストの実施結果）
 - `docs/APPEND_UPDATE_IMPLEMENTATION_PLAN_V1.md`（統合仕様）
 - `central-api/RELEASE_CHECKLIST.md`（従来版の確認項目。今回の公開完了記録とは区別する）
+
+
+## 10. リリース完了記録（2026-10-26）
+
+**最終判定：本番公開と必須受入テストは合格。CSV作成・更新の通常運用を再開してよい。**
+
+| 対象 | 実施結果・根拠 |
+|---|---|
+| 事前保全 | 本番管理シート12件と本番DataStore JSON 49件を非共有Driveへ独立バックアップ。初回確認時・受入テスト後とも49件の元JSONとバックアップはファイル名・サイズ一致 |
+| GAS Script ID | 本番Apps Scriptから再コピーしたIDを運用者がGitHub Actions Secret `GAS_SCRIPT_ID` へ設定し直した |
+| GASソース同期 | [Actions #40212200066](https://github.com/tsicb/valid-app/actions/runs/40212200066) 成功、source SHA `b39c442d27ab635df98663a4528b87741e95e065` |
+| GAS Webアプリ | 既存デプロイを **v59 → v60** に更新（運用者確認）。URL変更なし。v59は保持 |
+| API GETの実測 | `schemaVersion=3.0`、`updateProtocol=IDENTITY_V1`、`APPEND/REPLACE`、`applicationIdentityVersion=1`（運用者がブラウザで実測値を共有） |
+| PRマージ | [PR #2](https://github.com/tsicb/valid-app/pull/2) → `main`。merge SHA `c68346af0567d12780f0288ec1b90254e4520022` |
+| GitHub Pages | [Actions #40212837619](https://github.com/tsicb/valid-app/actions/runs/40212837619) 成功。main CIも [#40212838082](https://github.com/tsicb/valid-app/actions/runs/40212838082) 成功 |
+| テスト会社CREATE | 保存応募7件、求人2件、内部状態`READY`、DataStore identity v1 |
+| APPEND / 追加 | 7件→10件（新規+3、既存重複6件、求人時給1200円維持） |
+| APPEND / 同一再取込 | 10件→10件（追加0、重複9）、応募全行・求人全行完全一致 |
+| APPEND / AirWork減少 | 同日7件保存に対し3件入力、`aggregateDecreases`に記録、既存10件維持、応募・求人全行完全一致 |
+| REPLACE | 応募10件→4件、求人2件、時給1200円→1600円、直前DataStoreをバックアップ参照 |
+| APPEND / CSV_B | 元4件→5件。CSV内2行の同一応募者IDを重複1件に集約、新規1件（`PERSON_ID`）、時給1600円維持 |
+| 既存レポート | **公開前からの既存企業の分析レポートが正常に閲覧できることを運用者が確認** |
+| 全体判定 | **合格。通常CSV作成・更新の停止を解除** |
+
+### 運用再開後の留意事項
+
+1. **旧形式データの初回更新**：`applicationIdentityVersion=1` のないDataStoreでは、APPENDを `MIGRATION_REQUIRED` で拒否する。移行時は完全な過去CSVが揃っていることを確かめ、**初回のみREPLACE**。不完全なCSVで全件入れ替えすると以前の応募が失われ得るため、事前保全を確認する。
+2. **利用者のブラウザ**：切替前から開いていた `index.html` は再読み込みしてから利用する。旧UIによる更新は新プロトコルにより拒否される。
+3. **異常検知時**：初回実顧客更新の `99_内部状態` / `98_運用ログ` / DataStoreの件数とバックアップ参照を確認。旧GAS v59および旧main SHA `7aa3fae0f2280b91fbc9ae9ea27ffac2397bdff2` を復旧基準として保持。ただし**新方式での書込み後に無条件で旧版へ戻さない**。
+4. **セキュリティ**：`VAA_APPLICATION_IDENTITY_HMAC_V1` の値を削除・ローテーションしない。実データ、HMAC鍵、Script ID、Viewer TokenなどはGitHub公開リポジトリへ記載しない。
+5. **未観察のUI項目**：AirWork件数減少の内部検知（DataStore）は検証済みだが、ブラウザに表示された警告の視認記録は未取得。今後UI検証が必要なら実顧客への書込みを伴わないテスト環境で行う。
+
+日付つきの詳細記録はPR #2のConversationにも残している。現時点でコード差分に関する既知の本番ブロッカーはない。
