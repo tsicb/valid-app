@@ -71,11 +71,16 @@ test("pending response still resumes under original requestId",async()=>{
   assert.equal(x.rounds,2);
   assert.equal(x.sleepCount,1);
 });
-test("no spreadsheet ID/URL never reports false success and hits safe retry limit",async()=>{
-  const x=fake(Array.from({length:4},()=>({ok:true,status:"READY",stage:"READY"})),{maxRounds:3});
-  await assert.rejects(x.call(),{code:"AUTO_RESUME_LIMIT"});
+test("no spreadsheet ID/URL stops after 3 retries with actionable GAS stage",async()=>{
+  const x=fake(Array.from({length:5},()=>({ok:true,status:"READY",stage:"REPORT_DONE"})),{maxRounds:9});
+  await assert.rejects(x.call(),(err)=>{
+    assert.equal(err.code,"API_INCOMPLETE_READY");
+    assert.match(err.message,/REPORT_DONE/);
+    assert.equal(err.apiData.stage,"REPORT_DONE");
+    return true;
+  });
   assert.equal(x.rounds,3);
-  assert.equal(x.sleepCount,3);
+  assert.equal(x.sleepCount,2);
   assert.equal(x.logs.length,3);
 });
 test("server-side errors are still propagated rather than retried as success",async()=>{
