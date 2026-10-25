@@ -19,7 +19,14 @@ const input=()=>({
         ["APP000002","DEMO001","G1:"+ "d".repeat(64)+":000001","AGG_DAILY","J2"]
       ]
     },
-    jobAnalysisMaster:{headers:["求人参照ID","仕事番号"],rows:[["JOB000001","J1"]]}
+    jobAnalysisMaster:{headers:["求人参照ID","仕事番号"],rows:[["JOB000001","J1"]]},
+    inputFiles:{
+      headers:["種別","ファイル名","読込行数","文字コード"],
+      rows:[
+        ["応募CSV","01_初回応募.csv",7,"UTF-8"],
+        ["求人CSV","01_初回求人.csv",1,"UTF-8"]
+      ]
+    }
   }
 });
 test("migration fixture strips identity columns/protocol, leaving other fields in order",async()=>{
@@ -42,12 +49,23 @@ test("migration fixture refuses UPDATE and malformed rows, before any save",asyn
   const wrong=input();wrong.datasets.applicationData.rows[0]=["APP1"];
   assert.throws(()=>toLegacyCreatePayload(wrong),/列数が不正/);
 });
+test("migration fixture rejects production/non-fixture CSV file names",async()=>{
+  const {toLegacyCreatePayload}=await load();
+  const invalid=input();
+  invalid.datasets.inputFiles.rows[0][1]="company_real_applicants.csv";
+  assert.throws(()=>toLegacyCreatePayload(invalid),/samples内の01_/);
+  const extra=input();
+  extra.datasets.inputFiles.rows.push(["応募CSV","03_日次数減少応募.csv",3,"UTF-8"]);
+  assert.throws(()=>toLegacyCreatePayload(extra),/samples内の01_/);
+});
+
 test("generated legacy page has conspicuous test banner and injects payload override",async()=>{
   const {buildLegacyTestHtml}=await load();
   const html=fs.readFileSync(path.join(repo,"index.html"),"utf8");
   const generated=buildLegacyTestHtml(html);
   assert.match(generated,/LEGACY_SMOKE_FIXTURE/);
   assert.match(generated,/旧形式移行テスト専用/);
+  assert.match(generated,/\["localhost","127\.0\.0\.1"\]/);
   assert.match(generated,/function buildSheetsPayloadV3Modern\(/);
   assert.match(generated,/return toLegacyCreatePayload\(buildSheetsPayloadV3Modern\(\.\.\.args\)\)/);
   assert.match(generated,/stopImmediatePropagation/);
