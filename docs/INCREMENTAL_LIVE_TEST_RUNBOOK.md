@@ -2,7 +2,7 @@
 
 作成日: 2026-10-23
 対象ブランチ: `feature/incremental-update-pages`
-状態: **自動テスト・CSV検証は実施済み。Google Apps Script／Google Sheetsの実環境テストは未実施。**
+状態: **新規作成・差分追加・全件入れ替え・AirWork・CSV_BはGoogle実環境で検証済み。旧形式移行の専用テストは未実施。**
 
 ## 1. 公開前の安全条件
 
@@ -173,7 +173,31 @@ AirWorkの仮想仕事番号は `AIRWORK_ONLY`、通常求人は `DEMO_JOB`、�
 
 旧バージョン（`applicationIdentityVersion` のないDataStore）からのAPPENDでは `MIGRATION_REQUIRED` を返し、過去期間すべてのCSVを使ってREPLACEする。元の既存レポートをテストのために消去しない。テストプロジェクト内で旧版データを準備できない場合、この項目は**実地未検証**として残す（自動テストでは検証済み）。
 
-## 6. リリース判定
+## 6. 旧形式データからの移行を実地検証する（専用の別シート）
+
+テスト用アプリの通常版でCSV_A/CSV_B/APPEND/REPLACEが動作したため、残る重要なシナリオは古いデータの初回移行。**ここまで検証してきた5応募の個社管理シートは触らない。**
+
+テスト用ZIPには、通常の `index.html` と別に**旧形式CREATE専用の `legacy-create.html`** を追加した。これはlocalhostだけで動作し、架空の `01_初回応募.csv`・`01_初回求人.csv` 以外の入力や既存SheetのUPDATEを拒否する。GASへ送信する際、応募の識別キー列と `updateProtocol` を外し、以前の形式を模したDataStoreを作る。GASへの追加コードや再デプロイは不要。
+
+### 手順
+
+1. [Build isolated Pages test bundle](https://github.com/tsicb/valid-app/actions/workflows/build-isolated-pages-preview.yml) を**新しい実行**として開始する。ブランチは `feature/incremental-update-pages`、confirmは `TEST_ONLY`、GAS URLはこれまでのテスト用 `/exec`。
+2. Artifactsをダウンロード・展開し、`python serve_isolated_test.py` を起動。今回だけ `http://localhost:8765/legacy-create.html` を開く。
+3. 新規会社名を `LEGACY_MIGRATION_TEST` とし、`samples/01_初回応募.csv` + `samples/01_初回求人.csv` で**新しい個社管理シートを1件作る**。保存後、生成されたシートURLを控える。想定：応募7件、求人2件。元の5件入りシートとは別のSheetであることを確認する。
+4. 新しいテストSheetの `99_内部状態` で `applicationIdentityVersion` がないことを確認する。レポート初期設定、画像・企業マスタなどの構成は通常の個社管理シートと同じ。
+5. **通常の** `http://localhost:8765/index.html#sheet=新規スプレッドシートID` を開き、`02_重複追加応募.csv` + `02_改稿求人.csv` を `差分追加`。期待するAPI応答：`MIGRATION_REQUIRED`（「旧形式は初回のみ全件入れ替えで移行してください」）。保存済み7件とDataStoreファイルIDが変わらないことを確認する。
+6. 同じ新規テストSheetで `01_初回応募.csv` + `01_初回求人.csv` を `全件入れ替え`。確認チェックとモーダル同意後、応募7件・求人2件、`applicationIdentityVersion=1`、元の旧形式DataStoreが`analysisDataStoreBackupFileId`に保持されることを確認する。
+7. 同じSheetへ `02_重複追加応募.csv` + `02_改稿求人.csv` を `差分追加`。期待：9件アップロード中、既存6件と重複、新規3件追加 → 合計10件。旧求人の給与1,200円維持。
+8. テスト終了後も、既存5件入り検証シートを削除・変更しない。新しく作成した移行テスト用Sheetは必要に応じて保持する。
+
+### 判断ポイント
+
+- 旧データへの差分追加は**保存前に安全に拒否**する。
+- 全件入れ替えで旧データが再構築され、以降は通常の差分追加が使える。
+- 元の旧形式DataStoreは新方式の一世代バックアップとして保持される。
+- 実ブラウザの結果を確認するまでは、**「旧形式からの移行テスト成功」とは記録しない**。
+
+## 7. リリース判定
 
 Google実環境の実地確認が完了するまではPR #2をドラフトのまま維持する。テストで不一致があればGitHubの作業ブランチで修正してCIを再実行する。実地確認後、GASソース同期→Web Appデプロイ→Pages公開を短い切替期間で連続実行する。
 
