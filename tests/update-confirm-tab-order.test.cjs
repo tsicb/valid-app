@@ -53,6 +53,7 @@ function makeDom() {
   const openConfirm=(options={})=>scope.vaaAwaitUpdateConfirmation({
     mode:options.mode||"APPEND",
     spreadsheetId:"TEST_SHEET_01",appRows:9,appFiles:1,jobFiles:1,
+    unmatchedJobWarning: Boolean(options.unmatchedJobWarning),
     onConfirmed:options.onConfirmed
   });
   return {doc,element:id=>doc.getElementById(id),openConfirm};
@@ -136,4 +137,86 @@ test("UPDATE mode is fixed early; confirmation callback opens tab before saving,
     /globalLastUpdateStrategy = document.querySelector/);
   assert.match(html.slice(modalAt,createAt),/if \(!confirmed\)/);
   assert.match(html.slice(modalAt,createAt),/return;/);
+});
+
+test("unmatched-job notice is visible in UPDATE modal before a report tab exists",async()=>{
+  const ui=makeDom();
+  let tabs=0;
+  const accepted=ui.openConfirm({
+    unmatchedJobWarning:true,
+    onConfirmed:()=>tabs++
+  });
+  const warning=ui.element("vaaUpdateConfirmUnmatchedWarning");
+  assert.equal(warning.classList.contains("hidden"),false);
+  assert.match(warning.textContent,/求人突合が0件/);
+  assert.match(warning.textContent,/求人CSVは分析に使わず/);
+  assert.equal(tabs,0,"a warning never opens a viewer tab by itself");
+  ui.element("vaaUpdateConfirmAccept").click();
+  assert.equal(await accepted,true);
+  assert.equal(tabs,1,"only a click accepting both warnings can reserve the viewer tab");
+});
+
+test("cancelling UPDATE with unmatched-job warning does not open report or save",async()=>{
+  const ui=makeDom();
+  let tabs=0;
+  const accepted=ui.openConfirm({
+    unmatchedJobWarning:true,
+    onConfirmed:()=>tabs++
+  });
+  ui.element("vaaUpdateConfirmCancel").click();
+  assert.equal(await accepted,false);
+  assert.equal(tabs,0);
+});
+
+test("normal UPDATE hides the warning, including after previous warned dialog",async()=>{
+  const ui=makeDom();
+  const first=ui.openConfirm({unmatchedJobWarning:true});
+  assert.equal(ui.element("vaaUpdateConfirmUnmatchedWarning").classList.contains("hidden"),false);
+  ui.element("vaaUpdateConfirmCancel").click();
+  assert.equal(await first,false);
+  const second=ui.openConfirm({unmatchedJobWarning:false});
+  const warning=ui.element("vaaUpdateConfirmUnmatchedWarning");
+  assert.equal(warning.classList.contains("hidden"),true);
+  assert.equal(warning.textContent,"");
+  ui.element("vaaUpdateConfirmCancel").click();
+  assert.equal(await second,false);
+});
+
+test("REPLACE requires the destructive checkbox even when unmatched-job notice is shown",async()=>{
+  const ui=makeDom();
+  let tabs=0;
+  const accepted=ui.openConfirm({mode:"REPLACE",unmatchedJobWarning:true,onConfirmed:()=>tabs++});
+  const accept=ui.element("vaaUpdateConfirmAccept");
+  assert.equal(accept.disabled,true);
+  assert.equal(ui.element("vaaUpdateConfirmUnmatchedWarning").classList.contains("hidden"),false);
+  accept.click();
+  assert.equal(tabs,0);
+  const ack=ui.element("vaaUpdateConfirmAck");
+  ack.checked=true;
+  ack.change();
+  accept.click();
+  assert.equal(await accepted,true);
+  assert.equal(tabs,1);
+});
+
+test("no second unmatched-job confirm runs after UPDATE has opened report tab",()=>{
+  const fnAt=html.indexOf("async function createGoogleSpreadsheet(");
+  const firstCheck=html.indexOf("jobFileCount > 0 &&",fnAt);
+  const tabAt=html.indexOf("const viewerTab =",firstCheck);
+  const block=html.slice(firstCheck,tabAt);
+  assert.match(block,/if \(targetSpreadsheetId\)/);
+  assert.match(block,/if \(!unmatchedJobAcknowledged\)/);
+  assert.match(block,/else \{\s*\/\/ Preserve existing CREATE behavior/);
+  assert.match(block,/window\.confirm\(/);
+  const invoke=html.slice(
+    html.indexOf("const confirmed = await vaaAwaitUpdateConfirmation(",tabAt),
+    html.indexOf("const published =",tabAt)
+  );
+  assert.match(invoke,/unmatchedJobWarning,/);
+  assert.match(invoke,/unmatchedJobAcknowledged = unmatchedJobWarning/);
+  assert.match(invoke,/viewerTab = reserveViewerTab\(/);
+  assert.ok(
+    invoke.indexOf("unmatchedJobWarning,") < invoke.indexOf("onConfirmed:"),
+    "warning must be rendered before modal consent click"
+  );
 });
