@@ -18,6 +18,19 @@ This file documents the repository baseline and the latest production-release ve
 - Other release cautions: reload older open `index.html` tabs before operating; preserve the long-lived HMAC Script Property; retain GAS v59 and the private baseline backup. UI visualization of the AirWork decrease warning was not independently observed, although detection in DataStore `aggregateDecreases` was verified.
 - Details and privacy-safe acceptance records: [production runbook](INCREMENTAL_PRODUCTION_RELEASE_RUNBOOK.md) and PR #2 conversation.
 
+## Report custom-analysis row-axis drag reorder (2026-10-26)
+
+**Production status: MERGED AND DEPLOYED; real-browser UX confirmation pending.**
+
+- [PR #3](https://github.com/tsicb/valid-app/pull/3) merged into `main` at `d749694bedf42dac62b3418630ee6bfc80b5f7b5`.
+- [GitHub Pages deploy #40263090090](https://github.com/tsicb/valid-app/actions/runs/40263090090): **success** at the same merge commit; [main CI #40263090305](https://github.com/tsicb/valid-app/actions/runs/40263090305): **success**.
+- Only `report.html` and `tests/report-custom-axis-reorder.test.cjs` changed. Central API, DataStore, Sheets, Worker, and `analysis-core.js` were **not** changed or redeployed.
+- Custom-analysis row axes 1–3 are displayed in a vertical sortable list. Drag handles work through Pointer Events, plus up/down buttons and keyboard arrow keys. Dropping outside cancels. Reorder triggers existing debounced aggregate only after commit.
+- Column axis remains independent; duplicate-axis rules, available-axis filtering, viewer-token route and Sheet defaults are unchanged.
+- Node automated regression suite: **100/100 passed**, including six focused tests for drag/keyboard/reorder/empty optional rows and report JavaScript syntax.
+- Operator follow-up smoke: open an existing report with at least two active custom row axes, move 1↔2 and 1→3, check pivot grouping and table output, confirm column axis unchanged; also check narrow viewport/touch where available.
+- Previous `main` before this UI release was `7f5a9be70e9813d8a6e98052f82d03432f2f362c`. Rollback should use a reversible commit rather than force-push.
+
 ## Versions
 
 - GitHub Pages: **v30.45**
