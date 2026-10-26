@@ -18,6 +18,14 @@ This file documents the repository baseline and the latest production-release ve
 - Other release cautions: reload older open `index.html` tabs before operating; preserve the long-lived HMAC Script Property; retain GAS v59 and the private baseline backup. UI visualization of the AirWork decrease warning was not independently observed, although detection in DataStore `aggregateDecreases` was verified.
 - Details and privacy-safe acceptance records: [production runbook](INCREMENTAL_PRODUCTION_RELEASE_RUNBOOK.md) and PR #2 conversation.
 
+## Custom-analysis sticky header width fix (2026-10-26)
+
+- [PR #4](https://github.com/tsicb/valid-app/pull/4) merged into main as `cc94c998c26a483b0e3a18635886a9a5ce596ffc` (report-only UI repair).
+- Root cause: detached sticky-header copy did not inherit `#customResult .custom-table` natural-width styling and could expand to the generic 720px minimum even when the source measured 686px; cloned inline sticky offsets could also persist.
+- Fix: copy exact first-row header widths to custom-only `colgroup` and clone table dimensions, mirror border collapse, clear cloned header sticky positioning. Keep source pivot sticky columns and non-custom tables intact.
+- Headless Chromium synthetic reproduction: source widths 112/134/104/112/112/112 (686px), clone was 720px before fix and exactly 686px after. Additional Node tests cover 1–3 axes, resizing, non-custom tables, and inline script syntax; PR CI passed **107/107**.
+- No GAS, Worker, Sheets or DataStore changes. User-browser confirmation of existing Viewer table, sticky mode, and horizontal scrolling remains a separate postdeploy check.
+
 ## Report custom-analysis row-axis drag reorder (2026-10-26)
 
 **Production status: MERGED AND DEPLOYED; real-browser UX confirmation pending.**
