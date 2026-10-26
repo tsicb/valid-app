@@ -87,7 +87,7 @@ test("pointer drop, cancellation, and keyboard arrows cause at most one reorder 
     getElementById:()=>list,
     createElement:()=>({style:{},remove(){this.removed=true;}}),
     body:{appendChild:x=>previews.push(x)},
-    elementFromPoint:(x,y)=>({closest:()=>rows[y>=150?2:y>=75?1:0]})
+    elementFromPoint:(x,y)=>({closest:()=>x>500?null:rows[y>=150?2:y>=75?1:0]})
   };
   const ctx=vm.createContext({document:doc,
     currentCustomAnalysisState:{rowAxes:["職種","年代","勤務地都道府県"]},
@@ -108,6 +108,11 @@ test("pointer drop, cancellation, and keyboard arrows cause at most one reorder 
   listeners.get("pointermove")(event(handles[1],10,10));
   listeners.get("pointercancel")(event(handles[1],10,10));
   assert.equal(calls.length,1,"cancelled drag must not reorder");
+  listeners.get("pointerdown")(event(handles[0],0,11));
+  const outside={...event(handles[0],180,11),clientX:700};
+  listeners.get("pointermove")(outside);
+  listeners.get("pointerup")(outside);
+  assert.equal(calls.length,1,"releasing outside the list must not reorder");
   let prevented=false;
   listeners.get("keydown")({target:handles[1],key:"ArrowUp",preventDefault(){prevented=true;}});
   assert.equal(prevented,true);
