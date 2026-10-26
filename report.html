@@ -9852,13 +9852,18 @@ function bindCustomRowAxisReorderControls() {
             row.classList.toggle("is-drop-target", row === targetRow);
         });
         // Dropping on an empty optional slot means moving to the last active position.
-        if (targetRow) drag.target = Number(targetRow.dataset.customRowIndex);
+        drag.target = targetRow ? Number(targetRow.dataset.customRowIndex) : null;
         event.preventDefault();
     });
     list.addEventListener("pointerup", event => {
         if (!customRowPointerDrag || event.pointerId !== customRowPointerDrag.pointerId) return;
+        const hit = document.elementFromPoint(event.clientX, event.clientY)?.closest(".custom-axis-row");
+        const targetRow = hit && list.contains(hit) ? hit : null;
         const drag = finishCustomRowPointerDrag();
-        if (drag?.moved) applyCustomRowAxisReorder(drag.source, drag.target);
+        // Releasing outside the axis list cancels the drag rather than applying a stale target.
+        if (drag?.moved && targetRow) {
+            applyCustomRowAxisReorder(drag.source, Number(targetRow.dataset.customRowIndex));
+        }
     });
     list.addEventListener("pointercancel", event => {
         if (customRowPointerDrag?.pointerId === event.pointerId) finishCustomRowPointerDrag();
