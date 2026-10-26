@@ -6575,6 +6575,36 @@ function cleanupStickyTableControllers() {
         );
 }
 
+// The custom pivot's natural-size source table lives under #customResult, but
+// its floating copy does not. Reuse measured widths so CSS min-width/layout
+// differences cannot shift the month headers behind the fixed row-axis corner.
+function syncCustomPivotCloneColumns(table, cloneTable) {
+    if (!table.classList.contains("custom-table")) return;
+    const sourceCells = Array.from(table.tHead?.rows?.[0]?.cells || []);
+    const cloneCells = Array.from(cloneTable.tHead?.rows?.[0]?.cells || []);
+    if (!sourceCells.length || sourceCells.length !== cloneCells.length ||
+        sourceCells.some(cell => cell.colSpan !== 1)) return;
+    const widths = sourceCells.map(cell => cell.getBoundingClientRect().width);
+    if (widths.some(width => !Number.isFinite(width) || width <= 0)) return;
+
+    const totalWidth = widths.reduce((total, width) => total + width, 0);
+    // Override the generic .custom-table 720px minimum on the detached clone.
+    cloneTable.style.width = `${totalWidth}px`;
+    cloneTable.style.minWidth = `${totalWidth}px`;
+    cloneTable.style.maxWidth = `${totalWidth}px`;
+    cloneTable.style.borderCollapse = getComputedStyle(table).borderCollapse;
+
+    let colgroup = cloneTable.querySelector(":scope > colgroup");
+    if (!colgroup || colgroup.children.length !== widths.length) {
+        colgroup?.remove();
+        colgroup = document.createElement("colgroup");
+        widths.forEach(() => colgroup.appendChild(document.createElement("col")));
+        cloneTable.insertBefore(colgroup, cloneTable.tHead);
+    }
+    widths.forEach((width, index) => {
+        colgroup.children[index].style.width = `${width}px`;
+    });
+}
 function copyStickyHeaderGeometry(
     controller
 ) {
@@ -6703,6 +6733,8 @@ function copyStickyHeaderGeometry(
         }
     );
 
+    syncCustomPivotCloneColumns(table, cloneTable);
+
     const firstSourceRow=sourceHead.rows?.[0];
     const pivotHeaders=table.classList.contains("custom-table")?Array.from(firstSourceRow?.querySelectorAll("th.custom-row-axis-col")||[]):[];
     if(pivotHeaders.length){const pivotWidth=pivotHeaders.reduce((sum,cell)=>sum+cell.getBoundingClientRect().width,0);corner.style.width=`${pivotWidth}px`;corner.style.height=`${headerRect.height}px`;corner.className="table-sticky-corner custom-pivot-corner";corner.innerHTML=pivotHeaders.map((cell,index)=>{const rect=cell.getBoundingClientRect();return `<div class="custom-pivot-corner-cell" data-corner-col-index="${index}" style="width:${rect.width}px" title="${escapeHtml(cell.textContent||"")}">${cell.innerHTML}</div>`;}).join("");corner.style.cursor="default";}else{const firstSourceCell=firstSourceRow?.cells?.[0];if(firstSourceCell){const firstRect=firstSourceCell.getBoundingClientRect();corner.style.width=`${firstRect.width}px`;corner.style.height=`${headerRect.height}px`;corner.innerHTML=firstSourceCell.innerHTML;corner.className="table-sticky-corner";if(firstSourceCell.classList.contains("sort-desc"))corner.classList.add("sort-desc");if(firstSourceCell.classList.contains("sort-asc"))corner.classList.add("sort-asc");corner.style.cursor=firstSourceCell.dataset.sortable==="true"?"pointer":"default";}}
@@ -6828,6 +6860,16 @@ function refreshStickyHeaderClone(
             true
         )
     );
+
+    // Inline left/position/zIndex from the source's sticky row axes must not
+    // leak into the independently scrolling header track; the corner owns them.
+    if (table.classList.contains("custom-table")) {
+        cloneTable.tHead.querySelectorAll("th").forEach(th => {
+            th.style.position = "static";
+            th.style.left = "auto";
+            th.style.zIndex = "auto";
+        });
+    }
 
     cloneTable
         .querySelectorAll(
