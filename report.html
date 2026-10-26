@@ -1558,7 +1558,27 @@
         .target-header-main { font-size:10.5px; font-weight:750; }
         .target-header-age { color:var(--viewer-brand-blue); font-size:9px; font-weight:650; }
         .viewer-picker-reset { border-style:dashed!important; }
-        .custom-controls-v27 { display:grid; grid-template-columns:repeat(4,minmax(170px,1fr)); gap:10px; align-items:end; }
+        /* Custom analysis: compact reorderable row axes + independent column axis. */
+        .custom-axis-editor { display:grid; grid-template-columns:minmax(0,2fr) minmax(180px,1fr); gap:14px; align-items:start; }
+        .custom-axis-group-title { margin:0 0 7px; color:#496475; font-size:11px; font-weight:750; }
+        .custom-axis-list { display:grid; gap:6px; }
+        .custom-axis-row { display:grid; grid-template-columns:30px 66px minmax(0,1fr) 56px; gap:7px; align-items:center; min-width:0; padding:5px 6px; background:#f8fbfd; border:1px solid #deebf1; border-radius:9px; transition:border-color .12s,background .12s; }
+        .custom-axis-row.is-drag-source { opacity:.57; }
+        .custom-axis-row.is-drop-target { background:#edf8fd; border-color:#148ecc; box-shadow:inset 0 0 0 1px #148ecc; }
+        .custom-axis-row label { margin:0; color:#496475; font-size:10px; font-weight:750; white-space:nowrap; }
+        .custom-axis-row .custom-control-wide select { width:100%; min-width:0; }
+        .custom-axis-drag-handle { display:grid; place-items:center; width:30px; height:36px; padding:0; color:#658293; border:1px solid transparent; border-radius:7px; background:transparent; cursor:grab; touch-action:none; }
+        .custom-axis-drag-handle:not(:disabled):hover { background:#e5f4fb; color:#0d6795; }
+        .custom-axis-drag-handle:active { cursor:grabbing; }
+        .custom-axis-drag-handle:disabled { opacity:.25; cursor:default; }
+        .custom-axis-drag-handle svg { display:block; width:14px; height:18px; fill:currentColor; }
+        .custom-axis-reorder-buttons { display:flex; align-items:center; gap:3px; }
+        .custom-axis-reorder-button { display:grid; place-items:center; width:26px; height:30px; padding:0; border:1px solid #d7e5ec; border-radius:6px; background:#fff; color:#496475; font:inherit; font-size:13px; cursor:pointer; }
+        .custom-axis-reorder-button:not(:disabled):hover { color:#0d6795; background:#e9f7fd; border-color:#a4d7ed; }
+        .custom-axis-reorder-button:disabled { opacity:.3; cursor:default; }
+        .custom-axis-drag-handle:focus-visible,.custom-axis-reorder-button:focus-visible { outline:2px solid #148ecc; outline-offset:2px; }
+        .custom-axis-drag-preview { position:fixed; z-index:10000; pointer-events:none; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:8px 12px; border:1px solid #148ecc; border-radius:8px; background:#fff; color:#0d6795; box-shadow:0 6px 20px rgba(0,0,0,.16); font-size:11px; font-weight:750; }
+        .custom-axis-reorder-status { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
         .custom-control-wide { min-width:0; }
         .custom-age-button { width:100%; min-height:38px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 9px; border:1px solid #cfdfe7; border-radius:8px; background:#fff; color:#173043; cursor:pointer; font:inherit; font-size:11px; text-align:left; }
         .custom-age-button:hover { border-color:rgba(20,142,204,.42); background:var(--viewer-brand-blue-soft); }
@@ -1569,8 +1589,8 @@
         #customResult .custom-table th.custom-row-axis-col:first-child,#customResult .custom-table td.custom-row-axis-col:first-child { width:210px; min-width:210px; max-width:210px; }
         #customResult .custom-table tr.custom-group-start>td { border-top:2px solid #dce8ee; }
         #customResult .custom-table td.custom-row-axis-col .row-label-text { width:100%; max-width:100%; }
-        @media (max-width:1180px) { .custom-controls-v27 { grid-template-columns:repeat(2,minmax(170px,1fr)); } }
-        @media (max-width:720px) { .custom-controls-v27 { grid-template-columns:1fr; } }
+        @media (max-width:840px) { .custom-axis-editor { grid-template-columns:minmax(0,1fr); } }
+        @media (max-width:420px) { .custom-axis-row { grid-template-columns:27px 58px minmax(0,1fr) 56px; gap:4px; padding:4px; } }
 
     
         /* =========================================================
@@ -4413,11 +4433,45 @@
             </div>
         </div>
 
-        <div class="custom-controls-v27">
-            <div class="field custom-control-wide"><label for="customRowAxis1">行軸1</label><select id="customRowAxis1"></select></div>
-            <div class="field custom-control-wide"><label for="customRowAxis2">行軸2（任意）</label><select id="customRowAxis2"></select></div>
-            <div class="field custom-control-wide"><label for="customRowAxis3">行軸3（任意）</label><select id="customRowAxis3"></select></div>
-            <div class="field custom-control-wide"><label for="customColAxis">列軸</label><select id="customColAxis"></select></div>
+        <div class="custom-axis-editor">
+            <div class="custom-axis-row-group">
+                <div class="custom-axis-group-title">行軸（上から順に集計）</div>
+                <div id="customAxisSortable" class="custom-axis-list" aria-label="行軸の並び替え">
+                <div class="custom-axis-row" data-custom-row-index="0">
+                    <button type="button" class="custom-axis-drag-handle" aria-label="行軸1をドラッグして並び替え" title="ドラッグ、または上下矢印キーで移動" disabled><svg viewBox="0 0 14 18" aria-hidden="true"><circle cx="4" cy="4" r="1.7"></circle><circle cx="10" cy="4" r="1.7"></circle><circle cx="4" cy="9" r="1.7"></circle><circle cx="10" cy="9" r="1.7"></circle><circle cx="4" cy="14" r="1.7"></circle><circle cx="10" cy="14" r="1.7"></circle></svg></button>
+                    <label for="customRowAxis1">行軸1</label>
+                    <div class="field custom-control-wide"><select id="customRowAxis1"></select></div>
+                    <div class="custom-axis-reorder-buttons">
+                        <button type="button" class="custom-axis-reorder-button" data-direction="-1" aria-label="行軸1を上へ移動" title="上へ移動" disabled>↑</button>
+                        <button type="button" class="custom-axis-reorder-button" data-direction="1" aria-label="行軸1を下へ移動" title="下へ移動" disabled>↓</button>
+                    </div>
+                </div>
+                <div class="custom-axis-row" data-custom-row-index="1">
+                    <button type="button" class="custom-axis-drag-handle" aria-label="行軸2をドラッグして並び替え" title="ドラッグ、または上下矢印キーで移動" disabled><svg viewBox="0 0 14 18" aria-hidden="true"><circle cx="4" cy="4" r="1.7"></circle><circle cx="10" cy="4" r="1.7"></circle><circle cx="4" cy="9" r="1.7"></circle><circle cx="10" cy="9" r="1.7"></circle><circle cx="4" cy="14" r="1.7"></circle><circle cx="10" cy="14" r="1.7"></circle></svg></button>
+                    <label for="customRowAxis2">行軸2（任意）</label>
+                    <div class="field custom-control-wide"><select id="customRowAxis2"></select></div>
+                    <div class="custom-axis-reorder-buttons">
+                        <button type="button" class="custom-axis-reorder-button" data-direction="-1" aria-label="行軸2を上へ移動" title="上へ移動" disabled>↑</button>
+                        <button type="button" class="custom-axis-reorder-button" data-direction="1" aria-label="行軸2を下へ移動" title="下へ移動" disabled>↓</button>
+                    </div>
+                </div>
+                <div class="custom-axis-row" data-custom-row-index="2">
+                    <button type="button" class="custom-axis-drag-handle" aria-label="行軸3をドラッグして並び替え" title="ドラッグ、または上下矢印キーで移動" disabled><svg viewBox="0 0 14 18" aria-hidden="true"><circle cx="4" cy="4" r="1.7"></circle><circle cx="10" cy="4" r="1.7"></circle><circle cx="4" cy="9" r="1.7"></circle><circle cx="10" cy="9" r="1.7"></circle><circle cx="4" cy="14" r="1.7"></circle><circle cx="10" cy="14" r="1.7"></circle></svg></button>
+                    <label for="customRowAxis3">行軸3（任意）</label>
+                    <div class="field custom-control-wide"><select id="customRowAxis3"></select></div>
+                    <div class="custom-axis-reorder-buttons">
+                        <button type="button" class="custom-axis-reorder-button" data-direction="-1" aria-label="行軸3を上へ移動" title="上へ移動" disabled>↑</button>
+                        <button type="button" class="custom-axis-reorder-button" data-direction="1" aria-label="行軸3を下へ移動" title="下へ移動" disabled>↓</button>
+                    </div>
+                </div>
+                </div>
+                <div class="custom-auto-note">左のハンドルでドラッグして順序を変更できます。上下ボタンやハンドルの矢印キーでも移動できます。</div>
+                <div id="customAxisReorderStatus" class="custom-axis-reorder-status" role="status" aria-live="polite"></div>
+            </div>
+            <div class="custom-axis-col-group">
+                <div class="custom-axis-group-title">列軸</div>
+                <div class="field custom-control-wide"><label for="customColAxis">比較する指標</label><select id="customColAxis"></select></div>
+            </div>
         </div>
         <div class="custom-auto-note">軸を変更すると<strong>自動で再集計</strong>します。年齢は上部の共通フィルターを使用し、行軸は最大3段まで指定できます。</div>
 
