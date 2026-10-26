@@ -9738,9 +9738,134 @@ function renderCustomAxisControls() {
         setCustomAxisSelectOptions(document.getElementById(id), currentCustomAxisOptions, rowAxes[index] || "", {allowEmpty:index>0, ownValue:rowAxes[index] || ""});
     });
     setCustomAxisSelectOptions(document.getElementById("customColAxis"), currentCustomAxisOptions, currentCustomAnalysisState.colAxis, {ownValue:currentCustomAnalysisState.colAxis});
+    renderCustomAxisReorderControls();
 }
 function customRowAxisValuesFromDom() {
     return ["customRowAxis1","customRowAxis2","customRowAxis3"].map(id => document.getElementById(id)?.value).map(value => String(value || "").trim()).filter(Boolean);
+}
+/* Reorder only the selected row axes. The column axis and saved Sheet defaults are untouched. */
+function moveCustomRowAxisValues(axes, fromIndex, toIndex) {
+    const rows = (Array.isArray(axes) ? axes : []).filter(Boolean).slice(0, 3);
+    if (!Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= rows.length || !Number.isInteger(toIndex)) return rows;
+    const target = Math.max(0, Math.min(rows.length - 1, toIndex));
+    if (fromIndex === target) return rows;
+    const [axis] = rows.splice(fromIndex, 1);
+    rows.splice(target, 0, axis);
+    return rows;
+}
+function applyCustomRowAxisReorder(fromIndex, toIndex) {
+    const before = currentCustomAnalysisState.rowAxes;
+    const after = moveCustomRowAxisValues(before, fromIndex, toIndex);
+    if (after.length === before.length && after.every((value, index) => value === before[index])) return false;
+    currentCustomAnalysisState.rowAxes = after;
+    currentCustomAnalysisState.userTouched = true;
+    renderCustomAxisControls();
+    const status = document.getElementById("customAxisReorderStatus");
+    if (status) status.textContent = "行軸の順序を変更しました。現在の順序：" + after.map(customAxisDisplayLabel).join("、");
+    scheduleCustomAnalysisRun();
+    return true;
+}
+function renderCustomAxisReorderControls() {
+    const list = document.getElementById("customAxisSortable");
+    if (!list) return;
+    const axes = currentCustomAnalysisState.rowAxes;
+    const activeCount = currentCustomAxisOptions.length >= 2 ? axes.length : 0;
+    list.querySelectorAll(".custom-axis-row").forEach((row, index) => {
+        const handle = row.querySelector(".custom-axis-drag-handle");
+        if (handle) {
+            handle.disabled = index >= activeCount || activeCount < 2;
+            handle.setAttribute("aria-label", "行軸" + (index + 1) + "（" + customAxisDisplayLabel(axes[index] || "未使用") + "）を並び替え");
+        }
+        row.querySelectorAll(".custom-axis-reorder-button").forEach(button => {
+            const direction = Number(button.dataset.direction);
+            button.disabled = index >= activeCount || index + direction < 0 || index + direction >= activeCount;
+        });
+    });
+}
+let customRowPointerDrag = null;
+function finishCustomRowPointerDrag() {
+    const drag = customRowPointerDrag;
+    if (!drag) return null;
+    customRowPointerDrag = null;
+    document.getElementById("customAxisSortable")?.querySelectorAll(".custom-axis-row").forEach(row => {
+        row.classList.remove("is-drag-source", "is-drop-target");
+    });
+    drag.preview?.remove();
+    try {
+        if (drag.handle.hasPointerCapture?.(drag.pointerId)) drag.handle.releasePointerCapture(drag.pointerId);
+    } catch (_) {}
+    return drag;
+}
+function bindCustomRowAxisReorderControls() {
+    const list = document.getElementById("customAxisSortable");
+    if (!list || list.dataset.reorderBound === "1") return;
+    list.dataset.reorderBound = "1";
+    list.addEventListener("click", event => {
+        const button = event.target.closest(".custom-axis-reorder-button");
+        if (!button || button.disabled || !list.contains(button)) return;
+        const row = button.closest(".custom-axis-row");
+        const index = Number(row?.dataset.customRowIndex);
+        applyCustomRowAxisReorder(index, index + Number(button.dataset.direction));
+    });
+    list.addEventListener("keydown", event => {
+        const handle = event.target.closest(".custom-axis-drag-handle");
+        if (!handle || handle.disabled || !list.contains(handle)) return;
+        if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+        event.preventDefault();
+        const index = Number(handle.closest(".custom-axis-row")?.dataset.customRowIndex);
+        const target = index + (event.key === "ArrowUp" ? -1 : 1);
+        applyCustomRowAxisReorder(index, target);
+    });
+    list.addEventListener("pointerdown", event => {
+        const handle = event.target.closest(".custom-axis-drag-handle");
+        if (!handle || handle.disabled || !list.contains(handle) || customRowPointerDrag) return;
+        if (event.isPrimary === false || (event.pointerType === "mouse" && event.button !== 0)) return;
+        const row = handle.closest(".custom-axis-row");
+        const source = Number(row?.dataset.customRowIndex);
+        if (source < 0 || source >= currentCustomAnalysisState.rowAxes.length) return;
+        customRowPointerDrag = {
+            handle, pointerId:event.pointerId, source, target:source,
+            startX:event.clientX, startY:event.clientY, moved:false, preview:null
+        };
+        try { handle.setPointerCapture?.(event.pointerId); } catch (_) {}
+        event.preventDefault();
+    });
+    list.addEventListener("pointermove", event => {
+        const drag = customRowPointerDrag;
+        if (!drag || event.pointerId !== drag.pointerId) return;
+        if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) return;
+        if (!drag.moved) {
+            drag.moved = true;
+            const row = drag.handle.closest(".custom-axis-row");
+            row?.classList.add("is-drag-source");
+            const preview = document.createElement("div");
+            preview.className = "custom-axis-drag-preview";
+            preview.textContent = customAxisDisplayLabel(currentCustomAnalysisState.rowAxes[drag.source]);
+            document.body.appendChild(preview);
+            drag.preview = preview;
+        }
+        drag.preview.style.left = (event.clientX + 14) + "px";
+        drag.preview.style.top = (event.clientY + 12) + "px";
+        const hit = document.elementFromPoint(event.clientX, event.clientY)?.closest(".custom-axis-row");
+        const targetRow = hit && list.contains(hit) ? hit : null;
+        list.querySelectorAll(".custom-axis-row").forEach(row => {
+            row.classList.toggle("is-drop-target", row === targetRow);
+        });
+        // Dropping on an empty optional slot means moving to the last active position.
+        if (targetRow) drag.target = Number(targetRow.dataset.customRowIndex);
+        event.preventDefault();
+    });
+    list.addEventListener("pointerup", event => {
+        if (!customRowPointerDrag || event.pointerId !== customRowPointerDrag.pointerId) return;
+        const drag = finishCustomRowPointerDrag();
+        if (drag?.moved) applyCustomRowAxisReorder(drag.source, drag.target);
+    });
+    list.addEventListener("pointercancel", event => {
+        if (customRowPointerDrag?.pointerId === event.pointerId) finishCustomRowPointerDrag();
+    });
+    list.addEventListener("lostpointercapture", event => {
+        if (customRowPointerDrag?.pointerId === event.pointerId) finishCustomRowPointerDrag();
+    });
 }
 function runCustomAnalysisNow() {
     clearTimeout(customAnalysisTimer); customAnalysisTimer = null;
@@ -9971,6 +10096,7 @@ function bindCustomAnalysisControls() {
             scheduleCustomAnalysisRun();
         });
     });
+    bindCustomRowAxisReorderControls();
 }
 function initializeCustomAnalysis(data, viewerResult, core) {
     currentCustomContext = viewerResult.context;
@@ -9979,6 +10105,7 @@ function initializeCustomAnalysis(data, viewerResult, core) {
     const message = document.getElementById("customMessage");
     if (currentCustomAxisOptions.length < 2) {
         ["customRowAxis1","customRowAxis2","customRowAxis3","customColAxis"].map(id => document.getElementById(id)).forEach(control => { if (control) control.disabled = true; });
+        renderCustomAxisReorderControls();
         if (message) { message.textContent = "カスタム分析には、表示設定でONかつ現在のデータで利用できる分析軸が2種類以上必要です。"; message.classList.remove("hidden"); }
         document.getElementById("customMeta")?.classList.add("hidden");
         const output = document.getElementById("customResult"); if (output) output.innerHTML = "";
