@@ -1579,6 +1579,28 @@
         .custom-axis-drag-handle:focus-visible,.custom-axis-reorder-button:focus-visible { outline:2px solid #148ecc; outline-offset:2px; }
         .custom-axis-drag-preview { position:fixed; z-index:10000; pointer-events:none; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:8px 12px; border:1px solid #148ecc; border-radius:8px; background:#fff; color:#0d6795; box-shadow:0 6px 20px rgba(0,0,0,.16); font-size:11px; font-weight:750; }
         .custom-axis-reorder-status { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+        /* Click-through pivot counts -> anonymized, paginated record details. */
+        .custom-detail-cell-button { border:0; border-bottom:1px dashed transparent; border-radius:3px; background:transparent; color:#0d6795; font:inherit; font-weight:750; font-variant-numeric:tabular-nums; padding:2px 4px; cursor:pointer; }
+        .custom-detail-cell-button:hover,.custom-detail-cell-button:focus-visible { background:#e5f4fb; border-bottom-color:#148ecc; outline:none; }
+        .custom-detail-backdrop[hidden] { display:none!important; }
+        .custom-detail-backdrop { position:fixed; z-index:190; inset:0; display:grid; place-items:center; padding:16px; background:rgba(13,38,55,.52); }
+        .custom-detail-panel { display:flex; flex-direction:column; width:min(1080px,100%); max-height:min(90vh,880px); border:1px solid #d6e6ee; border-radius:13px; background:#fff; color:#173043; box-shadow:0 22px 60px rgba(15,23,42,.28); overflow:hidden; }
+        .custom-detail-head { display:flex; gap:12px; align-items:flex-start; justify-content:space-between; padding:16px 18px 11px; border-bottom:1px solid #dbeaf1; }
+        .custom-detail-head h3 { margin:0 0 5px; font-size:16px; }
+        .custom-detail-condition { color:#526d7d; font-size:11px; line-height:1.6; overflow-wrap:anywhere; }
+        .custom-detail-close { flex:0 0 auto; padding:5px 10px; background:#fff; border:1px solid #cddfe8; border-radius:7px; color:#214a60; cursor:pointer; font:inherit; font-size:12px; }
+        .custom-detail-note { padding:10px 18px 0; font-size:10px; color:#627c8a; line-height:1.6; }
+        .custom-detail-data-wrap { margin:10px 18px; overflow:auto; max-height:min(60vh,620px); border:1px solid #dbeaf1; border-radius:7px; }
+        .custom-detail-data { width:100%; min-width:860px; border-collapse:separate; border-spacing:0; }
+        .custom-detail-data th,.custom-detail-data td { padding:8px 10px; border-bottom:1px solid #e8f0f5; border-right:1px solid #eef3f6; white-space:nowrap; font-size:11px; text-align:left; }
+        .custom-detail-data th { position:sticky; top:0; z-index:1; color:#436072; background:#eff7fb; }
+        .custom-detail-data td { background:#fff; }
+        .custom-detail-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 18px 14px; color:#607888; font-size:11px; }
+        .custom-detail-pager { display:flex; gap:7px; }
+        .custom-detail-pager button { border:1px solid #cbdfe9; border-radius:7px; background:#fff; color:#0d6795; padding:5px 10px; cursor:pointer; font:inherit; }
+        .custom-detail-pager button:disabled { opacity:.4; cursor:default; }
+        @media (max-width:600px) { .custom-detail-backdrop { padding:7px; } .custom-detail-head { padding:12px; } .custom-detail-note { padding:8px 12px 0; } .custom-detail-data-wrap { margin:8px 12px; } .custom-detail-foot { padding:8px 12px; } }
+
         .custom-control-wide { min-width:0; }
         .custom-age-button { width:100%; min-height:38px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 9px; border:1px solid #cfdfe7; border-radius:8px; background:#fff; color:#173043; cursor:pointer; font:inherit; font-size:11px; text-align:left; }
         .custom-age-button:hover { border-color:rgba(20,142,204,.42); background:var(--viewer-brand-blue-soft); }
@@ -10101,10 +10123,127 @@ function refreshCustomPivotHierarchyDisplay(table){
         row.classList.remove("custom-group-start-l1","custom-group-start-l2","custom-group-start-l3");if(previous){let level=0;for(let i=0;i<Math.min(labels.length,previous.length);i++){if(labels[i]!==previous[i]){level=i+1;break;}}if(level)row.classList.add(`custom-group-start-l${Math.min(level,3)}`);}previous=labels;
     });
 }
+const CUSTOM_DETAIL_PAGE_SIZE = 50;
+let currentCustomPivotResult = null;
+let customDetailState = null;
+
+function customDetailCountHtml(count, kind, rowKey = "", colLabel = "") {
+    const value = Number(count) || 0;
+    const label = currentCustomCore?.formatNumber(value) || String(value);
+    if (value <= 0) return label;
+    return `<button type="button" class="custom-detail-cell-button" data-custom-detail-kind="${escapeHtml(kind)}" data-detail-row-key="${escapeHtml(rowKey)}" data-detail-col-label="${escapeHtml(colLabel)}" title="この${label}件の応募明細を表示" aria-label="${label}件の応募明細を表示">${label}</button>`;
+}
+
+function ensureCustomDetailModal() {
+    let modal = document.getElementById("customDetailModal");
+    if (modal) return modal;
+    modal = document.createElement("div");
+    modal.id = "customDetailModal";
+    modal.className = "custom-detail-backdrop";
+    modal.hidden = true;
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("aria-labelledby", "customDetailTitle");
+    modal.innerHTML = `<div class="custom-detail-panel">
+        <div class="custom-detail-head"><div><h3 id="customDetailTitle">応募明細</h3><div id="customDetailCondition" class="custom-detail-condition"></div></div><button type="button" class="custom-detail-close" data-custom-detail-close="1" aria-label="明細を閉じる">閉じる ×</button></div>
+        <div class="custom-detail-note">氏名・電話番号・メールアドレス・詳細住所は表示しません。年月日と年代など、分析用に保存された項目だけを表示します。日別集計データは個別の応募者情報ではありません。</div>
+        <div class="custom-detail-data-wrap"><table class="custom-detail-data"><thead><tr><th>レコードID</th><th>応募日</th><th>応募媒体</th><th>年代</th><th>対応状況</th><th>仕事番号</th><th>仕事名</th><th>データ種別</th></tr></thead><tbody id="customDetailRows"></tbody></table></div>
+        <div class="custom-detail-foot"><span id="customDetailPageSummary"></span><div class="custom-detail-pager"><button type="button" data-custom-detail-page="-1" aria-label="前のページ">前へ</button><button type="button" data-custom-detail-page="1" aria-label="次のページ">次へ</button></div></div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener("click", event => {
+        if (event.target === modal || event.target.closest("[data-custom-detail-close]")) {
+            closeCustomDetailModal();
+            return;
+        }
+        const button = event.target.closest("[data-custom-detail-page]");
+        if (!button || button.disabled || !customDetailState) return;
+        const delta = Number(button.dataset.customDetailPage);
+        const maxPage = Math.max(0, Math.ceil(customDetailState.records.length / CUSTOM_DETAIL_PAGE_SIZE) - 1);
+        customDetailState.page = Math.max(0, Math.min(maxPage, customDetailState.page + delta));
+        renderCustomDetailPage();
+    });
+    modal.addEventListener("keydown", event => {
+        if (event.key === "Escape") {
+            event.preventDefault();
+            closeCustomDetailModal();
+        }
+        if (event.key !== "Tab") return;
+        const buttons = Array.from(modal.querySelectorAll("button:not(:disabled)"));
+        if (!buttons.length) return;
+        if (event.shiftKey && document.activeElement === buttons[0]) { event.preventDefault(); buttons[buttons.length - 1].focus(); }
+        else if (!event.shiftKey && document.activeElement === buttons[buttons.length - 1]) { event.preventDefault(); buttons[0].focus(); }
+    });
+    return modal;
+}
+
+function closeCustomDetailModal() {
+    const modal = document.getElementById("customDetailModal");
+    if (!modal || modal.hidden) return;
+    modal.hidden = true;
+    document.body.style.overflow = customDetailState?.priorOverflow || "";
+    const trigger = customDetailState?.trigger;
+    customDetailState = null;
+    if (trigger?.isConnected) trigger.focus();
+}
+
+function renderCustomDetailPage() {
+    const state = customDetailState;
+    if (!state) return;
+    const start = state.page * CUSTOM_DETAIL_PAGE_SIZE;
+    const subset = state.records.slice(start, start + CUSTOM_DETAIL_PAGE_SIZE);
+    const safe = value => escapeHtml(String(value ?? "").trim() || "—");
+    const rowsHtml = subset.map(record => {
+        const app = record.app || {};
+        const date = String(app["応募日時"] || "").slice(0, 10).replace(/-/g, "/");
+        const job = record.job || {};
+        const type = app["応募識別方式"] === "AGG_DAILY" ? "日別集計" : "応募レコード";
+        return `<tr><td>${safe(app["レコードID"])}</td><td>${safe(date)}</td><td>${safe(app["応募媒体"])}</td><td>${safe(record.ageBucket || "その他")}</td><td>${safe(app["対応状況"])}</td><td>${safe(app["仕事番号"])}</td><td>${safe(job["仕事名"])}</td><td>${safe(type)}</td></tr>`;
+    }).join("");
+    const modal = ensureCustomDetailModal();
+    modal.querySelector("#customDetailRows").innerHTML = rowsHtml;
+    const end = Math.min(state.records.length, start + subset.length);
+    modal.querySelector("#customDetailPageSummary").textContent = `${state.records.length.toLocaleString("ja-JP")}件中 ${start + 1}～${end}件を表示`;
+    modal.querySelector('[data-custom-detail-page="-1"]').disabled = state.page === 0;
+    modal.querySelector('[data-custom-detail-page="1"]').disabled = end >= state.records.length;
+}
+
+function openCustomDetailModal(result, kind, rowKey, colLabel, trigger) {
+    if (!result?.ok || !currentCustomCore) return;
+    const records = currentCustomCore.customDrilldownRecords(result, {kind, rowKey, colLabel});
+    if (!records.length) return;
+    const row = result.rowEntries.find(entry => entry.key === rowKey);
+    const parts = [];
+    if ((kind === "cell" || kind === "row") && row) {
+        result.rowAxes.forEach((axis, index) => parts.push(`${customAxisDisplayLabel(axis)}：${row.labels[index]}`));
+    }
+    if (kind === "cell" || kind === "column") parts.push(`${customAxisDisplayLabel(result.colAxis)}：${colLabel}`);
+    if (kind === "grand") parts.push("全体合計");
+    const modal = ensureCustomDetailModal();
+    modal.querySelector("#customDetailCondition").textContent = `${parts.join(" ／ ")} ／ ${records.length.toLocaleString("ja-JP")}件`;
+    const sorted = [...records].sort((a,b) => (b.appDate?.getTime?.() || 0) - (a.appDate?.getTime?.() || 0));
+    customDetailState = {records:sorted, page:0, trigger, priorOverflow:document.body.style.overflow};
+    renderCustomDetailPage();
+    document.body.style.overflow = "hidden";
+    modal.hidden = false;
+    modal.querySelector("[data-custom-detail-close]").focus();
+}
+
+function bindCustomResultDrilldown(output) {
+    if (!output || output.dataset.customDetailBound === "1") return;
+    output.dataset.customDetailBound = "1";
+    output.addEventListener("click", event => {
+        const button = event.target.closest("button[data-custom-detail-kind]");
+        if (!button || !output.contains(button)) return;
+        openCustomDetailModal(currentCustomPivotResult, button.dataset.customDetailKind, button.dataset.detailRowKey, button.dataset.detailColLabel, button);
+    });
+}
 function renderCustomResult(result, core) {
     const message = document.getElementById("customMessage");
     const meta = document.getElementById("customMeta");
     const output = document.getElementById("customResult");
+    closeCustomDetailModal();
+    currentCustomPivotResult = result?.ok ? result : null;
     message?.classList.add("hidden"); meta?.classList.add("hidden"); if (output) output.innerHTML = "";
     refreshTableCopyActions(document.getElementById("reportMain"));
     if (!result.ok) {
@@ -10121,9 +10260,10 @@ function renderCustomResult(result, core) {
         const axis=result.rowAxes[axisIndex]||"";
 
         return `<td class="custom-row-axis-col" data-row-axis-index="${axisIndex}" data-pivot-axis="${escapeHtml(axis)}" data-pivot-value="${escapeHtml(label)}" data-sort-value="${escapeHtml(label)}"><span class="custom-pivot-cell-content ${display?"":"pivot-value-suppressed"}" data-pivot-content="1">${customPivotAxisValueHtml(axis,label)}</span></td>`;
-    }).join("");const cells=result.colLabels.map(colLabel=>`<td>${core.formatNumber(rowMap.get(colLabel)||0)}</td>`).join("");return `<tr class="${customPivotGroupClass(entry,previous)}" data-pivot-labels="${escapeHtml(JSON.stringify(entry.labels))}">${rowAxisCells}${cells}<td>${core.formatNumber(result.rowTotals.get(entry.key)||0)}</td></tr>`;}).join("");
-    const totalCells = result.colLabels.map(colLabel => `<td>${core.formatNumber(result.colTotals.get(colLabel) || 0)}</td>`).join("");
-    output.innerHTML=`<div class="table-wrap"><table class="custom-table"><thead><tr>${rowHeaders}${headers}<th>行合計</th></tr></thead><tbody>${rows}<tr class="total-row"><td colspan="${result.rowAxes.length}">列合計</td>${totalCells}<td>${core.formatNumber(result.applicationCount)}</td></tr></tbody></table></div>`;
+    }).join("");const cells=result.colLabels.map(colLabel=>`<td>${customDetailCountHtml(rowMap.get(colLabel)||0,"cell",entry.key,colLabel)}</td>`).join("");return `<tr class="${customPivotGroupClass(entry,previous)}" data-pivot-labels="${escapeHtml(JSON.stringify(entry.labels))}">${rowAxisCells}${cells}<td>${customDetailCountHtml(result.rowTotals.get(entry.key)||0,"row",entry.key)}</td></tr>`;}).join("");
+    const totalCells = result.colLabels.map(colLabel => `<td>${customDetailCountHtml(result.colTotals.get(colLabel) || 0,"column","",colLabel)}</td>`).join("");
+    output.innerHTML=`<div class="table-wrap"><table class="custom-table"><thead><tr>${rowHeaders}${headers}<th>行合計</th></tr></thead><tbody>${rows}<tr class="total-row"><td colspan="${result.rowAxes.length}">列合計</td>${totalCells}<td>${customDetailCountHtml(result.applicationCount,"grand")}</td></tr></tbody></table></div>`;
+    bindCustomResultDrilldown(output);
     bindCustomPivotImageFallbacks(output);
     applyCustomPivotStickyGeometry(result,output);
     enhanceReportTables(output);
