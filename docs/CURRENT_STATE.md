@@ -4,6 +4,15 @@ Last updated: 2026-11-12
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Default report charts ON (2026-11-12)
+
+- `report.html` now starts with the global chart toggle **ON**. The initial HTML `aria-checked`, label and tooltip are aligned; `initializeViewerPeriod` also resets charts to ON on each new report load.
+- Users can still switch graphs OFF/ON; analyses rerender with the selected state. Switching OFF is **not** persisted across reloads (a new load returns to ON).
+- Existing lazy-render behavior through `IntersectionObserver` is retained, so offscreen charts are created as they approach the viewport.
+- Change scope: `report.html` and `tests/report-chart-default-on.test.cjs` only. No changes to GAS v61, datasets, chart calculation or external Viewer URLs.
+- [GitHub Actions #43241483576](https://github.com/tsicb/valid-app/actions/runs/43241483576): **121/121 tests passed**, including four new tests for ON initial state, reload behavior, OFF→ON toggle and lazy chart rendering.
+- Live-browser visual acceptance after GitHub Pages deploy is still pending.
+
 ## Custom analysis age axis & anonymous applicant drilldown (2026-11-12)
 
 **Production code status: RELEASED / awaiting user-browser acceptance.**
