@@ -451,10 +451,8 @@
                 ),
             "年代":
                 capability(
-                    applicationAvailable && (
-                        applicationHeaders.includes("年齢") ||
-                        applicationHeaders.includes("年代")
-                    ),
+                    applicationAvailable &&
+                    applicationHeaders.includes("年齢"),
                     "AGE_FIELD_UNAVAILABLE"
                 ),
             "応募媒体":
