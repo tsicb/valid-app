@@ -187,6 +187,7 @@ function customAnalysisAxisRules_() {
   return [
     ['対応状況', 'status'],
     ['応募年月', 'month'],
+    ['年代', 'age'],
     ['応募媒体', 'media'],
     ['性別', 'gender'],
     ['氏名文字種区分', 'name-script'],
