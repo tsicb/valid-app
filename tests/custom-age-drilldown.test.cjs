@@ -102,7 +102,9 @@ test("application-only age analysis includes unmatched and daily-aggregate rows,
 
 test("row-level detail is restricted by the exact job CSV scope used for the matrix",()=>{
     const agg=core.aggregateCustom(makeContext(records),{rowAxes:["年代"],colAxis:"メイン画像有無"});
-    assert.equal(agg.ok,false,"missing image metadata can be filtered out of the matrix");
+    assert.equal(agg.ok,true);
+    assert.equal(agg.applicationCount,3,"jobCsv-only axes retain matched records even for missing images");
+    assert.equal(core.customDrilldownRecords(agg,{kind:"grand"}).length,3);
     const unmatched=core.aggregateCustom(makeContext(records),{rowAxes:["年代"],colAxis:"職種"});
     assert.equal(unmatched.applicationCount,4,"jobAnalysis scope matches recorded jobs only");
     assert.equal(core.customDrilldownRecords(unmatched,{kind:"grand"}).length,4);
