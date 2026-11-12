@@ -449,6 +449,14 @@
                     applicationAvailable,
                     "NO_APPLICATION_DATA"
                 ),
+            "年代":
+                capability(
+                    applicationAvailable && (
+                        applicationHeaders.includes("年齢") ||
+                        applicationHeaders.includes("年代")
+                    ),
+                    "AGE_FIELD_UNAVAILABLE"
+                ),
             "応募媒体":
                 capability(
                     applicationAvailable,
@@ -2465,6 +2473,7 @@ function customAxisOptions(
     const rules = [
         ["対応状況", "status"],
         ["応募年月", "month"],
+        ["年代", "age"],
         ["応募媒体", "media"],
         ["性別", "gender"],
         ["氏名文字種区分", "name-script"],
@@ -2613,6 +2622,7 @@ function customAxisDataScope(axis) {
     const appOnly = new Set([
         "対応状況",
         "応募年月",
+        "年代",
         "応募媒体",
         "性別",
         "氏名文字種区分",
@@ -2697,6 +2707,11 @@ function customAxisValue(record, axis, context) {
             label,
             monthSortValue(label, record.appDate)
         );
+    }
+
+    if (axis === "年代") {
+        const label = record.ageBucket || "その他";
+        return category(label, fixedSortValue(label, context.ageCols || ageBuckets(context.ageMode)));
     }
 
     if (axis === "応募媒体") {
@@ -3346,6 +3361,10 @@ function aggregateCustom(context, options = {}) {
     const matrix =
         new Map();
 
+    // The same record references used for counting back every drilldown cell.
+    // No extra source data, identifiers or server request is needed.
+    const cellRecords = new Map();
+
     const rowTotals =
         new Map();
 
@@ -3451,6 +3470,11 @@ function aggregateCustom(context, options = {}) {
                     0
                 ) + 1
             );
+
+            if (!cellRecords.has(rowKey)) cellRecords.set(rowKey, new Map());
+            const drillRow = cellRecords.get(rowKey);
+            if (!drillRow.has(cLabel)) drillRow.set(cLabel, []);
+            drillRow.get(cLabel).push(record);
 
             rowTotals.set(
                 rowKey,
@@ -3564,12 +3588,34 @@ function aggregateCustom(context, options = {}) {
         rowEntries,
         colLabels,
         matrix,
+        cellRecords,
         rowTotals,
         colTotals,
         applicationCount:
             usedRecords
     };
 }
+
+    // Read the exact aggregate membership. Missing/zero-count cells are not clickable.
+    // Totals union the same leaf buckets instead of repeating scope/filter rules.
+    function customDrilldownRecords(result, { kind, rowKey, colLabel } = {}) {
+        if (!result?.ok || !(result.cellRecords instanceof Map)) return [];
+        const cells = result.cellRecords;
+        const collect = row => Array.from(row?.values() || []).flat();
+        if (kind === "cell") return [...(cells.get(rowKey)?.get(colLabel) || [])];
+        if (kind === "row") return collect(cells.get(rowKey));
+        if (kind === "column") {
+            const records = [];
+            cells.forEach(row => records.push(...(row.get(colLabel) || [])));
+            return records;
+        }
+        if (kind === "grand") {
+            const records = [];
+            cells.forEach(row => records.push(...collect(row)));
+            return records;
+        }
+        return [];
+    }
 
     function aggregateViewer(viewerResponse) {
         const context = buildViewerContext(viewerResponse);
@@ -3679,6 +3725,7 @@ function aggregateCustom(context, options = {}) {
         customAxisRequiresJob,
         customAxisValue,
         aggregateCustom,
+        customDrilldownRecords,
         aggregateViewer,
         aggregateViewerMvp: aggregateViewer,
         formatNumber,
