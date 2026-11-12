@@ -4315,8 +4315,8 @@
                     <div class="analysis-chart-toggle-label">グラフ</div>
                     <div class="analysis-chart-toggle-note">各表の量とターゲット率を可視化</div>
                 </div>
-                <button id="viewerAnalysisChartToggle" type="button" class="analysis-chart-toggle" role="switch" aria-checked="false" title="各分析表のグラフを表示">
-                    <span class="analysis-chart-toggle-state">OFF</span>
+                <button id="viewerAnalysisChartToggle" type="button" class="analysis-chart-toggle" role="switch" aria-checked="true" title="各分析表のグラフを非表示">
+                    <span class="analysis-chart-toggle-state">ON</span>
                     <span class="analysis-chart-toggle-knob" aria-hidden="true"></span>
                 </button>
             </div>
@@ -10996,7 +10996,7 @@ let currentViewerGlobalAgeFilter = {
 
 let currentViewerMonthProgressMode = "cumulative";
 
-let currentViewerAnalysisChartsEnabled = false;
+let currentViewerAnalysisChartsEnabled = true;
 
 let currentViewerBasicColumnAxis = "age";
 
@@ -12768,7 +12768,7 @@ function initializeViewerPeriod(
     );
 
     currentViewerBucketOverrides = {};
-    currentViewerAnalysisChartsEnabled = false;
+    currentViewerAnalysisChartsEnabled = true;
     analysisMonthSeriesState.clear();
     updateAnalysisChartToggleUi();
     currentViewerBasicColumnAxis = "age";
