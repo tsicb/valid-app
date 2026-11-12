@@ -1,8 +1,22 @@
 # Current State
 
-Last updated: 2026-10-26
+Last updated: 2026-11-12
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
+
+## Custom analysis age axis & anonymous applicant drilldown (2026-11-12)
+
+**Production code status: RELEASED / awaiting user-browser acceptance.**
+
+- [PR #5](https://github.com/tsicb/valid-app/pull/5) merged into main at `129e87474625c4be368e578f0b60149d338bcd3e`.
+- GAS Central API source synced from verified feature commit `91d23a51c5536c7bef494f793ec8143a1849f62c` via [Actions #43233271271](https://github.com/tsicb/valid-app/actions/runs/43233271271) and [#43233443196](https://github.com/tsicb/valid-app/actions/runs/43233443196); both `completed/success` on exact expected SHA.
+- The operator redeployed the **existing** Apps Script Web App to **version 61** (2026-11-12 23:10 JST), preserving the deployed URL and prior v60 for rollback. Runtime public `/exec` could not be directly fetched from the assistant environment; this version confirmation is operator-reported.
+- [main CI #43234766012](https://github.com/tsicb/valid-app/actions/runs/43234766012) and [Pages deploy #43234765436](https://github.com/tsicb/valid-app/actions/runs/43234765436) both completed successfully on the merge SHA; pre-merge Node tests **117 passed / 0 failed**.
+- The report's custom analysis now includes the **年代** application-scope row/column axis. It uses the existing `record.ageBucket` (normal / shifted age group, existing global age filter) and is subject to display-setting `age` visibility and the stored `年齢` column.
+- Count cells, row totals, column totals and grand total open a 50-record-per-page **anonymous detail modal**. The drilldown references exactly the records counted by the custom pivot, preserving job-join scope. Displayed columns: record ID, application date (no time), medium, age band, status, job number/title, and daily-aggregate indicator; no name, phone, email address, raw address, or identity key.
+- Central API `customAnalysisAxisRules_()` permits 年代 in `30_分析レポート初期設定` through `['年代','age']` but **does not change data schemas or stored applicant records**. No manual data migration is required.
+- **Pending browser smoke**: refresh an existing report; select 年代 as row or column; click a nonzero leaf cell / row total / column total / grand total and verify count and representative records, 50-record paging if applicable, modal exit and restored scroll, sticky horizontal layout, Excel/TSV output. Test available axes with the age display setting ON/OFF. Do not paste tokenized Viewer URL or applicant detail to public issues.
+- Rollback references: Web App v60 and pre-PR main `07cce8eb83a41477277a0d1ca9d48eae715a2d79`. Revert frontend and restore compatible GAS deployment together when necessary; do not delete or rotate existing tokens/keys.
 
 ## Production release: incremental APPEND/REPLACE (2026-10-26)
 
