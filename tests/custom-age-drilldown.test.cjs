@@ -47,6 +47,28 @@ test("年代 is an application-scope axis and follows display-setting age ON/OFF
     assert.match(gas,/\['年代', 'age'\]/);
 });
 
+test("age-band source availability requires the numeric age column, not merely legacy labels",()=>{
+    const base={apps:[{"年代":"20代"}],jobs:[],keywordMaster:[],
+        enterpriseInfo:{hasAnyDisplayName:false}};
+    assert.equal(core.buildAnalysisSourceCapabilities({...base,applicationHeaders:["年代"]})["年代"].available,false);
+    assert.equal(core.buildAnalysisSourceCapabilities({...base,applicationHeaders:["年齢","年代"]})["年代"].available,true);
+});
+
+test("clickable count markup escapes aggregate labels and leaves empty cells as text",()=>{
+    const start=report.indexOf("const CUSTOM_DETAIL_PAGE_SIZE = 50;");
+    const end=report.indexOf("function ensureCustomDetailModal()",start);
+    assert.ok(start>=0&&end>start);
+    const ctx=vm.createContext({currentCustomCore:{formatNumber:n=>n.toLocaleString("ja-JP")},
+        escapeHtml:s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;")});
+    vm.runInContext(report.slice(start,end),ctx);
+    assert.equal(ctx.customDetailCountHtml(0,"cell","x","y"),"0");
+    const markup=ctx.customDetailCountHtml(10,"cell",'<script>alert("X")</script>',"A&B");
+    assert.match(markup,/data-custom-detail-kind="cell"/);
+    assert.match(markup,/&lt;script&gt;/);
+    assert.match(markup,/A&amp;B/);
+    assert.doesNotMatch(markup,/<script>/);
+});
+
 test("年代 follows existing standard/5-years-shift classification and sort",()=>{
     assert.equal(core.ageBucket(24,"年代"),"20代");
     assert.equal(core.ageBucket(24,"年代（5歳ずらし）"),"15-25歳");
