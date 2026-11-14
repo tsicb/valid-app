@@ -1582,6 +1582,7 @@
         /* Click-through pivot counts -> anonymized, paginated record details. */
         .custom-detail-cell-button { border:0; border-bottom:1px dashed transparent; border-radius:3px; background:transparent; color:#0d6795; font:inherit; font-weight:750; font-variant-numeric:tabular-nums; padding:2px 4px; cursor:pointer; }
         .custom-detail-cell-button:hover,.custom-detail-cell-button:focus-visible { background:#e5f4fb; border-bottom-color:#148ecc; outline:none; }
+        .cross-table .custom-detail-cell-button,.basic-distribution-table .custom-detail-cell-button { white-space:nowrap; }
         .custom-detail-backdrop[hidden] { display:none!important; }
         .custom-detail-backdrop { position:fixed; z-index:190; inset:0; display:grid; place-items:center; padding:16px; background:rgba(13,38,55,.52); }
         .custom-detail-panel { display:flex; flex-direction:column; width:min(1080px,100%); max-height:min(90vh,880px); border:1px solid #d6e6ee; border-radius:13px; background:#fff; color:#173043; box-shadow:0 22px 60px rgba(15,23,42,.28); overflow:hidden; }
@@ -10127,6 +10128,78 @@ const CUSTOM_DETAIL_PAGE_SIZE = 50;
 let currentCustomPivotResult = null;
 let customDetailState = null;
 
+// Every basic/detail table uses the same modal and the same nine-column
+// display. Rows are found from their original aggregation source on click.
+let currentReportDetailResult = null;
+
+function analysisDetailCountHtml(count, source, options = {}) {
+    const num = Number(count) || 0;
+    const label = num.toLocaleString("ja-JP");
+    if (!Number.isInteger(num) || num <= 0) return label;
+    const attribute = (name, value) => value === undefined
+        ? ""
+        : ` data-detail-${name}="${escapeHtml(String(value))}"`;
+    return `<button type="button" class="custom-detail-cell-button" data-analysis-detail-source="${escapeHtml(source)}"${attribute("row-key",options.rowKey)}${attribute("column-label",options.columnLabel)}${attribute("column-labels",Array.isArray(options.columnLabels)?JSON.stringify(options.columnLabels):undefined)}${attribute("target",options.targetOnly?"1":undefined)}${attribute("expected",num)} aria-label="${label}件の応募明細を表示" title="この${label}件の応募明細を表示">${label}</button>`;
+}
+
+function openAnalysisRecordDetails(button) {
+    const report = currentReportDetailResult;
+    if (!report) return;
+    const source = button.dataset.analysisDetailSource;
+    const options = {};
+    if (button.hasAttribute("data-detail-row-key")) options.rowKey = button.dataset.detailRowKey;
+    if (button.hasAttribute("data-detail-column-label")) options.columnLabel = button.dataset.detailColumnLabel;
+    if (button.hasAttribute("data-detail-column-labels")) {
+        try { options.columnLabels = JSON.parse(button.dataset.detailColumnLabels); }
+        catch (_) { return; }
+        if (!Array.isArray(options.columnLabels)) return;
+    }
+    if (button.dataset.detailTarget === "1") options.targetOnly = true;
+    let aggregate;
+    let sourceLabel;
+    if (source === "age-rows") {
+        const records = report.context?.recordsAll || [];
+        const selected = records.filter(record =>
+            (options.rowKey === undefined || record.ageBucket === options.rowKey) &&
+            (!options.targetOnly || record.isTarget)
+        );
+        showApplicantRecordDetails(selected, `年代：${options.rowKey || "全体"}`, button, Number(button.dataset.detailExpected));
+        return;
+    }
+    if (source === "note-detail") {
+        aggregate = report.noteDetail?.aggregate;
+        sourceLabel = "求人備考1行目";
+    } else if (source === "indeed-tag-detail") {
+        aggregate = report.indeedTagDetail;
+        sourceLabel = "Indeed求人タグ";
+    } else if (source === "top-image-detail") {
+        aggregate = report.topImageDetail;
+        sourceLabel = "TOP画像";
+    } else {
+        const table = (report.basicCrossTables || []).find(item => item.id === source);
+        aggregate = table?.aggregate;
+        sourceLabel = table?.label;
+    }
+    if (!aggregate || typeof aggregate.drilldownRecords !== "function") return;
+    const records = aggregate.drilldownRecords(options);
+    const namedRow = source === "indeed-tag-detail" || source === "top-image-detail"
+        ? aggregate.rows?.find(row => row.key === options.rowKey)?.label
+        : options.rowKey;
+    const column = options.columnLabel || (options.columnLabels ? options.columnLabels.join("・") : "");
+    const parts = [sourceLabel, namedRow, column, options.targetOnly ? "ターゲット応募" : ""].filter(Boolean);
+    showApplicantRecordDetails(records, parts.join(" ／ ") || "応募明細", button, Number(button.dataset.detailExpected));
+}
+
+function bindReportAnalysisDetailClicks() {
+    const main = document.getElementById("reportMain");
+    if (!main || main.dataset.analysisDetailBound === "1") return;
+    main.dataset.analysisDetailBound = "1";
+    main.addEventListener("click", event => {
+        const button = event.target.closest("button[data-analysis-detail-source]");
+        if (button && main.contains(button)) openAnalysisRecordDetails(button);
+    });
+}
+
 function customDetailCountHtml(count, kind, rowKey = "", colLabel = "") {
     const value = Number(count) || 0;
     const label = currentCustomCore?.formatNumber(value) || String(value);
@@ -10243,8 +10316,20 @@ function openCustomDetailModal(result, kind, rowKey, colLabel, trigger) {
     }
     if (kind === "cell" || kind === "column") parts.push(`${customAxisDisplayLabel(result.colAxis)}：${colLabel}`);
     if (kind === "grand") parts.push("全体合計");
+    showApplicantRecordDetails(records, parts.join(" ／ "), trigger, records.length);
+}
+
+function showApplicantRecordDetails(records, condition, trigger, expectedCount) {
+    if (!records.length) return;
+    // Do not silently show a different number of applications than the cell
+    // the user clicked. This indicates a membership regression.
+    if (Number.isFinite(expectedCount) && expectedCount !== records.length) {
+        console.error("応募明細件数と集計件数が一致しません", {expectedCount, actualCount:records.length});
+        return;
+    }
     const modal = ensureCustomDetailModal();
-    modal.querySelector("#customDetailCondition").textContent = `${parts.join(" ／ ")} ／ ${records.length.toLocaleString("ja-JP")}件`;
+    modal.querySelector("#customDetailCondition").textContent =
+        `${condition} ／ ${records.length.toLocaleString("ja-JP")}件`;
     const sorted = [...records].sort((a,b) => (b.appDate?.getTime?.() || 0) - (a.appDate?.getTime?.() || 0));
     customDetailState = {records:sorted, page:0, trigger, priorOverflow:document.body.style.overflow};
     renderCustomDetailPage();
@@ -12830,6 +12915,8 @@ function renderReport(data) {
         performance.now();
 
     const result = core.aggregateViewer(runtimeData);
+    currentReportDetailResult = result;
+    bindReportAnalysisDetailClicks();
 
     if (
         result.basicColumnAxis?.key &&
@@ -12922,7 +13009,7 @@ function renderReport(data) {
         result.ageRows.map(row => `
             <tr>
                 <td>${escapeHtml(row.label)}</td>
-                <td>${core.formatNumber(row.count)}</td>
+                <td>${analysisDetailCountHtml(row.count,"age-rows",{rowKey:row.label})}</td>
                 <td>${core.formatPercent(row.share)}</td>
                 <td>
                     <div class="bar">
