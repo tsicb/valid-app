@@ -4,6 +4,19 @@ Last updated: 2026-11-14
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Shared drilldown for basic and detailed report tables (2026-11-14)
+
+**Production code released; actual company-browser visual acceptance pending.**
+
+- [PR #7](https://github.com/tsicb/valid-app/pull/7) merged into `main` at `7661ec77fa78135b5b430b6e1dcda7e62e6d404f`. No Central API/GAS/Worker/DataStore changes: only `analysis-core.js`, `report.html` and `tests/report-shared-drilldown.test.cjs`.
+- The same existing nine-field anonymous modal now opens for **age composition**, **basic analysis cross tables**, **basic self-axis distribution tables**, **note-first-line details**, **Indeed tag details**, and **TOP-image details**. Clickable metrics include individual intersection counts, row totals, column totals, overall totals, target-age application counts and recent-month application counts where displayed.
+- Newly attached `drilldownRecords(options)` functions use the **original input record arrays and exact same category functions** as each aggregation (lazy on click; no per-table cloned record matrices). `rowKey`, `columnLabel`, `columnLabels` and `targetOnly` identify membership. Dataset scope/age-period filters remain unchanged and **the number returned is checked against the cell's displayed integer before opening**. Changes to sorting do not change stored row labels/keys.
+- Indeed tag drilldown keys by tag **code**, so the same application can legitimately be counted under multiple tags. The existing `（タグなし）` bucket is preserved. TOP image drilldown keys by source filename, including the `（TOP画像なし）` bucket. Display-limited groups remain limited as before.
+- **Not clickable:** percentage/ratio cells, number of job postings, per-job application rates, forecast/estimated cells, graphs and month-progress dashboard (stage 3 deferred).
+- Existing custom-analysis modal flow is unchanged except for sharing the final record-modal opener, and its original application count filtering remains intact.
+- [Branch CI #43585526436](https://github.com/tsicb/valid-app/actions/runs/43585526436): **139 / 139 tests passed**, including shared matching, age/column/month selectors, target/recent, multi-tags, image matching, delegated event dispatch, and JavaScript parsing.
+- User-browser smoke still required: refresh shared report; click counts in age/basic/detail tables; inspect exact 9-column record content and matching count; verify month mode and target/recent cells; confirm sorting, copy/Excel, sticky headers/horizontal scrollbar and unchanged custom drilldown.
+
 ## Custom applicant drilldown business columns (2026-11-14)
 
 - [PR #6](https://github.com/tsicb/valid-app/pull/6) merged into `main` at `5acc9af72691879c2d03580b54e38c37a6a0a505`.
