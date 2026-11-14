@@ -1591,7 +1591,7 @@
         .custom-detail-close { flex:0 0 auto; padding:5px 10px; background:#fff; border:1px solid #cddfe8; border-radius:7px; color:#214a60; cursor:pointer; font:inherit; font-size:12px; }
         .custom-detail-note { padding:10px 18px 0; font-size:10px; color:#627c8a; line-height:1.6; }
         .custom-detail-data-wrap { margin:10px 18px; overflow:auto; max-height:min(60vh,620px); border:1px solid #dbeaf1; border-radius:7px; }
-        .custom-detail-data { width:100%; min-width:860px; border-collapse:separate; border-spacing:0; }
+        .custom-detail-data { width:100%; min-width:1160px; border-collapse:separate; border-spacing:0; }
         .custom-detail-data th,.custom-detail-data td { padding:8px 10px; border-bottom:1px solid #e8f0f5; border-right:1px solid #eef3f6; white-space:nowrap; font-size:11px; text-align:left; }
         .custom-detail-data th { position:sticky; top:0; z-index:1; color:#436072; background:#eff7fb; }
         .custom-detail-data td { background:#fff; }
@@ -10146,8 +10146,8 @@ function ensureCustomDetailModal() {
     modal.setAttribute("aria-labelledby", "customDetailTitle");
     modal.innerHTML = `<div class="custom-detail-panel">
         <div class="custom-detail-head"><div><h3 id="customDetailTitle">応募明細</h3><div id="customDetailCondition" class="custom-detail-condition"></div></div><button type="button" class="custom-detail-close" data-custom-detail-close="1" aria-label="明細を閉じる">閉じる ×</button></div>
-        <div class="custom-detail-note">氏名・電話番号・メールアドレス・詳細住所は表示しません。年月日と年代など、分析用に保存された項目だけを表示します。日別集計データは個別の応募者情報ではありません。</div>
-        <div class="custom-detail-data-wrap"><table class="custom-detail-data"><thead><tr><th>レコードID</th><th>応募日</th><th>応募媒体</th><th>年代</th><th>対応状況</th><th>仕事番号</th><th>仕事名</th><th>データ種別</th></tr></thead><tbody id="customDetailRows"></tbody></table></div>
+        <div class="custom-detail-note">保存済みの分析用データを表示しています。氏名・電話番号・メールアドレス・詳細住所は表示しません。日別集計データには個々の応募時刻がないため「時刻不明」と表示します。</div>
+        <div class="custom-detail-data-wrap"><table class="custom-detail-data"><thead><tr><th>仕事番号</th><th>応募日時</th><th>対応状況</th><th>仕事名</th><th>勤務都道府県</th><th>年代</th><th>性別</th><th>応募媒体</th><th>下限給与</th></tr></thead><tbody id="customDetailRows"></tbody></table></div>
         <div class="custom-detail-foot"><span id="customDetailPageSummary"></span><div class="custom-detail-pager"><button type="button" data-custom-detail-page="-1" aria-label="前のページ">前へ</button><button type="button" data-custom-detail-page="1" aria-label="次のページ">次へ</button></div></div>
     </div>`;
     document.body.appendChild(modal);
@@ -10187,6 +10187,32 @@ function closeCustomDetailModal() {
     if (trigger?.isConnected) trigger.focus();
 }
 
+// Preserve the source clock when known. AGG_DAILY is date-only data: a
+// synthesized 00:00:00 must never be mistaken for an actual application time.
+function customDetailDateTime(app) {
+    const raw = String(app?.["応募日時"] ?? "").trim();
+    const match = raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+    if (!match) return "—";
+    const [,year,month,day,hour,minute,second] = match;
+    const date = `${year}/${month.padStart(2, "0")}/${day.padStart(2, "0")}`;
+    if (app?.["応募識別方式"] === "AGG_DAILY" || hour === undefined) {
+        return date + "（時刻不明）";
+    }
+    const clock = `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
+    return date + " " + clock + (second === undefined ? "" : ":" + second.padStart(2, "0"));
+}
+
+// Salary must carry a pay period to avoid presenting monthly pay as hourly pay.
+// APPLICATION_EMBEDDED jobs intentionally lack a valid salary value.
+function customDetailMinSalary(job) {
+    const type = String(job?.["給与区分"] ?? "").trim();
+    const rawAmount = String(job?.["給与金額MIN"] ?? "").trim().replace(/,/g, "");
+    if (!type || !rawAmount) return "—";
+    const amount = Number(rawAmount);
+    if (!Number.isFinite(amount) || amount <= 0) return "—";
+    return `${type} ${amount.toLocaleString("ja-JP")}円`;
+}
+
 function renderCustomDetailPage() {
     const state = customDetailState;
     if (!state) return;
@@ -10195,10 +10221,8 @@ function renderCustomDetailPage() {
     const safe = value => escapeHtml(String(value ?? "").trim() || "—");
     const rowsHtml = subset.map(record => {
         const app = record.app || {};
-        const date = String(app["応募日時"] || "").slice(0, 10).replace(/-/g, "/");
         const job = record.job || {};
-        const type = app["応募識別方式"] === "AGG_DAILY" ? "日別集計" : "応募レコード";
-        return `<tr><td>${safe(app["レコードID"])}</td><td>${safe(date)}</td><td>${safe(app["応募媒体"])}</td><td>${safe(record.ageBucket || "その他")}</td><td>${safe(app["対応状況"])}</td><td>${safe(app["仕事番号"])}</td><td>${safe(job["仕事名"])}</td><td>${safe(type)}</td></tr>`;
+        return `<tr><td>${safe(app["仕事番号"])}</td><td>${safe(customDetailDateTime(app))}</td><td>${safe(app["対応状況"])}</td><td>${safe(job["仕事名"])}</td><td>${safe(job["勤務地都道府県"])}</td><td>${safe(record.ageBucket || "その他")}</td><td>${safe(app["性別"])}</td><td>${safe(app["応募媒体"])}</td><td>${safe(customDetailMinSalary(job))}</td></tr>`;
     }).join("");
     const modal = ensureCustomDetailModal();
     modal.querySelector("#customDetailRows").innerHTML = rowsHtml;
