@@ -8783,20 +8783,20 @@ function renderCrossTable(table, core) {
                 ? group.ageCounts
                 : group.columnCounts;
         const columnCells = columnLabels
-            .map(label => `<td>${core.formatNumber(counts?.[label] || 0)}</td>`)
+            .map(label => `<td>${analysisDetailCountHtml(counts?.[label] || 0,table.id,{rowKey:group.label,columnLabel:label})}</td>`)
             .join("");
         const rowKey = `${table.id}:${group.sortValue ?? group.label}`;
         const recentCount = monthMode ? countForLabels(counts, recentLabels) : 0;
         const summaryCells = monthMode
             ? `
-                <td>${core.formatNumber(group.total)}</td>
+                <td>${analysisDetailCountHtml(group.total,table.id,{rowKey:group.label})}</td>
                 <td>${core.formatPercent(agg.baseTotal ? group.total / agg.baseTotal : 0)}</td>
-                <td>${core.formatNumber(recentCount)}</td>
+                <td>${analysisDetailCountHtml(recentCount,table.id,{rowKey:group.label,columnLabels:recentLabels})}</td>
                 <td>${core.formatPercent(baseRecent ? recentCount / baseRecent : 0)}</td>`
             : `
-                <td>${core.formatNumber(group.total)}</td>
+                <td>${analysisDetailCountHtml(group.total,table.id,{rowKey:group.label})}</td>
                 <td>${core.formatPercent(agg.baseTotal ? group.total / agg.baseTotal : 0)}</td>
-                <td>${core.formatNumber(group.target)}</td>
+                <td>${analysisDetailCountHtml(group.target,table.id,{rowKey:group.label,targetOnly:true})}</td>
                 ${targetRateCellHtml(group.total ? group.target / group.total : 0, core)}
                 <td>${core.formatPercent(agg.baseTarget ? group.target / agg.baseTarget : 0)}</td>`;
         const baseRow = `
@@ -8828,7 +8828,7 @@ function renderCrossTable(table, core) {
     }).join("");
 
     const totalColumnCells = columnLabels
-        .map(label => `<td>${core.formatNumber(totalColumns[label] || 0)}</td>`)
+        .map(label => `<td>${analysisDetailCountHtml(totalColumns[label] || 0,table.id,{columnLabel:label})}</td>`)
         .join("");
 
     const compositionCells = columnLabels
@@ -8837,14 +8837,14 @@ function renderCrossTable(table, core) {
 
     const totalSummaryCells = monthMode
         ? `
-            <td>${core.formatNumber(agg.baseTotal)}</td>
+            <td>${analysisDetailCountHtml(agg.baseTotal,table.id)}</td>
             <td>${core.formatPercent(agg.baseTotal ? 1 : 0)}</td>
-            <td>${core.formatNumber(baseRecent)}</td>
+            <td>${analysisDetailCountHtml(baseRecent,table.id,{columnLabels:recentLabels})}</td>
             <td>${core.formatPercent(baseRecent ? 1 : 0)}</td>`
         : `
-            <td>${core.formatNumber(agg.baseTotal)}</td>
+            <td>${analysisDetailCountHtml(agg.baseTotal,table.id)}</td>
             <td>${core.formatPercent(agg.baseTotal ? 1 : 0)}</td>
-            <td>${core.formatNumber(agg.baseTarget)}</td>
+            <td>${analysisDetailCountHtml(agg.baseTarget,table.id,{targetOnly:true})}</td>
             <td>${core.formatPercent(agg.baseTotal ? agg.baseTarget / agg.baseTotal : 0)}</td>
             <td>${core.formatPercent(agg.baseTarget ? 1 : 0)}</td>`;
     const compositionTail = monthMode
@@ -8913,13 +8913,13 @@ function renderBasicDistributionTable(table, core) {
         const targetCells = monthMode
             ? ""
             : `
-                <td>${core.formatNumber(group.target)}</td>
+                <td>${analysisDetailCountHtml(group.target,table.id,{rowKey:group.label,targetOnly:true})}</td>
                 ${targetRateCellHtml(group.total ? group.target / group.total : 0, core)}
                 <td>${core.formatPercent(agg.baseTarget ? group.target / agg.baseTarget : 0)}</td>`;
         const baseRow = `
             <tr data-row-key="${escapeHtml(rowKey)}" data-chart-label="${escapeHtml(group.label)}" data-chart-total="${group.total}" data-chart-target="${group.target}" data-chart-recent="0">
                 <td data-sort-value="${escapeHtml(group.label)}">${escapeHtml(group.label)}</td>
-                <td>${core.formatNumber(group.total)}</td>
+                <td>${analysisDetailCountHtml(group.total,table.id,{rowKey:group.label})}</td>
                 <td>${core.formatPercent(share)}</td>
                 <td class="distribution-bar-cell">
                     <div class="bar"><span style="width:${Math.max(0, Math.min(100, share * 100))}%"></span></div>
@@ -8982,11 +8982,11 @@ function renderBasicDistributionTable(table, core) {
                         ${rowsHtml}
                         <tr class="total-row">
                             <td>【総計】</td>
-                            <td>${core.formatNumber(agg.baseTotal)}</td>
+                            <td>${analysisDetailCountHtml(agg.baseTotal,table.id)}</td>
                             <td>${core.formatPercent(agg.baseTotal ? 1 : 0)}</td>
                             <td></td>
                             ${monthMode ? "" : `
-                                <td>${core.formatNumber(agg.baseTarget)}</td>
+                                <td>${analysisDetailCountHtml(agg.baseTarget,table.id,{targetOnly:true})}</td>
                                 <td>${core.formatPercent(agg.baseTotal ? agg.baseTarget / agg.baseTotal : 0)}</td>
                                 <td>${core.formatPercent(agg.baseTarget ? 1 : 0)}</td>`}
                         </tr>
@@ -9046,19 +9046,19 @@ function renderStandaloneCross(agg, core, firstHeader) {
     const rows = agg.groups.map(group => {
         const counts = isAgeAxis ? group.ageCounts : group.columnCounts;
         const columnCells = columnLabels
-            .map(label => `<td>${core.formatNumber(counts?.[label] || 0)}</td>`)
+            .map(label => `<td>${analysisDetailCountHtml(counts?.[label] || 0,"note-detail",{rowKey:group.label,columnLabel:label})}</td>`)
             .join("");
         const recentCount = monthMode ? countForLabels(counts, recentLabels) : 0;
         const summaryCells = monthMode
             ? `
-                <td>${core.formatNumber(group.total)}</td>
+                <td>${analysisDetailCountHtml(group.total,"note-detail",{rowKey:group.label})}</td>
                 <td>${core.formatPercent(agg.baseTotal ? group.total / agg.baseTotal : 0)}</td>
-                <td>${core.formatNumber(recentCount)}</td>
+                <td>${analysisDetailCountHtml(recentCount,"note-detail",{rowKey:group.label,columnLabels:recentLabels})}</td>
                 <td>${core.formatPercent(baseRecent ? recentCount / baseRecent : 0)}</td>`
             : `
-                <td>${core.formatNumber(group.total)}</td>
+                <td>${analysisDetailCountHtml(group.total,"note-detail",{rowKey:group.label})}</td>
                 <td>${core.formatPercent(agg.baseTotal ? group.total / agg.baseTotal : 0)}</td>
-                <td>${core.formatNumber(group.target)}</td>
+                <td>${analysisDetailCountHtml(group.target,"note-detail",{rowKey:group.label,targetOnly:true})}</td>
                 ${targetRateCellHtml(group.total ? group.target / group.total : 0, core)}
                 <td>${core.formatPercent(agg.baseTarget ? group.target / agg.baseTarget : 0)}</td>`;
 
@@ -9072,15 +9072,15 @@ function renderStandaloneCross(agg, core, firstHeader) {
     }).join("");
 
     const totalColumnCells = columnLabels
-        .map(label => `<td>${core.formatNumber(totalColumns[label] || 0)}</td>`)
+        .map(label => `<td>${analysisDetailCountHtml(totalColumns[label] || 0,"note-detail",{columnLabel:label})}</td>`)
         .join("");
 
     const compositionCells = columnLabels
         .map(label => `<td>${core.formatPercent(agg.baseTotal ? (totalColumns[label] || 0) / agg.baseTotal : 0)}</td>`)
         .join("");
     const totalSummary = monthMode
-        ? `<td>${core.formatNumber(agg.baseTotal)}</td><td>${core.formatPercent(agg.baseTotal ? 1 : 0)}</td><td>${core.formatNumber(baseRecent)}</td><td>${core.formatPercent(baseRecent ? 1 : 0)}</td>`
-        : `<td>${core.formatNumber(agg.baseTotal)}</td><td>${core.formatPercent(agg.baseTotal ? 1 : 0)}</td><td>${core.formatNumber(agg.baseTarget)}</td><td>${core.formatPercent(agg.baseTotal ? agg.baseTarget / agg.baseTotal : 0)}</td><td>${core.formatPercent(agg.baseTarget ? 1 : 0)}</td>`;
+        ? `<td>${analysisDetailCountHtml(agg.baseTotal,"note-detail")}</td><td>${core.formatPercent(agg.baseTotal ? 1 : 0)}</td><td>${analysisDetailCountHtml(baseRecent,"note-detail",{columnLabels:recentLabels})}</td><td>${core.formatPercent(baseRecent ? 1 : 0)}</td>`
+        : `<td>${analysisDetailCountHtml(agg.baseTotal,"note-detail")}</td><td>${core.formatPercent(agg.baseTotal ? 1 : 0)}</td><td>${analysisDetailCountHtml(agg.baseTarget,"note-detail",{targetOnly:true})}</td><td>${core.formatPercent(agg.baseTotal ? agg.baseTarget / agg.baseTotal : 0)}</td><td>${core.formatPercent(agg.baseTarget ? 1 : 0)}</td>`;
     const compositionTail = monthMode
         ? "<td></td><td></td><td></td><td></td>"
         : "<td></td><td></td><td></td><td></td><td></td>";
