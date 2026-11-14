@@ -149,6 +149,59 @@ test("HTML integration has basic/distribution/note/age/tag/image click sites wit
  assert.doesNotMatch(reportText,/analysisDetailCountHtml\(row\.jobCount/);
 });
 
+test("delegated cell clicks dispatch the expected basic/detail/age source and survive rerender",()=>{
+ const start=reportText.indexOf("let currentReportDetailResult = null;");
+ const end=reportText.indexOf("function customDetailCountHtml(", start);
+ assert.ok(start>=0&&end>start);
+ const clicks=[];
+ const main={dataset:{},contains:()=>true,addEventListener(type,cb){this.callback=cb;}};
+ const application={id:"R1",ageBucket:"20代",isTarget:true};
+ const result={
+   context:{recordsAll:[application]},
+   basicCrossTables:[{id:"media",label:"応募媒体別",aggregate:{drilldownRecords:o=>{clicks.push({kind:"basic",options:o});return [application];}}}],
+   noteDetail:{aggregate:{drilldownRecords:o=>{clicks.push({kind:"note",options:o});return [application];}}},
+   indeedTagDetail:{rows:[{key:"101",label:"タグ1"}],drilldownRecords:o=>{clicks.push({kind:"tag",options:o});return [application];}},
+   topImageDetail:{rows:[{key:"a.jpg",label:"a.jpg"}],drilldownRecords:o=>{clicks.push({kind:"image",options:o});return [application];}}
+ };
+ const opened=[];
+ const cx=vm.createContext({document:{getElementById:id=>id==="reportMain"?main:null},escapeHtml:v=>String(v),
+   showApplicantRecordDetails:(records,label,trigger,expected)=>opened.push({records,label,trigger,expected})});
+ vm.runInContext(reportText.slice(start,end),cx);
+ cx.__result=result;
+ vm.runInContext("currentReportDetailResult=__result; bindReportAnalysisDetailClicks();",cx);
+ assert.ok(main.callback);
+ const handler=main.callback;
+ vm.runInContext("bindReportAnalysisDetailClicks();",cx);
+ assert.equal(handler,main.callback);
+ const send=(source,{rowKey,columnLabel,columnLabels,targetOnly}={})=>{
+    const dataset={analysisDetailSource:source,detailExpected:"1"};
+    const attributes=new Set();
+    if(rowKey!==undefined){dataset.detailRowKey=rowKey;attributes.add("data-detail-row-key");}
+    if(columnLabel!==undefined){dataset.detailColumnLabel=columnLabel;attributes.add("data-detail-column-label");}
+    if(columnLabels!==undefined){dataset.detailColumnLabels=JSON.stringify(columnLabels);attributes.add("data-detail-column-labels");}
+    if(targetOnly)dataset.detailTarget="1";
+    const button={dataset,hasAttribute:x=>attributes.has(x)};
+    handler({target:{closest:()=>button}});
+    return button;
+ };
+ const b1=send("media",{rowKey:"Indeed",columnLabel:"20代",targetOnly:true});
+ assert.equal(clicks[0].kind,"basic");
+ assert.equal(clicks[0].options.rowKey,"Indeed");
+ assert.equal(clicks[0].options.columnLabel,"20代");
+ assert.equal(clicks[0].options.targetOnly,true);
+ assert.equal(opened[0].trigger,b1);
+ assert.equal(opened[0].expected,1);
+ send("note-detail",{rowKey:"週休2日"});
+ send("indeed-tag-detail",{rowKey:"101"});
+ send("top-image-detail",{rowKey:"a.jpg",columnLabels:["26年10月","26年11月"]});
+ send("age-rows",{rowKey:"20代"});
+ assert.deepEqual(clicks.map(c=>c.kind),["basic","note","tag","image"]);
+ assert.equal(opened.length,5);
+ assert.match(opened[2].label,/タグ1/);
+ assert.deepEqual([...clicks[3].options.columnLabels],["26年10月","26年11月"]);
+ assert.match(opened[4].label,/年代：20代/);
+});
+
 test("all inline report scripts remain syntactically valid",()=>{
  const scripts=[...reportText.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)];
  assert.ok(scripts.length>0);
