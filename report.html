@@ -9272,15 +9272,15 @@ function renderIndeedTagDetail(detail, core) {
         const counts = isAgeAxis ? row.ageCounts : row.columnCounts;
         const columnCells =
             columns
-                .map(label => `<td>${core.formatNumber(counts?.[label] || 0)}</td>`)
+                .map(label => `<td>${analysisDetailCountHtml(counts?.[label] || 0,"indeed-tag-detail",{rowKey:row.key,columnLabel:label})}</td>`)
                 .join("");
         const recentCount = monthMode ? countForLabels(counts, recentLabels) : 0;
         const analysisCells = monthMode
             ? `
-                <td>${core.formatNumber(recentCount)}</td>
+                <td>${analysisDetailCountHtml(recentCount,"indeed-tag-detail",{rowKey:row.key,columnLabels:recentLabels})}</td>
                 <td>${core.formatPercent(baseRecent ? recentCount / baseRecent : 0)}</td>`
             : `
-                <td>${core.formatNumber(row.target)}</td>
+                <td>${analysisDetailCountHtml(row.target,"indeed-tag-detail",{rowKey:row.key,targetOnly:true})}</td>
                 ${targetRateCellHtml(row.targetRate, core)}
                 <td>${core.formatPercent(row.targetCoverRate)}</td>`;
 
@@ -9288,7 +9288,7 @@ function renderIndeedTagDetail(detail, core) {
             <tr data-chart-label="${escapeHtml(row.label)}" data-chart-total="${row.total}" data-chart-target="${row.target}" data-chart-recent="${recentCount}">
                 <td>${escapeHtml(row.label)}</td>
                 ${columnCells}
-                <td>${core.formatNumber(row.total)}</td>
+                <td>${analysisDetailCountHtml(row.total,"indeed-tag-detail",{rowKey:row.key})}</td>
                 <td>${core.formatPercent(row.coverRate)}</td>
                 ${analysisCells}
                 <td>${core.formatNumber(row.jobCount)}</td>
@@ -9378,7 +9378,7 @@ function renderTopImageDetail(detail, core) {
         const counts = isAgeAxis ? row.ageCounts : row.columnCounts;
         const columnCells =
             columns
-                .map(label => `<td>${core.formatNumber(counts?.[label] || 0)}</td>`)
+                .map(label => `<td>${analysisDetailCountHtml(counts?.[label] || 0,"top-image-detail",{rowKey:row.key,columnLabel:label})}</td>`)
                 .join("");
 
         const fileName = String(row.fileName || "").trim();
@@ -9392,10 +9392,10 @@ function renderTopImageDetail(detail, core) {
         const recentCount = monthMode ? countForLabels(counts, recentLabels) : 0;
         const analysisCells = monthMode
             ? `
-                <td>${core.formatNumber(recentCount)}</td>
+                <td>${analysisDetailCountHtml(recentCount,"top-image-detail",{rowKey:row.key,columnLabels:recentLabels})}</td>
                 <td>${core.formatPercent(baseRecent ? recentCount / baseRecent : 0)}</td>`
             : `
-                <td>${core.formatNumber(row.target)}</td>
+                <td>${analysisDetailCountHtml(row.target,"top-image-detail",{rowKey:row.key,targetOnly:true})}</td>
                 ${targetRateCellHtml(row.targetRate, core)}
                 <td>${core.formatPercent(row.targetShare)}</td>`;
 
@@ -9403,7 +9403,7 @@ function renderTopImageDetail(detail, core) {
             <tr data-chart-label="${escapeHtml(row.label)}" data-chart-total="${row.total}" data-chart-target="${row.target}" data-chart-recent="${recentCount}">
                 <td data-sort-value="${escapeHtml(row.fileName || row.label || "")}"><div class="top-image-detail-cell" title="${escapeHtml(displayName)}">${visual}${fileNameLine}</div></td>
                 ${columnCells}
-                <td>${core.formatNumber(row.total)}</td>
+                <td>${analysisDetailCountHtml(row.total,"top-image-detail",{rowKey:row.key})}</td>
                 <td>${core.formatPercent(row.share)}</td>
                 ${analysisCells}
                 <td>${core.formatNumber(row.jobCount)}</td>
