@@ -1078,6 +1078,34 @@ function buildImageMap(dataset) {
         });
     }
 
+    // Resolve detail membership lazily from the exact records and category
+    // functions used for aggregation. Avoid retaining copied per-cell arrays
+    // for every basic and detailed analysis table in large reports.
+    function reportDrilldownResolver(records, rowMatches, context, columnState = null) {
+        return ({ rowKey, columnLabel, columnLabels, targetOnly = false } = {}) => {
+            const colFilter = Array.isArray(columnLabels)
+                ? new Set(columnLabels)
+                : null;
+            return records.filter(record => {
+                if (rowKey !== undefined && !rowMatches(record, rowKey)) return false;
+                if (targetOnly && !record.isTarget) return false;
+                if (columnLabel === undefined && colFilter === null) return true;
+                const label = columnState
+                    ? (s(basicColumnAxisCategory(record, columnState, context)?.label) || "（未設定）")
+                    : (record.ageBucket || "（不明）");
+                return colFilter !== null
+                    ? colFilter.has(label)
+                    : label === columnLabel;
+            });
+        };
+    }
+
+    function crossGroupLabel(categoryFn, record) {
+        const cat = categoryFn(record);
+        if (cat === null || cat === undefined) return "（未設定）";
+        return s(typeof cat === "object" ? cat.label : cat) || "（未設定）";
+    }
+
     function aggregateCross(records, categoryFn, context, config = {}) {
         const ageCols = context.ageCols;
         const groups = new Map();
@@ -1130,7 +1158,10 @@ function buildImageMap(dataset) {
             ageCols,
             groups: resultGroups,
             baseTotal: records.length,
-            baseTarget
+            baseTarget,
+            drilldownRecords: reportDrilldownResolver(
+                records, (record, key) => crossGroupLabel(categoryFn, record) === key, context
+            )
         };
     }
 
@@ -1640,7 +1671,11 @@ function buildImageMap(dataset) {
             groups: resultGroups,
             baseTotal: records.length,
             baseTarget,
-            baseColumnCounts
+            baseColumnCounts,
+            drilldownRecords: reportDrilldownResolver(
+                records, (record, key) => crossGroupLabel(categoryFn, record) === key,
+                context, basicColumnState
+            )
         };
     }
 
@@ -2055,7 +2090,16 @@ function aggregateIndeedTags(context, basicColumnState) {
         baseTarget,
         baseColumnCounts,
         displayLimit: context.indeedTagLimit,
+        drilldownRecords: reportDrilldownResolver(
+            records,
+            (record, key) => {
+                const codes = splitCodes(record.job?.["Indeed求人タグコード"]);
+                return key === "__NO_TAG__" ? codes.length === 0 : codes.includes(key);
+            },
+            context, isAgeAxis ? null : basicColumnState
+        ),
         rows: realGroups.map(group => ({
+            key: group.key,
             label: group.label,
             ageCounts: group.ageCounts || undefined,
             columnCounts: group.columnCounts || undefined,
@@ -2218,7 +2262,13 @@ function aggregateTopImages(context, basicColumnState) {
         baseTarget,
         baseColumnCounts,
         displayLimit: context.topImageLimit,
+        drilldownRecords: reportDrilldownResolver(
+            records,
+            (record, key) => (s(record.job?.["メイン画像ファイル名"]) || "__NO_IMAGE__") === key,
+            context, isAgeAxis ? null : basicColumnState
+        ),
         rows: realGroups.map(group => ({
+            key: group.key,
             label: group.label,
             fileName: group.fileName,
             imageUrl:
