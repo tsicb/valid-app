@@ -1,8 +1,19 @@
 # Current State
 
-Last updated: 2026-11-12
+Last updated: 2026-11-14
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
+
+## Custom applicant drilldown business columns (2026-11-14)
+
+- [PR #6](https://github.com/tsicb/valid-app/pull/6) merged into `main` at `5acc9af72691879c2d03580b54e38c37a6a0a505`.
+- Applicant detail modal shows exactly nine fields in order: **仕事番号／応募日時／対応状況／仕事名／勤務都道府県／年代／性別／応募媒体／下限給与**. Record ID and source data type are no longer displayed, but retained internally.
+- Exact stored application clock time is displayed without timezone conversion; `AGG_DAILY` and date-only inputs are labelled **（時刻不明）** instead of showing a synthetic midnight.
+- Workplace prefecture and job title come from the joined `jobAnalysisMaster`; minimum salary displays the normalized salary type and `給与金額MIN` as e.g. `時給 1,300円`. Missing pay type/amount, old gender field, or unmatched job attributes are displayed as `—` rather than inferred.
+- The 9-column table retains horizontal scrolling, sticky headers, 50-record paging, and modal close behavior. Exact source strings are escaped before rendering; no name, phone, email, raw address, identification key or Viewer token is shown.
+- Changes limited to `report.html` and `tests/report-custom-detail-columns.test.cjs`. No Central API/GAS v61, DataStore, app identity or analysis aggregation changes.
+- [Feature CI #43579004036](https://github.com/tsicb/valid-app/actions/runs/43579004036): **129/129 tests passed**, including eight new tests for data fields, clock time, `AGG_DAILY`, pay formatting, missing jobs, escaping, paging and JavaScript syntax.
+- Real-browser modal visual acceptance pending. Existing Viewer tokens allow access to these extra non-contact attributes; continue to restrict report sharing appropriately.
 
 ## Default report charts ON (2026-11-12)
 
