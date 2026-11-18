@@ -4,10 +4,17 @@ Last updated: 2026-11-18
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Script Properties saturation: 103.4% and cleanup preflight (2026-11-18)
+
+- Actual protected audit result: `propertyCount=258`, estimated `529153/512000` bytes (103.4%); `REQ_` 137 entries, `480464` estimated bytes (90.8%); 133 READY, four ERROR, zero in progress, zero active leases; 94 older than 30 days. `RPTREG_` 38 and `VIEWER_` 77 entries must not be touched during recovery. This diagnoses quota saturation as the source of the new CREATE failure, not CSV content.
+- Recovery-preflight function `vaaPreviewOldReadyRequestCleanupReadOnly` added in `central-api/15_Property_Capacity_Diagnostics.gs`. It estimates the number/bytes of **old READY only** records necessary to reduce total estimated property usage to 75%, and excludes ERROR, in-progress, current lease, malformed, unlinked or newer records. Output is aggregated, with no keys, values or sheet IDs.
+- This function is **read-only**. No `deleteProperty` or `setProperty` is called, and it cannot authorize deletion. Removing old request receipts would weaken retry idempotency for old requestIds; any real cleanup requires explicit approval, backups, concurrency guards and post-deletion verification.
+- [Recovery procedure](GAS_SCRIPT_PROPERTY_CAPACITY_RECOVERY.md) documents running the editor-only preflight after `Central API sync to GAS`; existing Web App v61 remains unchanged, and no CSV retry should occur before property recovery is confirmed.
+
 ## Script Properties quota incident — read-only diagnostic ready (2026-11-18)
 
 - A newly created company workbook (2026-11-18) logged `DATA_CREATE / INTERNAL_ERROR`: Script Properties storage capacity exceeded; workbook creation had reached only the default sheet and `98_運用ログ`. User reproduced without closing index/report. **No evidence currently points to malformed applicant CSV.**
-- Existing `saveRequestRecord_()` writes a `REQ_` record before `pruneRequestProperties_()` runs; exhausted capacity can therefore block even the cleanup path. Exact allocation between `REQ_`, `RPTREG_`, `VIEWER_`, and other values remains unverified.
+- Existing `saveRequestRecord_()` writes a `REQ_` record before `pruneRequestProperties_()` runs; exhausted capacity can therefore block even the cleanup path. The 2026-11-18 read-only audit (summarized above) identified the allocation, with `REQ_` using ~90.8% of estimated bytes.
 - Safe diagnostic source: `central-api/15_Property_Capacity_Diagnostics.gs`, function `vaaAuditScriptPropertyCapacityReadOnly`. It reads Script Properties only and logs aggregate counts/UTF-8 byte estimates and request age/status counts. Does **not** log keys/values or change properties, Drive, Sheets, GAS Web App, viewer tokens or stored reports.
 - [Read-only recovery runbook](GAS_SCRIPT_PROPERTY_CAPACITY_RECOVERY.md) explains synchronization to the existing GAS project, Apps Script editor execution, and safe result sharing. **Do not delete any properties or repeat new CREATE while recovery investigation is incomplete.**
 - [PR #8](https://github.com/tsicb/valid-app/pull/8) prepared the diagnostic. [CI #44236295948](https://github.com/tsicb/valid-app/actions/runs/44236295948): **144/144 tests passed**. This section does not imply that code has been synced to GAS or diagnostic output collected; these are the next operator-assisted steps.
