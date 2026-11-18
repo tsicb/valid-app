@@ -14,6 +14,15 @@ This file documents the repository baseline and the latest production-release ve
 - This change is a *safety brake*, not an unlimited-growth solution. No automatic archival or historical compression is introduced. Other property writers (registry, viewer, identity, datastore) are not yet covered by the REQ_ specific byte guards; 24-KiB admission margin is a risk buffer, not an absolute quota guarantee.
 - **PR #16 draft code only.** No GAS source sync, new Web App release or production data mutation authorized. After isolated test/review, separate explicit release approval and controlled end-to-end test are required; the old failed CREATE must be reconciled by request ID and workbook before any retry.
 
+## PR #16 merged; isolated TEST GAS source-sync QA prepared (2026-11-18, latest)
+
+- PR #16 was merged into `main` at `3528fe2de4b6dee0f46f611f6f45ed2f075a2cab`. Main branch `Central API check` passed 193 Node tests, 4 Python tests, GAS syntax and SHA-256 checks.
+- Request persistence now omits optional `performance` from new REQ_ Script Property values (retained in memory for immediate response), uses a new-request byte-budget guard before CREATE workbook or UPDATE lease side effects, avoids destructive count-only pruning, and fails closed instead of deleting an existing receipt when Drive or receipt verification fails.
+- **GitHub main only**. No production GAS source sync, Web App v61 deployment, or Script Properties modification was performed by this engineering change. Historical V2 compaction backups remain private.
+- The historical isolated GAS workflow is pinned to a feature branch, so it cannot safely test current `main` as-is. QA preparation PR #17 introduces a **new**, manual, SHA-pinned `main` TEST GAS source-sync workflow, keeping the historical workflow untouched.
+- New test workflow requires independent TEST Apps Script ID and test-only Drive root/output folder IDs; verifies source syntax, regression tests, manifest, exact commit, production ID exclusion, then stages folder-swapped GAS source and runs test-project `clasp push --force` **without a Web App deployment**. It is not triggered automatically and has not been run.
+- [QA release gates](REQUEST_CAPACITY_PREDEPLOY_QA.md) require dedicated test Script Properties and synthetic applicant data, then isolated CREATE replay, UPDATE replay and fail-closed verification before any production deploy decision.
+
 ## Independent production property-capacity audit confirms recovery (2026-11-18, latest)
 
 - After V2 COMMIT, the operator manually ran the **read-only** `vaaAuditScriptPropertyCapacityReadOnly` at `2026-11-18T07:38:21.501Z`. Independent reported total **382,382 / 512,000 bytes (74.7%)**, exactly matching the V2 commit summary; **258** properties. UTF-8 key+value estimate, not Google's internal billing measurement.
