@@ -25,14 +25,24 @@ function vaaSerializeRequestReceiptForStorage_(record) {
 }
 
 /**
+ * A lightweight estimate for the hot write path. Avoid parsing the
+ * existing request JSON and constructing full lifecycle diagnostics on
+ * every state transition. Same UTF-8 key+value estimate as the audit.
+ */
+function vaaRequestPropertyTotalEstimatedBytes_(snapshot) {
+  return Object.keys(snapshot || {}).reduce(function(sum, key) {
+    const value = snapshot[key] == null ? '' : String(snapshot[key]);
+    return sum + vaaUtf8ByteLength_(key) + vaaUtf8ByteLength_(value);
+  }, 0);
+}
+
+/**
  * Byte estimate assumes the same UTF-8 key+value convention as the
  * incident post-audit. Do not count an overwriting key twice.
  * Pure calculations; no keys, values or IDs in the returned object.
  */
 function vaaRequestPropertyWriteProjection_(snapshot, key, nextValue) {
-  const current = vaaScriptPropertyCapacitySummary_(
-    snapshot, Date.now()
-  ).estimatedTotalBytes;
+  const current = vaaRequestPropertyTotalEstimatedBytes_(snapshot);
   const hasCurrent = Object.prototype.hasOwnProperty.call(snapshot, key);
   const oldEntryBytes = hasCurrent
     ? vaaUtf8ByteLength_(key) + vaaUtf8ByteLength_(String(snapshot[key]))
@@ -56,9 +66,7 @@ function vaaRequestPropertyWriteProjection_(snapshot, key, nextValue) {
  */
 function vaaCheckNewRequestCapacityReadOnly_(props) {
   const snapshot = props.getProperties();
-  const current = vaaScriptPropertyCapacitySummary_(
-    snapshot, Date.now()
-  ).estimatedTotalBytes;
+  const current = vaaRequestPropertyTotalEstimatedBytes_(snapshot);
   return {
     allowed: current + VAA_REQUEST_START_RESERVE_BYTES_ <=
       VAA_REQUEST_PROPERTY_WRITE_CEILING_BYTES_,
