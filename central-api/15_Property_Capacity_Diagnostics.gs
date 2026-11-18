@@ -165,6 +165,155 @@ function vaaScriptPropertyCapacitySummary_(properties, nowMs) {
   };
 }
 
+
+/**
+ * Phase 2: preview only. Determine how much space can be recovered by
+ * retiring verified OLD / READY request receipts. No deletes, no writes,
+ * no backup creation, no Drive or external calls.
+ *
+ * A deletion of a READY receipt changes requestId replay/idempotency.
+ * Future cleanup MUST be independently authorized, backed up and locked;
+ * this preview is NOT permission to remove anything.
+ */
+function vaaOldReadyRequestCleanupPreview_(snapshot, nowMs) {
+  const now = Number(nowMs) || Date.now();
+  const minAgeDays = 30;
+  const targetPercent = 75;
+  const maxBytes = 500 * 1024;
+  const targetBytes = Math.floor(maxBytes * targetPercent / 100);
+  const total = vaaScriptPropertyCapacitySummary_(snapshot, now);
+  const eligible = [];
+  const excluded = {
+    notReady: 0,
+    statusOrStageMismatch: 0,
+    tooRecent: 0,
+    unknownDate: 0,
+    activeOrUnverifiableLease: 0,
+    missingOrMismatchedRequestId: 0,
+    missingTarget: 0,
+    unknownOperationMode: 0,
+    malformed: 0
+  };
+  const modes = {
+    CREATE: { count: 0, estimatedBytes: 0 },
+    UPDATE: { count: 0, estimatedBytes: 0 }
+  };
+  const prefix = API_CONFIG.REQUEST_PROPERTY_PREFIX;
+  Object.entries(snapshot || {}).forEach(function(entry) {
+    const key = String(entry[0]);
+    if (key.indexOf(prefix) !== 0) return;
+    const raw = String(entry[1] == null ? '' : entry[1]);
+    let record;
+    try {
+      record = JSON.parse(raw);
+      if (!record || typeof record !== 'object' || Array.isArray(record)) {
+        excluded.malformed++;
+        return;
+      }
+    } catch (_) {
+      excluded.malformed++;
+      return;
+    }
+    const status = String(record.status || '').toUpperCase();
+    const stage = String(record.stage || '').toUpperCase();
+    if (status === 'ERROR' || status === 'PROCESSING' || status === 'CREATED') {
+      excluded.notReady++;
+      return;
+    }
+    if (status !== 'READY' || stage !== 'READY') {
+      excluded.statusOrStageMismatch++;
+      return;
+    }
+    const createdAt = Date.parse(String(record.createdAt || ''));
+    if (!Number.isFinite(createdAt) || createdAt > now) {
+      excluded.unknownDate++;
+      return;
+    }
+    if (now - createdAt < minAgeDays * 86400000) {
+      excluded.tooRecent++;
+      return;
+    }
+    const leaseString = String(record.leaseUntil || '');
+    const leaseUntil = leaseString ? Date.parse(leaseString) : 0;
+    if (leaseString && (!Number.isFinite(leaseUntil) || leaseUntil > now)) {
+      excluded.activeOrUnverifiableLease++;
+      return;
+    }
+    const requestId = key.slice(prefix.length);
+    if (!requestId || requestId !== String(record.requestId || '')) {
+      excluded.missingOrMismatchedRequestId++;
+      return;
+    }
+    if (!String(record.spreadsheetId || '').trim()) {
+      excluded.missingTarget++;
+      return;
+    }
+    const mode = String(record.operationMode || '').toUpperCase();
+    if (!Object.prototype.hasOwnProperty.call(modes, mode)) {
+      excluded.unknownOperationMode++;
+      return;
+    }
+    const estimatedBytes = vaaUtf8ByteLength_(key) +
+      vaaUtf8ByteLength_(raw);
+    eligible.push({ createdAt: createdAt, estimatedBytes: estimatedBytes, mode: mode });
+    modes[mode].count++;
+    modes[mode].estimatedBytes += estimatedBytes;
+  });
+  // Deterministic oldest-first plan. Only aggregate statistics leave this
+  // function; keys and raw values are not included in the result.
+  eligible.sort(function(a, b) {
+    return a.createdAt - b.createdAt ||
+      a.estimatedBytes - b.estimatedBytes;
+  });
+  let remainingBytes = total.estimatedTotalBytes;
+  let selectedCount = 0;
+  let selectedBytes = 0;
+  const selectedModes = {
+    CREATE: { count: 0, estimatedBytes: 0 },
+    UPDATE: { count: 0, estimatedBytes: 0 }
+  };
+  eligible.forEach(function(item) {
+    if (remainingBytes <= targetBytes) return;
+    selectedCount++;
+    selectedBytes += item.estimatedBytes;
+    remainingBytes -= item.estimatedBytes;
+    selectedModes[item.mode].count++;
+    selectedModes[item.mode].estimatedBytes += item.estimatedBytes;
+  });
+  return {
+    plan: 'OLD_READY_REQUEST_HISTORY_READ_ONLY_PREVIEW',
+    strictReadOnly: true,
+    includesPropertyKeys: false,
+    includesPropertyValues: false,
+    cleanupExecuted: false,
+    minimumAgeDays: minAgeDays,
+    quotaBytes: maxBytes,
+    targetUsagePercent: targetPercent,
+    targetBytes: targetBytes,
+    currentEstimatedBytes: total.estimatedTotalBytes,
+    eligibleCount: eligible.length,
+    eligibleEstimatedBytes: eligible.reduce(function(n, x) {
+      return n + x.estimatedBytes;
+    }, 0),
+    eligibleByMode: modes,
+    exclusionCounts: excluded,
+    proposedCount: selectedCount,
+    proposedEstimatedFreedBytes: selectedBytes,
+    proposedByMode: selectedModes,
+    projectedEstimatedBytes: remainingBytes,
+    projectedUsagePercent: Math.round(remainingBytes / maxBytes * 1000) / 10,
+    canReachTargetWithOldReadyOnly: remainingBytes <= targetBytes,
+    caveat: 'PREVIEW ONLY. No deletion authorization, backup or requestId replay guarantee.'
+  };
+}
+
+function vaaPreviewOldReadyRequestCleanupReadOnly() {
+  const snapshot = PropertiesService.getScriptProperties().getProperties();
+  const preview = vaaOldReadyRequestCleanupPreview_(snapshot, Date.now());
+  console.log('VAA_REQUEST_CLEANUP_PREFLIGHT_READONLY ' + JSON.stringify(preview));
+  return preview;
+}
+
 /**
  * Editor-run entry point. Logs and returns only numeric/aggregated metadata.
  * No properties are written, removed or modified.
