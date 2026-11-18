@@ -95,12 +95,12 @@ test("group totals and safe lifecycle summary preserve request statuses and acti
 });
 
 test("large individual property detected without showing its value",()=>{
-    const {ctx}=contextFor({"REQ_BIG":"x".repeat(9200)});
+    const {ctx}=contextFor({"REQ_BIG":"x".repeat(9400)});
     const result=vm.runInContext(
         "vaaScriptPropertyCapacitySummary_(PropertiesService.getScriptProperties().getProperties(), "+NOW+")",ctx
     );
     assert.equal(result.groups[0].overSingleValueLimit,1);
-    assert.equal(result.largestValueBytes,9200);
+    assert.equal(result.largestValueBytes,9400);
     assert.ok(!JSON.stringify(result).includes("xxxxxxxxxx"));
 });
 
