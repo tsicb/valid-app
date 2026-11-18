@@ -119,7 +119,7 @@ test("new request admission safely blocks near-budget store without writing or d
 });
 
 test("new request write refuses a value that would push the store beyond the 90% ceiling",()=>{
-  const h=createHarness(fill(459000));
+  const h=createHarness(fill(460700));
   const rec=record("NEW");
   h.setRecord(rec);
   assert.throws(()=>h.run("saveRequestRecord_(globalProps,'NEW',globalRecord)"),err=>{
