@@ -50,6 +50,7 @@ function harness(options={}) {
     },
     PropertiesService:{getScriptProperties:()=>props},
     VAAAppendMergeCore,
+    VAA_QA_G5_APPEND_REQUEST_ID_:appendRid,
     vaaQaG5GetReadyG4Receipt_:()=>({
       props,receipt:{spreadsheetId:target}
     }),
