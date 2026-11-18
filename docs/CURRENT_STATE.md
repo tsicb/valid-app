@@ -4,13 +4,24 @@ Last updated: 2026-11-18
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
-## V2 scoped compaction recovery prepared for review (2026-11-18, PR #13)
+## Production recovery V2 COMMITTED and verified (2026-11-18, latest)
+
+- Operator explicitly approved and ran `vaaCommitReadyPerformanceCompactionV2` after a V2 PREPARE and separate AUTHORIZE. Live success receipt:
+  `VAA_COMPACTION_V2_COMMITTED {"phase":"V2_COMMITTED_VERIFIED","scriptPropertiesModified":55,"scriptPropertiesDeleted":0,"estimatedBeforeBytes":529156,"estimatedAfterBytes":382382,"estimatedUsagePercent":74.7,"nonTargetDriftSinceBackup":false,"privateBackupRetained":true,"oldV1BackupUntouched":true}`.
+- Exactly **55** old READY receipts had only their optional `performance` removed. Zero Script Property deletions. Final code-level readback verified each write and checked the complete expected final Script Properties snapshot as well as count/capacity.
+- Estimated storage fell **529,156 → 382,382 bytes** (103.4% → 74.7% of the assumed 512,000 B quota), reducing by **146,774 B**. This is the observed V2 COMMIT summary rather than an independent post-commit audit.
+- Old V1 and new V2 private Drive backups remain retained; do not expose either backup, or property contents and identifiers, in GitHub or chat. V2 User Properties plan and approval are cleared on success. Do not rerun V1 or V2 COMMIT.
+- **Next:** run existing editor-only, read-only `vaaAuditScriptPropertyCapacityReadOnly` and share only the aggregate `VAA_PROPERTY_CAPACITY_READONLY` JSON to independently check current size and category breakdown. This does not require a new GAS sync or Web App redeploy.
+- Before testing any new CREATE from the incident, reconcile the previously failed workbook (which may contain only `シート1` and `98_運用ログ`) and its original request ID/record to avoid duplicate workbook creation. No production CREATE retry performed as part of this recovery.
+- Follow-on engineering work: protect future writes with byte-budget checks **before** `saveRequestRecord_` and replace count-only `pruneRequestProperties_` (currently capped at 500 records) with a retention policy that preserves request replay/idempotency and protected VIEWER/RPTREG/identity records. Design/test in a separate PR with no automatic history deletion.
+
+## V2 scoped compaction recovery prepared for review (2026-11-18, historical PR preparation)
 
 - User's live halt audit: all 55 selected READY receipts remain exact originals, zero compacted/unknown/missing; private backup intact; total estimated 529,155 B over 258 properties. The **full** Script Properties snapshot differs from the PREPARE snapshot, although total bytes/count match. The time at which that change occurred is unknown.
 - PR #13 introduces independent V2 PREPARE/AUTHORIZE/COMMIT function names and separate User Properties + private backup; it never reuses or deletes V1 private backup.
 - V2 checks all selected original raw values and eligibility, accepts unrelated drift only if the **current** projected capacity after the exact planned savings is <= 384,000 B, and verifies a full expected final snapshot after each individual write/readback.
 - Failure logs contain only a fixed stage, redacted error category and attempted/accepted/verified write counts, for safe distinction of quota refusal from readback or integrity stops. No automatic retry/rollback or Script Properties deletion.
-- **PR code only; NOT synchronized to GAS, NOT approved for live data writes.** Keep V1 COMMIT stopped; do not run V2 until code review and explicit approval. GAS Web App v61 unchanged.
+- **Historical preparation status.** PR #13 was subsequently merged, the operator synced its source and successfully completed the separate V2 PREPARE, AUTHORIZE and COMMIT. See the latest section above. GAS Web App v61 remained unchanged.
 
 ## Compaction HALTED after backup / approval (2026-11-18, current)
 
