@@ -244,3 +244,138 @@ test("read-only source has no mutation, network, Drive or spreadsheet calls",()=
     assert.doesNotMatch(source, /\.setProperties\s*\(/);
     assert.doesNotMatch(source, /DriveApp|SpreadsheetApp|UrlFetchApp|ScriptApp|LockService/);
 });
+
+
+test("performance-only preview keeps all request receipts and does not expose sensitive fields",()=>{
+    const p={
+        ACCESS_KEY:secret,
+        ["VIEWER_"+token]:JSON.stringify({spreadsheetId:workbook}),
+        REQ_OLD_CREATE:ready("OLD_CREATE",65,"CREATE",{
+            updateStats:{finalApplications:40},
+            performance:{datasetWrites:{applicationData:{elapsedMs:123}},privateValue:secret}
+        }),
+        REQ_OLD_UPDATE:ready("OLD_UPDATE",45,"UPDATE",{
+            updateStrategy:"APPEND",updatePayloadDigest:secret,
+            targetSpreadsheetId:workbook,
+            performance:{updateReadMs:4000,trace:token}
+        }),
+        REQ_RECENT:ready("RECENT",2,"CREATE",{performance:{trace:"x".repeat(200)}}),
+        REQ_FAILED:JSON.stringify({requestId:"FAILED",status:"ERROR",stage:"CREATED",performance:{trace:"x".repeat(200)}})
+    };
+    const before=JSON.stringify(p);
+    const {ctx,reads,logs}=contextFor(p);
+    const output=vm.runInContext("vaaPreviewReadyRequestPerformanceCompactionReadOnly()",ctx);
+    assert.equal(reads(),1);
+    assert.equal(before,JSON.stringify(p));
+    assert.equal(output.strictReadOnly,true);
+    assert.equal(output.propertiesModified,0);
+    assert.equal(output.propertiesDeleted,0);
+    assert.equal(output.eligibleCount,2);
+    assert.equal(output.eligibleByMode.CREATE.count,1);
+    assert.equal(output.eligibleByMode.UPDATE.count,1);
+    assert.equal(output.exclusionCounts.recent,1);
+    assert.equal(output.exclusionCounts.nonReady,1);
+    assert.ok(output.eligibleSavingsBytes>0);
+    assert.equal(logs.length,1);
+    assert.match(logs[0],/^VAA_PERFORMANCE_COMPACTION_PREFLIGHT_READONLY /);
+    for (const item of [secret,token,workbook,"REQ_OLD_CREATE","OLD_UPDATE","APPEND","privateValue"]){
+        assert.equal(JSON.stringify(output).includes(item),false);
+        assert.equal(logs[0].includes(item),false);
+    }
+});
+
+test("performance-only preview excludes invalid and risky request receipts",()=>{
+    const p={
+        REQ_A:ready("A",35,"CREATE",{performance:{processingMs:900}}),
+        REQ_B:ready("B",35,"UPDATE",{performance:{processingMs:200},stage:"PROCESSING"}),
+        REQ_C:ready("C",35,"UPDATE",{performance:{processingMs:200},leaseUntil:new Date(NOW+1000).toISOString()}),
+        REQ_D:ready("D",40,"CREATE",{performance:{processingMs:200},requestId:"OTHER"}),
+        REQ_E:ready("E",40,"CREATE",{performance:{processingMs:200},createdAt:"wrong-date"}),
+        REQ_F:ready("F",40,"CREATE",{performance:{processingMs:200},spreadsheetId:""}),
+        REQ_G:ready("G",40,"UNKNOWN",{performance:{processingMs:200}}),
+        REQ_H:ready("H",40,"CREATE",{performance:null}),
+        REQ_I:"invalid JSON",
+        REQ_J:ready("J",10,"CREATE",{performance:{processingMs:300}})
+    };
+    const {ctx}=contextFor(p);
+    const output=vm.runInContext(
+        "vaaReadyRequestPerformancePreview_(PropertiesService.getScriptProperties().getProperties(), "+NOW+")",ctx
+    );
+    assert.equal(output.eligibleCount,1);
+    assert.equal(output.exclusionCounts.nonReady,1);
+    assert.equal(output.exclusionCounts.activeOrInvalidLease,1);
+    assert.equal(output.exclusionCounts.invalidRequestId,1);
+    assert.equal(output.exclusionCounts.missingOrFutureDate,1);
+    assert.equal(output.exclusionCounts.noSpreadsheetId,1);
+    assert.equal(output.exclusionCounts.unknownMode,1);
+    assert.equal(output.exclusionCounts.missingOrEmptyPerformance,1);
+    assert.equal(output.exclusionCounts.invalidJson,1);
+    assert.equal(output.exclusionCounts.recent,1);
+    assert.equal(output.proposedCount,0,"already below target usage");
+});
+
+test("large performance blocks can reach 75% usage without deleting request IDs",()=>{
+    const p={ACCESS_KEY:"KEEP_THIS",VIEWER_PRIVATE:"DO_NOT_TOUCH"};
+    for(let i=0;i<180;i++){
+        const id="PERF_"+String(i).padStart(3,"0");
+        p["REQ_"+id]=ready(id,35+i%30,i%2===0?"CREATE":"UPDATE",{
+            updatePayloadDigest:"digest_"+id,
+            updateStrategy:i%2===0?"":"APPEND",
+            performance:{datasetWrites:{"applicationData":{details:"x".repeat(2800)}},traceMs:123}
+        });
+    }
+    const {ctx}=contextFor(p);
+    const output=vm.runInContext(
+        "vaaReadyRequestPerformancePreview_(PropertiesService.getScriptProperties().getProperties(), "+NOW+")",ctx
+    );
+    assert.equal(output.eligibleCount,180);
+    assert.ok(output.beforeEstimatedBytes>512000);
+    assert.ok(output.proposedCount>0);
+    assert.ok(output.proposedCount<180);
+    assert.ok(output.canReachTargetWithPerformanceOnly);
+    assert.equal(output.beforeEstimatedBytes-output.proposedSavingsBytes,output.projectedEstimatedBytes);
+    assert.ok(output.projectedEstimatedBytes<=384000);
+    assert.equal(output.proposedByMode.CREATE.count+output.proposedByMode.UPDATE.count,output.proposedCount);
+    assert.equal(output.propertiesDeleted,0);
+});
+
+test("performance savings are reported insufficient when other properties dominate",()=>{
+    const p={
+        ACCESS_KEY:"x".repeat(527000),
+        REQ_OLD:ready("OLD",40,"CREATE",{performance:{trace:"x".repeat(100)}})
+    };
+    const {ctx}=contextFor(p);
+    const output=vm.runInContext(
+        "vaaReadyRequestPerformancePreview_(PropertiesService.getScriptProperties().getProperties(), "+NOW+")",ctx
+    );
+    assert.equal(output.eligibleCount,1);
+    assert.equal(output.proposedCount,1);
+    assert.equal(output.canReachTargetWithPerformanceOnly,false);
+    assert.ok(output.projectedUsagePercent>75);
+});
+
+test("removing only performance preserves all stored replay and response fields",()=>{
+    const original=JSON.parse(ready("UPDATE_123",40,"UPDATE",{
+        updateStrategy:"APPEND",
+        updatePayloadDigest:"digest_do_not_change",
+        targetSpreadsheetId:"sheet_does_not_change",
+        viewerUrl:"report_url_kept",
+        manageUrl:"manage_url_kept",
+        updateStats:{finalApplications:34,finalJobs:7},
+        performance:{largeInternals:"x".repeat(1234)}
+    }));
+    const compacted={...original};
+    delete compacted.performance;
+    assert.deepEqual(Object.keys(original).filter(k=>k!=="performance").sort(),
+                     Object.keys(compacted).sort());
+    assert.equal(compacted.requestId,"UPDATE_123");
+    assert.equal(compacted.status,"READY");
+    assert.equal(compacted.stage,"READY");
+    assert.equal(compacted.operationMode,"UPDATE");
+    assert.equal(compacted.updatePayloadDigest,"digest_do_not_change");
+    assert.equal(compacted.targetSpreadsheetId,"sheet_does_not_change");
+    assert.equal(compacted.viewerUrl,"report_url_kept");
+    assert.equal(compacted.manageUrl,"manage_url_kept");
+    assert.deepEqual(compacted.updateStats,{finalApplications:34,finalJobs:7});
+    assert.ok(Buffer.byteLength(JSON.stringify(original))>Buffer.byteLength(JSON.stringify(compacted)));
+});
