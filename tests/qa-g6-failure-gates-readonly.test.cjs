@@ -4,6 +4,7 @@ const assert=require("node:assert/strict");
 const fs=require("node:fs");
 const path=require("node:path");
 const vm=require("node:vm");
+const crypto=require("node:crypto");
 
 const read=p=>fs.readFileSync(path.join(__dirname,"..",p),"utf8");
 const canon=[
@@ -20,6 +21,8 @@ const G4="QA_G4_SYNTHETIC_CREATE_20261118_V1";
 const APPEND="QA_G5_SYNTHETIC_APPEND_20261118_V1";
 const REPLACE="QA_G5_SYNTHETIC_REPLACE_20261119_V1";
 const clone=o=>JSON.parse(JSON.stringify(o));
+const digestFor=strategy=>crypto.createHash("sha256").update(
+  JSON.stringify([strategy,"",ID,null]),"utf8").digest("hex");
 
 function setup(opts={}) {
   const propsData={
@@ -34,12 +37,12 @@ function setup(opts={}) {
   });
   propsData["REQ_"+APPEND]=JSON.stringify({
     requestId:APPEND,operationMode:"UPDATE",
-    updateStrategy:"APPEND",updatePayloadDigest:"APPEND|"+ID,
+    updateStrategy:"APPEND",updatePayloadDigest:digestFor("APPEND"),
     status:"READY",stage:"READY",spreadsheetId:ID,targetSpreadsheetId:ID
   });
   propsData["REQ_"+REPLACE]=JSON.stringify({
     requestId:REPLACE,operationMode:"UPDATE",
-    updateStrategy:"REPLACE",updatePayloadDigest:"REPLACE|"+ID,
+    updateStrategy:"REPLACE",updatePayloadDigest:digestFor("REPLACE"),
     status:"READY",stage:"READY",spreadsheetId:ID,targetSpreadsheetId:ID
   });
   if(opts.malformedG4)propsData["REQ_"+G4]="{malformed";
@@ -78,10 +81,13 @@ function setup(opts={}) {
       }
     },
     Utilities:{
-      newBlob:s=>({getBytes:()=>[...Buffer.from(String(s),"utf8")]})
+      newBlob:s=>({getBytes:()=>[...Buffer.from(String(s),"utf8")]}),
+      DigestAlgorithm:{SHA_256:"SHA_256"},
+      Charset:{UTF_8:"UTF_8"},
+      computeDigest:(algorithm,text,charset)=>
+        [...crypto.createHash("sha256").update(String(text),"utf8").digest()]
     },
     normalizeString_:str=>String(str??"").trim(),
-    vaaDigestUpdateRequest_:payload=>payload.updateStrategy+"|"+payload.targetSpreadsheetId,
     vaaQaG5GetReadyG4Receipt_:()=>({
       props,receipt:{spreadsheetId:ID}
     }),
