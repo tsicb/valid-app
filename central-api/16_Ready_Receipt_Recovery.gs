@@ -205,7 +205,9 @@ function vaaPrepareReadyPerformanceCompactionBackup() {
     backup = DriveApp.createFile(
       Utilities.newBlob(backupText, 'application/json', name)
     );
-    backup.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
+    // A newly created My Drive file should be private by default.
+    // Do not call setSharing(PRIVATE, NONE): Apps Script rejects NONE in
+    // File.setSharing for non-ANYONE access types. Fail closed instead.
     if (backup.getSharingAccess() !== DriveApp.Access.PRIVATE) {
       throw new Error('VAA_COMPACTION_BACKUP_NOT_PRIVATE');
     }
@@ -237,8 +239,8 @@ function vaaPrepareReadyPerformanceCompactionBackup() {
     };
   } catch (err) {
     // An orphaned backup must not be shared; never delete it automatically.
-    throw new Error('VAA_COMPACTION_BACKUP_PREPARATION_FAILED: ' +
-      String(err && err.message || '').replace(/[^A-Z0-9_:\- ]/gi,'').slice(0,95));
+    // Do not propagate Drive error messages that may contain private IDs.
+    throw new Error('VAA_COMPACTION_BACKUP_PREPARATION_FAILED');
   } finally {
     lock.releaseLock();
   }
