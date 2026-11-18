@@ -12,10 +12,10 @@
 2. Script Properties 500KiB（512,000B）をベースに、90%（460,800B）を書込み目安上限とする。新規リクエスト開始には、この目安上限内に24KiB（24,576B）の作業余裕を残す。**新規受付条件：現在の推定総量 + 24,576B <= 460,800B**。満たさなければ `PROPERTY_CAPACITY_NEAR_LIMIT` を返すだけで、個社シートの作成を開始しない。
 3. 履歴保存時、メモリ中のrecordは変更せず、Script Properties用の複製から任意の`performance`フィールドだけを除外。requestId、対象ID、更新内容のダイジェスト、ステータス、処理段階、URL、件数などは保持する。従来の最新応答には詳細計測情報を返せるが、後日の同一requestId再送ではperformanceが空オブジェクトになり得る（復旧済み55件と同じ仕様）。
 4. `saveRequestRecord_` の各書込み前に「現在総容量→同一キー上書き差分→書込み後推定容量」を評価し、1つのプロパティ値9KiB超過を拒否。新しいREQキーは90%以内に限定。既存キーの更新は、処理完了が詰まらないよう500KiBの推定上限内まで許容。
-5. 500件で古い履歴を削除する`pruneRequestProperties_`は停止し、互換性を保つ何もしない関数に変更。すでに存在する「参照先Driveファイルが存在しないrequestIdの個別削除」経路はこのPRでは変更しない。
-6. Script Properties内に新しいログや管理キーは増やさない。元のV1/V2非公開バックアップ、VIEWER/RPTREG/認証設定は触らない。
+5. 500件で古い履歴を削除する`pruneRequestProperties_`は停止し、互換性を保つ何もしない関数に変更。従来の「既存requestIdのDriveファイル確認失敗→履歴削除→新規として再処理」の危険な経路も廃止。Drive APIの一時障害・アクセス権不足・ファイル不存在は区別できないため、一律に `REQUEST_TARGET_UNVERIFIED` を返して履歴を保全する。破損・必須情報欠損のある既存REQ_も `REQUEST_RECEIPT_UNVERIFIED` で停止し、自動再作成しない。
+6. 新規作成の入口では、既存履歴を読み込めない場合やDriveファイルを検証できない場合に自動削除せず安全停止する。\n7. Script Properties内に新しいログや管理キーは増やさない。元のV1/V2非公開バックアップ、VIEWER/RPTREG/認証設定は触らない。
 
-## 限界と次の改善
+長期保管方式の詳細は [requestId台帳アーキテクチャ案](REQUEST_RECEIPT_LEDGER_ARCHITECTURE.md) を参照。\n\n## 限界と次の改善
 
 - バイト数は監査と同じ「UTF-8キー+値の概算」。Google内部の正確な課金バイト数ではない。
 - 他のプロパティ書込み経路（Viewer、Report registry、Identity、DataStore、UPDATE Lease）は今回のREQ_ガードだけでは完全には制御できない。ScriptLock外の書込みが同時進行すると、チェック直後の変化を完全には防げない。
