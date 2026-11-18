@@ -24,6 +24,7 @@ function createHarness(properties = {}) {
     API_CONFIG:{REQUEST_PROPERTY_PREFIX:"REQ_",MAX_REQUEST_PROPERTIES:500,CURRENT_STORAGE_LAYOUT:"DATASTORE_V1"},
     Utilities:{newBlob:v=>({getBytes:()=>Buffer.from(String(v),"utf8")})},
     Date,
+    PropertiesService:{getScriptProperties:()=>props},
     normalizeString_:v=>v===undefined||v===null?"":String(v).trim(),
     console:{log(){},error(){}}
   };
@@ -96,7 +97,7 @@ test("UPDATE replay safety fields and identity digest survive persistence",()=>{
   assert.equal(h.calls.deletes,0);
   assert.equal(h.run("getRequestRecord_(globalProps, 'B')").updatePayloadDigest,source.updatePayloadDigest);
   assert.equal(h.run("buildReadyResponse_(globalRecord,'B',false,Date.now())").performance,source.performance);
-  assert.equal(h.run("buildReadyResponse_(getRequestRecord_(globalProps,'B'),'B',true,Date.now())").performance instanceof Object,true);
+  assert.equal(Object.keys(h.run("buildReadyResponse_(getRequestRecord_(globalProps,'B'),'B',true,Date.now())").performance).length,0);
 });
 
 test("new request admission allows 382382 B baseline with a 24 KiB reserve",()=>{
