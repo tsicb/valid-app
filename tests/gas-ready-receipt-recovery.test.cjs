@@ -65,19 +65,26 @@ function setup({properties=fixture(),privateBackup=true,failAt=Infinity}={}){
     const DriveApp={
         Access:{PRIVATE:"PRIVATE",ANYONE:"ANYONE"},
         Permission:{NONE:"NONE"},
-        createFile(blob){
+        createFile(name,content,mime){
             calls.backupCreates++;
             const id="PRIVATE_BACKUP_FILE_"+calls.backupCreates;
             const file={
                 id,
-                blob,
+                name,
+                text:String(content),
+                mime,
                 access:privateBackup?"PRIVATE":"ANYONE",
                 getId(){return id;},
-                setSharing(access){this.access=privateBackup?access:"ANYONE";},
+                setSharing(){throw Error("must not rewrite backup permissions");},
+                setContent(value){
+                    if(this.access!=="PRIVATE")throw Error("must never write to a public backup");
+                    this.text=String(value);
+                    return this;
+                },
                 getSharingAccess(){return this.access;},
-                getName(){return blob.name;},
+                getName(){return this.name;},
                 isTrashed(){return false;},
-                getBlob(){return {getDataAsString:()=>blob.text};}
+                getBlob(){return {getDataAsString:()=>this.text};}
             };
             files.set(id,file);
             return file;
@@ -121,11 +128,22 @@ test("backup preparation is private and non-mutating; it never logs sensitive me
     assert.equal(h.files.size,1);
     const backup=[...h.files.values()][0];
     assert.equal(backup.getSharingAccess(),"PRIVATE");
-    assert.match(backup.blob.text,/SUPER_PRIVATE_BACKUP_SECRET/,"private backup stores original exact values");
+    assert.match(backup.text,/SUPER_PRIVATE_BACKUP_SECRET/,"private backup stores original exact values");
     const safe=JSON.stringify(result)+h.logs.join("");
     assert.doesNotMatch(safe,/SUPER_PRIVATE_BACKUP_SECRET|REQ001|PRIVATE_BACKUP_FILE|private_fake_sheet/);
     assert.ok(Object.keys(h.userProps).some(k=>k.includes("PLAN")));
     assert.throws(()=>h.run("vaaPrepareReadyPerformanceCompactionBackup()"),/PLAN_ALREADY_PREPARED/);
+});
+
+test("non-private blank Drive files never receive original receipt contents",()=>{
+    const h=setup({privateBackup:false});
+    assert.throws(()=>h.run("vaaPrepareReadyPerformanceCompactionBackup()"),/BACKUP_PREPARATION_FAILED/);
+    assert.equal(h.calls.backupCreates,1);
+    const orphan=[...h.files.values()][0];
+    assert.equal(orphan.text,"");
+    assert.equal(h.calls.scriptWrites,0);
+    assert.equal(h.calls.scriptDeletes,0);
+    assert.equal(Object.keys(h.userProps).length,0);
 });
 
 test("commit without same-user manual approval is rejected and leaves receipts untouched",()=>{
@@ -196,7 +214,7 @@ test("tampered backup content is rejected before any Script Property mutation",(
     const h=setup();
     h.run("vaaPrepareReadyPerformanceCompactionBackup()");
     const file=[...h.files.values()][0];
-    file.blob.text+=" ";
+    file.text+=" ";
     assert.throws(()=>h.run("vaaAuthorizeReadyPerformanceCompaction()"),/BACKUP_DIGEST_MISMATCH/);
     assert.equal(h.calls.scriptWrites,0);
 });
