@@ -407,11 +407,24 @@ function doPost(e) {
       );
 
     try {
+      // A stored receipt is a replay-safety fence. Never treat an
+      // unreadable receipt or unverified Drive target as a new request.
+      // Transient Drive failures must not erase requestId idempotency.
+      const storedReceiptExists = !!props.getProperty(
+        getRequestPropertyKey_(requestId)
+      );
       requestRecord =
         getRequestRecord_(
           props,
           requestId
         );
+
+      if (storedReceiptExists && !requestRecord) {
+        return errorOutput_(
+          'REQUEST_RECEIPT_UNVERIFIED',
+          '保存済みの処理履歴を確認できません。管理者へご連絡ください。'
+        );
+      }
 
       if (
         requestRecord &&
@@ -419,12 +432,11 @@ function doPost(e) {
           requestRecord
         )
       ) {
-        deleteRequestRecord_(
-          props,
-          requestId
+        return errorOutput_(
+          'REQUEST_TARGET_UNVERIFIED',
+          '以前の処理先ファイルを確認できません。' +
+            '重複作成を防ぐため処理を停止しました。管理者へご連絡ください。'
         );
-
-        requestRecord = null;
       }
 
       if (requestRecord) {
@@ -483,6 +495,17 @@ function doPost(e) {
       }
 
       if (!requestRecord) {
+        // Admission must precede SpreadsheetApp.create, UPDATE target lease
+        // allocation, or any new REQ_ write.
+        const budgetAdmission = vaaCheckNewRequestCapacityReadOnly_(props);
+        if (!budgetAdmission.allowed) {
+          return errorOutput_(
+            'PROPERTY_CAPACITY_NEAR_LIMIT',
+            '保存履歴の容量が安全上限に近づいているため、' +
+              '新規の作成・更新を開始しませんでした。管理者へご連絡ください。'
+          );
+        }
+
         const nowIso =
           new Date().toISOString();
 
@@ -570,7 +593,6 @@ function doPost(e) {
             requestRecord
           );
 
-          pruneRequestProperties_(props);
 
         } else {
           currentPhase =
@@ -628,7 +650,6 @@ function doPost(e) {
             requestRecord
           );
 
-          pruneRequestProperties_(props);
         }
       }
 
