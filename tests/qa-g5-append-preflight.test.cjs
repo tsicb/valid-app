@@ -133,11 +133,11 @@ test("stale initial data store is rejected before any write",()=>{
 
 test("wrong TEST root, missing CREATE receipt or external DataStore folder abort",()=>{
   const wrong=fixture({wrongRoot:true});
-  assert.throws(wrong.run,/QA_ISOLATION_FAILED/);
+  assert.throws(()=>wrong.run(),/QA_ISOLATION_FAILED/);
   const missing=fixture({missingG4Receipt:true});
-  assert.throws(missing.run,/QA_G5_MISSING_G4_RECEIPT/);
+  assert.throws(()=>missing.run(),/QA_G5_MISSING_G4_RECEIPT/);
   const outside=fixture({wrongFolder:true});
-  assert.throws(outside.run,/QA_G5_DATASTORE_OUTSIDE_TEST_ROOT/);
+  assert.throws(()=>outside.run(),/QA_G5_DATASTORE_OUTSIDE_TEST_ROOT/);
   for(const h of [wrong,missing,outside]){
     assert.equal(h.state.writes,0);
     assert.equal(h.state.deletes,0);
