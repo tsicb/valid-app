@@ -4,6 +4,16 @@ Last updated: 2026-11-18
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Request receipt capacity recurrence guard (2026-11-18, PR #16 draft)
+
+- Storage recovery was independently verified at 382,382 B / 512,000 B (74.7%), but 137 REQ_ entries still account for 333,690 B and the 500-record count-only pruning policy cannot prevent byte saturation.
+- Draft mitigation: new `central-api/19_Request_Property_Byte_Guard.gs` calculates UTF-8 key+value projected usage. Before creating any new workbook or acquiring a new UPDATE target lease, preflight requires at least 24 KiB reserved *within* a 90% (460,800 B) write budget. New request receipts are refused at the threshold with a safe user-facing code; no Drive sheet is created by a refused CREATE.
+- All `saveRequestRecord_` writes now serialize a shallow copy that omits **only optional `performance`**, preserving the in-memory performance object for immediate API responses. Saved READY/ERROR/PROCESSING records retain requestId, mode, target, update digest/strategy, status/stage, viewer URLs and updateStats. A replayed READY result can have `performance: {}` as with V2 historical compaction.
+- Every REQ_ write is checked for the 9-KiB single-value limit. Fresh key writes must remain <=90% of the estimated 500-KiB store. Existing key updates may use the full 500-KiB limit so an already-running request is not rejected simply because the 90% admission ceiling has been reached.
+- Legacy count-only `pruneRequestProperties_` is disabled as a destructive cleanup action; it remains as a no-op compatibility shim. Existing missing-target-specific delete behavior is not modified by this PR. No historical REQ_, VIEWER_, RPTREG_ or configuration records are bulk modified or deleted.
+- This change is a *safety brake*, not an unlimited-growth solution. No automatic archival or historical compression is introduced. Other property writers (registry, viewer, identity, datastore) are not yet covered by the REQ_ specific byte guards; 24-KiB admission margin is a risk buffer, not an absolute quota guarantee.
+- **PR #16 draft code only.** No GAS source sync, new Web App release or production data mutation authorized. After isolated test/review, separate explicit release approval and controlled end-to-end test are required; the old failed CREATE must be reconciled by request ID and workbook before any retry.
+
 ## Independent production property-capacity audit confirms recovery (2026-11-18, latest)
 
 - After V2 COMMIT, the operator manually ran the **read-only** `vaaAuditScriptPropertyCapacityReadOnly` at `2026-11-18T07:38:21.501Z`. Independent reported total **382,382 / 512,000 bytes (74.7%)**, exactly matching the V2 commit summary; **258** properties. UTF-8 key+value estimate, not Google's internal billing measurement.
