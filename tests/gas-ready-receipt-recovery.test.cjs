@@ -354,6 +354,7 @@ test("V2 tolerates unrelated registry changes with live capacity revalidation an
     }
     assert.equal(h.files.size,1);
     assert.equal(h.calls.locks,h.calls.unlocks);
+    assert.ok(!Object.keys(h.userProps).some(k=>k.includes("COMPACTION_PLAN_V2")));
     assert.doesNotMatch(h.logs.join(""),/SUPER_PRIVATE_BACKUP_SECRET|PRIVATE_BACKUP_FILE|private_fake_sheet|REQ001/);
 });
 
@@ -451,4 +452,15 @@ test("V2 refuses a non-private backup, and source has no runtime deletion",()=>{
     assert.doesNotMatch(recoveryV2,/getScriptProperties\(\)\.deleteProperty\(/);
     assert.doesNotMatch(recoveryV2,/props\.deleteProperty\(/);
     assert.doesNotMatch(recoveryV2,/function\s+(?:doPost|doGet)\s*\(/);
+});
+
+test("V2 Drive blob read errors are redacted before any authorization or writes",()=>{
+    const h=setup();
+    h.run("vaaPrepareReadyPerformanceCompactionV2Backup()");
+    const f=[...h.files.values()][0];
+    f.getBlob=()=>{throw Error("Drive error leaked PRIVATE_BACKUP_FILE_1 secret");};
+    assert.throws(()=>h.run("vaaAuthorizeReadyPerformanceCompactionV2()"),/VAA_COMPACTION_V2_BACKUP_ACCESS_FAILED/);
+    assert.equal(h.calls.scriptWrites,0);
+    assert.equal(h.calls.scriptDeletes,0);
+    assert.doesNotMatch(h.logs.join(""),/PRIVATE_BACKUP_FILE_1|SUPER_PRIVATE_BACKUP_SECRET/);
 });
