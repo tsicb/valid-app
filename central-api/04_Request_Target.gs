@@ -40,9 +40,22 @@ function saveRequestRecord_(
   requestId,
   record
 ) {
+  // Retain full performance diagnostics in memory for the immediate response,
+  // but only persist the fields required to resume and deduplicate requests.
+  const storedText = vaaSerializeRequestReceiptForStorage_(record);
+  const budget = vaaCheckRequestReceiptWriteReadOnly_(
+    props, requestId, storedText
+  );
+  if (!budget.allowed) {
+    throw vaaRequestCapacityError_(
+      budget.valueTooLarge
+        ? 'PROPERTY_VALUE_TOO_LARGE'
+        : 'PROPERTY_CAPACITY_NEAR_LIMIT'
+    );
+  }
   props.setProperty(
     getRequestPropertyKey_(requestId),
-    JSON.stringify(record)
+    storedText
   );
 }
 
@@ -160,56 +173,15 @@ function buildReadyResponse_(
   };
 }
 
+/**
+ * Legacy count-only pruning is intentionally disabled.
+ * Deleting READY receipts here would weaken requestId replay/idempotency.
+ * The byte-budget guard now rejects unsafe new requests instead.
+ * Any historical archiving/compaction must have its own reviewed workflow.
+ */
 function pruneRequestProperties_(props) {
-  const all =
-    props.getProperties();
-
-  const entries =
-    Object.entries(all)
-      .filter(([key]) =>
-        key.startsWith(
-          API_CONFIG.REQUEST_PROPERTY_PREFIX
-        )
-      )
-      .map(([key, value]) => {
-        let createdAt = '';
-
-        try {
-          createdAt =
-            JSON.parse(value)
-              .createdAt || '';
-        } catch (_) {}
-
-        return {
-          key,
-          createdAt
-        };
-      });
-
-  if (
-    entries.length <=
-    API_CONFIG.MAX_REQUEST_PROPERTIES
-  ) {
-    return;
-  }
-
-  entries
-    .sort((a, b) =>
-      String(a.createdAt)
-        .localeCompare(
-          String(b.createdAt)
-        )
-    )
-    .slice(
-      0,
-      entries.length -
-      API_CONFIG.MAX_REQUEST_PROPERTIES
-    )
-    .forEach(item =>
-      props.deleteProperty(
-        item.key
-      )
-    );
+  // Retained as a compatibility shim; deliberately no mutation.
+  return false;
 }
 
 // ============================================================
