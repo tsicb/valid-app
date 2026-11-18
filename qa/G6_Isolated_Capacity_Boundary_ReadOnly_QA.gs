@@ -23,10 +23,15 @@ function vaaQaG6SyntheticSnapshotAtBytes_(desiredBytes) {
       String(seq++).padStart(4, '0');
     const keyBytes = vaaUtf8ByteLength_(key);
     if (remaining < keyBytes) {
-      if (!lastKey || snapshot[lastKey].length + remaining > 9000) {
-        throw new Error('QA_G6_SYNTHETIC_PADDING_FAILURE');
+      if (!lastKey) {
+        // Tiny input: synthetic key bytes alone account for the exact size.
+        snapshot['x'.repeat(remaining)] = '';
+      } else {
+        if (snapshot[lastKey].length + remaining > 9000) {
+          throw new Error('QA_G6_SYNTHETIC_PADDING_FAILURE');
+        }
+        snapshot[lastKey] += 'x'.repeat(remaining);
       }
-      snapshot[lastKey] += 'x'.repeat(remaining);
       remaining = 0;
       break;
     }
