@@ -37,12 +37,21 @@ function vaaRecoveryV2Backup_(plan) {
   let file;
   try { file = DriveApp.getFileById(plan.fileId); }
   catch (_) { throw new Error('VAA_COMPACTION_V2_BACKUP_NOT_FOUND'); }
-  if (file.isTrashed() ||
-      file.getSharingAccess() !== DriveApp.Access.PRIVATE ||
-      file.getName().indexOf(VAA_COMPACTION_V2_PREFIX_) !== 0) {
-    throw new Error('VAA_COMPACTION_V2_BACKUP_NOT_PRIVATE');
+  let text;
+  try {
+    if (file.isTrashed() ||
+        file.getSharingAccess() !== DriveApp.Access.PRIVATE ||
+        file.getName().indexOf(VAA_COMPACTION_V2_PREFIX_) !== 0) {
+      throw new Error('VAA_COMPACTION_V2_BACKUP_NOT_PRIVATE');
+    }
+    text = file.getBlob().getDataAsString('UTF-8');
+  } catch (err) {
+    if (err && err.message === 'VAA_COMPACTION_V2_BACKUP_NOT_PRIVATE') {
+      throw err;
+    }
+    // Drive may include confidential file identifiers in native errors.
+    throw new Error('VAA_COMPACTION_V2_BACKUP_ACCESS_FAILED');
   }
-  const text = file.getBlob().getDataAsString('UTF-8');
   if (vaaRecoveryDigest_(text) !== plan.backupDigest) {
     throw new Error('VAA_COMPACTION_V2_BACKUP_DIGEST_MISMATCH');
   }
