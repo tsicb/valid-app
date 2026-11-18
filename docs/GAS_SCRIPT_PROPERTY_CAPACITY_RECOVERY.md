@@ -171,3 +171,35 @@
 計画の期限（準備から2時間）が切れてもこの監査は読み取り専用で実行可能。
 ただし新たなCOMMITは不可。容量回復手段の選択は監査結果と現行の
 `vaaAuditScriptPropertyCapacityReadOnly` を踏まえた別工程とする。
+
+## フェーズ6：スナップショット変動に対応するV2復旧計画（2026-11-18、PR #13 準備）
+
+2026-11-18の読み取り専用診断：
+
+`VAA_COMPACTION_HALT_AUDIT_READONLY` にて、
+`snapshotUnchanged=false`、
+`selectedStillOriginal=55`、
+`selectedAlreadyCompacted=0`、
+`selectedUnexpectedValue=0`、
+`selectedMissing=0`、
+`currentEstimatedBytes=529155`、
+`currentPropertyCount=258`、
+`backupVerifiedPrivateAndIntact=true` と判明。
+
+つまり全体の保存値は準備以降に変わったが、縮小対象の55件はすべて元の値である。**COMMIT停止時に全体差分が存在していたとまでは確定できない**。容量超過による `setProperty` 拒否についても未確定。
+
+### 別関数によるV2復旧設計
+
+- `central-api/18_Ready_Receipt_Recovery_V2.gs` は、旧V1のUser Properties計画・承認・非公開バックアップを上書きせず、新しいV2計画を別々に記録する。
+- 実行者の同一アカウントで、`vaaPrepareReadyPerformanceCompactionV2Backup` → `vaaAuthorizeReadyPerformanceCompactionV2` → `vaaCommitReadyPerformanceCompactionV2` を**別々に明示的に実行**する。各段階は新たな利用者承認を得てから進む。計画の有効期限は2時間。
+- PREPARE：ScriptLock下の最新Script Propertiesから古いREADY記録だけを選び直す。空のDriveバックアップが非公開であることを先に確認してから、元の値と縮小後の値を保存・ハッシュ照合。Script Properties変更0件。
+- AUTHORIZE：同一実行者がバックアップ非公開・ダイジェストを検証し、User Propertiesだけに承認を保存。Script Properties変更0件。
+- COMMIT：ScriptLock下で、バックアップ対象のすべてが現在も全く同じ元文字列であり、READY/30日以上/リースなし/既知モード/保存先あり/有効なperformance等の条件を満たすことを照合する。
+- 対象外のプロパティに変化があっても、それ自体は停止理由としない。ただし、**現時点の総推定容量 − 対象performance削減量が384,000 bytes以下**でなければ書込み前に停止する。
+- 書込み直前にも全体を読み直して、ロック内の基準スナップショットから変化がないことを確認。1件ごとに完全一致・書込み・読戻しを検証し、終了時は基準スナップショットに対して対象55件のperformanceだけを削った**全体の完全一致**を検証する。値の削除や自動ロールバックはしない。
+- COMMIT停止ログは `VAA_COMPACTION_V2_HALTED`。秘密値やIDを記録せず、`failureStage`、`failureCategory`、`writeAttempts`、`writeAccepted`、`verifiedCount`を出す。元値はバックアップに残す。
+- **最初の書込みで容量エラーが発生する可能性は残る**。その場合、0件で安全停止した後に別の復旧方式を検討する。旧V1・新V2のCOMMITを繰り返したり、Script Propertiesを手動削除したりしない。
+
+### 実行上の注意
+
+PR #13の実装・CI成功は**実行許可ではない**。レビューと明示的な利用者承認が終わるまで、本番GASへ同期しない。Webアプリv61は変更しない。同期後もまずはV2 PREPAREまで、その結果を検証してから別途AUTHORIZE、COMMITを判断する。旧V1の関数は実行しない。

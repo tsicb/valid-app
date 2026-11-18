@@ -4,6 +4,14 @@ Last updated: 2026-11-18
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## V2 scoped compaction recovery prepared for review (2026-11-18, PR #13)
+
+- User's live halt audit: all 55 selected READY receipts remain exact originals, zero compacted/unknown/missing; private backup intact; total estimated 529,155 B over 258 properties. The **full** Script Properties snapshot differs from the PREPARE snapshot, although total bytes/count match. The time at which that change occurred is unknown.
+- PR #13 introduces independent V2 PREPARE/AUTHORIZE/COMMIT function names and separate User Properties + private backup; it never reuses or deletes V1 private backup.
+- V2 checks all selected original raw values and eligibility, accepts unrelated drift only if the **current** projected capacity after the exact planned savings is <= 384,000 B, and verifies a full expected final snapshot after each individual write/readback.
+- Failure logs contain only a fixed stage, redacted error category and attempted/accepted/verified write counts, for safe distinction of quota refusal from readback or integrity stops. No automatic retry/rollback or Script Properties deletion.
+- **PR code only; NOT synchronized to GAS, NOT approved for live data writes.** Keep V1 COMMIT stopped; do not run V2 until code review and explicit approval. GAS Web App v61 unchanged.
+
 ## Compaction HALTED after backup / approval (2026-11-18, current)
 
 - PR #11 merged at `c264d61`; user synced `main` source to GAS and ran `vaaPrepareReadyPerformanceCompactionBackup` -> `PREPARED_PRIVATE_BACKUP` (55 READY receipts; 146,774 bytes projected saving; no Script Property writes or deletes).

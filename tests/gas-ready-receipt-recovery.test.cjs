@@ -9,6 +9,7 @@ const dir=path.resolve(__dirname,"../central-api");
 const diagnostic=fs.readFileSync(path.join(dir,"15_Property_Capacity_Diagnostics.gs"),"utf8");
 const recovery=fs.readFileSync(path.join(dir,"16_Ready_Receipt_Recovery.gs"),"utf8");
 const haltAudit=fs.readFileSync(path.join(dir,"17_Ready_Receipt_Halt_Audit.gs"),"utf8");
+const recoveryV2=fs.readFileSync(path.join(dir,"18_Ready_Receipt_Recovery_V2.gs"),"utf8");
 
 const secret="SUPER_PRIVATE_BACKUP_SECRET_FAKE_ONLY";
 function oldReady(id, {days=45,mode="CREATE",performanceSize=3700,extras={}}={}) {
@@ -42,7 +43,7 @@ function fixture(count=150) {
     props.REQ_RECENT=oldReady("RECENT",{days:3});
     return props;
 }
-function setup({properties=fixture(),privateBackup=true,failAt=Infinity}={}){
+function setup({properties=fixture(),privateBackup=true,failAt=Infinity,badReadbackAt=Infinity,nonTargetWriteDrift=false}={}){
     const scriptProps={...properties};
     const userProps={};
     const files=new Map();
@@ -50,11 +51,12 @@ function setup({properties=fixture(),privateBackup=true,failAt=Infinity}={}){
     const logs=[];
     const script={
         getProperties(){calls.scriptReads++;return {...scriptProps};},
-        getProperty(k){return scriptProps[k]??null;},
+        getProperty(k){if(calls.scriptWrites===badReadbackAt && k.startsWith("REQ_"))return "bad readback";return scriptProps[k]??null;},
         setProperty(k,v){
             calls.scriptWrites++;
             if(calls.scriptWrites===failAt)throw Error("mock quota error");
             scriptProps[k]=String(v);
+            if(nonTargetWriteDrift && calls.scriptWrites===1)scriptProps.RPTREG_PRIVATE="changed during lock";
         },
         deleteProperty(){calls.scriptDeletes++;throw Error("MUST NOT DELETE");}
     };
@@ -109,6 +111,7 @@ function setup({properties=fixture(),privateBackup=true,failAt=Infinity}={}){
     vm.runInContext(diagnostic,ctx);
     vm.runInContext(recovery,ctx);
     vm.runInContext(haltAudit,ctx);
+    vm.runInContext(recoveryV2,ctx);
     const run=code=>vm.runInContext(code,ctx);
     return {ctx,run,calls,logs,scriptProps,userProps,files,original:{...properties}};
 }
@@ -305,4 +308,159 @@ test("halt audit refuses compromised private backup without touching properties"
     assert.equal(result.diagnostic,"BACKUP_DIGEST_MISMATCH");
     assert.equal(h.calls.scriptWrites,0);
     assert.equal(h.calls.scriptDeletes,0);
+});
+
+test("V2 prepares independent private backup and does not mutate Script Properties",()=>{
+    const h=setup();
+    const original={...h.scriptProps};
+    const v1=h.run("vaaPrepareReadyPerformanceCompactionBackup()");
+    const v2=h.run("vaaPrepareReadyPerformanceCompactionV2Backup()");
+    assert.equal(v2.phase,"V2_PREPARED_PRIVATE_BACKUP");
+    assert.equal(v2.scriptPropertiesModified,0);
+    assert.equal(v2.oldV1BackupUntouched,true);
+    assert.equal(h.calls.scriptWrites,0);
+    assert.equal(h.calls.scriptDeletes,0);
+    assert.equal(h.files.size,2);
+    assert.equal(v1.proposedCount,v2.proposedCount);
+    assert.deepEqual(h.scriptProps,original);
+    assert.throws(()=>h.run("vaaCommitReadyPerformanceCompactionV2()"),/EXPLICIT_APPROVAL_REQUIRED/);
+    assert.throws(()=>h.run("vaaPrepareReadyPerformanceCompactionV2Backup()"),/PLAN_ALREADY_PREPARED/);
+    assert.doesNotMatch(h.logs.join(""),/SUPER_PRIVATE_BACKUP_SECRET|PRIVATE_BACKUP_FILE|private_fake_sheet/);
+});
+
+test("V2 tolerates unrelated registry changes with live capacity revalidation and exact final state",()=>{
+    const h=setup();
+    h.run("vaaPrepareReadyPerformanceCompactionV2Backup()");
+    const approved=h.run("vaaAuthorizeReadyPerformanceCompactionV2()");
+    assert.equal(approved.phase,"V2_APPROVED_NOT_COMMITTED");
+    assert.equal(h.calls.scriptWrites,0);
+    h.scriptProps.RPTREG_PRIVATE="changed but not a compaction target";
+    const before={...h.scriptProps};
+    const result=h.run("vaaCommitReadyPerformanceCompactionV2()");
+    assert.equal(result.phase,"V2_COMMITTED_VERIFIED");
+    assert.equal(result.nonTargetDriftSinceBackup,true);
+    assert.equal(h.scriptProps.RPTREG_PRIVATE,before.RPTREG_PRIVATE);
+    assert.equal(h.scriptProps.ACCESS_KEY,before.ACCESS_KEY);
+    assert.equal(h.scriptProps.VIEWER_SECRET,before.VIEWER_SECRET);
+    assert.equal(result.scriptPropertiesModified,h.calls.scriptWrites);
+    assert.equal(h.calls.scriptDeletes,0);
+    assert.equal(result.estimatedAfterBytes,h.run("vaaScriptPropertyCapacitySummary_(PropertiesService.getScriptProperties().getProperties(),Date.now()).estimatedTotalBytes"));
+    const changed=Object.keys(before).filter(k=>before[k]!==h.scriptProps[k]);
+    assert.equal(changed.length,result.scriptPropertiesModified);
+    for(const key of changed){
+        const old=JSON.parse(before[key]);const next=JSON.parse(h.scriptProps[key]);
+        delete old.performance;
+        assert.deepEqual(next,old);
+    }
+    assert.equal(h.files.size,1);
+    assert.equal(h.calls.locks,h.calls.unlocks);
+    assert.ok(!Object.keys(h.userProps).some(k=>k.includes("COMPACTION_PLAN_V2")));
+    assert.doesNotMatch(h.logs.join(""),/SUPER_PRIVATE_BACKUP_SECRET|PRIVATE_BACKUP_FILE|private_fake_sheet|REQ001/);
+});
+
+test("V2 refuses to write when selected receipt changed even though other drift is allowed",()=>{
+    const h=setup();
+    h.run("vaaPrepareReadyPerformanceCompactionV2Backup()");
+    h.run("vaaAuthorizeReadyPerformanceCompactionV2()");
+    const file=[...h.files.values()][0];
+    const target=JSON.parse(file.text).selected[0];
+    h.scriptProps[target.key]=target.compacted;
+    assert.throws(()=>h.run("vaaCommitReadyPerformanceCompactionV2()"),/STOPPED_CHECK_SAFE_LOG_NO_RETRY/);
+    assert.equal(h.calls.scriptWrites,0);
+    assert.match(h.logs.join(""),/VAA_COMPACTION_V2_TARGET_CHANGED/);
+    assert.match(h.logs.join(""),/"failureStage":"VERIFY_TARGETS"/);
+    assert.equal(h.files.size,1);
+});
+
+test("V2 refuses to write when unrelated changes make 75 percent target unreachable",()=>{
+    const h=setup();
+    h.run("vaaPrepareReadyPerformanceCompactionV2Backup()");
+    h.run("vaaAuthorizeReadyPerformanceCompactionV2()");
+    h.scriptProps.OTHER_EXTRA_1="x".repeat(8000);
+    h.scriptProps.OTHER_EXTRA_2="x".repeat(8000);
+    h.scriptProps.OTHER_EXTRA_3="x".repeat(8000);
+    assert.throws(()=>h.run("vaaCommitReadyPerformanceCompactionV2()"),/STOPPED_CHECK_SAFE_LOG_NO_RETRY/);
+    assert.match(h.logs.join(""),/VAA_COMPACTION_V2_CAPACITY_REPLAN_REQUIRED/);
+    assert.equal(h.calls.scriptWrites,0);
+    assert.equal(h.calls.scriptDeletes,0);
+});
+
+test("V2 quota refusal is stopped and sanitized at first attempted setProperty",()=>{
+    const h=setup({failAt:1});
+    h.run("vaaPrepareReadyPerformanceCompactionV2Backup()");
+    h.run("vaaAuthorizeReadyPerformanceCompactionV2()");
+    assert.throws(()=>h.run("vaaCommitReadyPerformanceCompactionV2()"),/STOPPED_CHECK_SAFE_LOG_NO_RETRY/);
+    const halt=h.logs.find(s=>s.startsWith("VAA_COMPACTION_V2_HALTED"));
+    assert.match(halt,/"failureStage":"SET_PROPERTY"/);
+    assert.match(halt,/"failureCategory":"CAPACITY_LIMIT_SUSPECTED"/);
+    assert.match(halt,/"writeAttempts":1/);
+    assert.match(halt,/"writeAccepted":0/);
+    assert.match(halt,/"verifiedCount":0/);
+    assert.equal(h.calls.scriptDeletes,0);
+    assert.equal(h.files.size,1);
+    assert.doesNotMatch(halt,/SUPER_PRIVATE_BACKUP_SECRET|PRIVATE_BACKUP_FILE|private_fake_sheet/);
+});
+
+test("V2 accepted first write with failed readback is distinguishable from quota refusal",()=>{
+    const h=setup({badReadbackAt:1});
+    h.run("vaaPrepareReadyPerformanceCompactionV2Backup()");
+    h.run("vaaAuthorizeReadyPerformanceCompactionV2()");
+    assert.throws(()=>h.run("vaaCommitReadyPerformanceCompactionV2()"),/STOPPED_CHECK_SAFE_LOG_NO_RETRY/);
+    const halt=h.logs.find(s=>s.startsWith("VAA_COMPACTION_V2_HALTED"));
+    assert.match(halt,/"failureStage":"READ_BACK"/);
+    assert.match(halt,/"writeAttempts":1/);
+    assert.match(halt,/"writeAccepted":1/);
+    assert.match(halt,/"verifiedCount":0/);
+    assert.equal(h.calls.scriptWrites,1);
+    assert.equal(h.files.size,1);
+    assert.equal(h.calls.scriptDeletes,0);
+});
+
+test("V2 partial write failure stops with backup retained and repeat is blocked",()=>{
+    const h=setup({failAt:3});
+    h.run("vaaPrepareReadyPerformanceCompactionV2Backup()");
+    h.run("vaaAuthorizeReadyPerformanceCompactionV2()");
+    assert.throws(()=>h.run("vaaCommitReadyPerformanceCompactionV2()"),/STOPPED_CHECK_SAFE_LOG_NO_RETRY/);
+    const halt=h.logs.find(s=>s.startsWith("VAA_COMPACTION_V2_HALTED"));
+    assert.match(halt,/"verifiedCount":2/);
+    assert.match(halt,/"writeAttempts":3/);
+    assert.equal(h.calls.scriptWrites,3);
+    assert.equal(h.calls.scriptDeletes,0);
+    assert.equal(h.files.size,1);
+    assert.throws(()=>h.run("vaaCommitReadyPerformanceCompactionV2()"),/STOPPED_CHECK_SAFE_LOG_NO_RETRY/);
+    assert.match(h.logs.at(-1),/VAA_COMPACTION_V2_TARGET_CHANGED/);
+});
+
+test("V2 detects concurrent uncoordinated non-target drift on final snapshot",()=>{
+    const h=setup({nonTargetWriteDrift:true});
+    h.run("vaaPrepareReadyPerformanceCompactionV2Backup()");
+    h.run("vaaAuthorizeReadyPerformanceCompactionV2()");
+    assert.throws(()=>h.run("vaaCommitReadyPerformanceCompactionV2()"),/STOPPED_CHECK_SAFE_LOG_NO_RETRY/);
+    assert.match(h.logs.join(""),/VAA_COMPACTION_V2_FINAL_MISMATCH/);
+    assert.equal(h.calls.scriptDeletes,0);
+    assert.equal(h.files.size,1);
+});
+
+test("V2 refuses a non-private backup, and source has no runtime deletion",()=>{
+    const h=setup();
+    h.run("vaaPrepareReadyPerformanceCompactionV2Backup()");
+    const f=[...h.files.values()][0];
+    f.access="ANYONE";
+    assert.throws(()=>h.run("vaaAuthorizeReadyPerformanceCompactionV2()"),/BACKUP_NOT_PRIVATE/);
+    assert.equal(h.calls.scriptWrites,0);
+    assert.equal(h.calls.scriptDeletes,0);
+    assert.doesNotMatch(recoveryV2,/getScriptProperties\(\)\.deleteProperty\(/);
+    assert.doesNotMatch(recoveryV2,/props\.deleteProperty\(/);
+    assert.doesNotMatch(recoveryV2,/function\s+(?:doPost|doGet)\s*\(/);
+});
+
+test("V2 Drive blob read errors are redacted before any authorization or writes",()=>{
+    const h=setup();
+    h.run("vaaPrepareReadyPerformanceCompactionV2Backup()");
+    const f=[...h.files.values()][0];
+    f.getBlob=()=>{throw Error("Drive error leaked PRIVATE_BACKUP_FILE_1 secret");};
+    assert.throws(()=>h.run("vaaAuthorizeReadyPerformanceCompactionV2()"),/VAA_COMPACTION_V2_BACKUP_ACCESS_FAILED/);
+    assert.equal(h.calls.scriptWrites,0);
+    assert.equal(h.calls.scriptDeletes,0);
+    assert.doesNotMatch(h.logs.join(""),/PRIVATE_BACKUP_FILE_1|SUPER_PRIVATE_BACKUP_SECRET/);
 });
