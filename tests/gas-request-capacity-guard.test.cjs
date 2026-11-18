@@ -189,3 +189,114 @@ test("UTF-8 estimate handles Japanese character bytes and non-destructive same-k
   assert.equal(h.calls.writes,0);
   assert.equal(h.calls.deletes,0);
 });
+
+function makeDoPostReplayHarness(receipts,driveAccessible=false) {
+  const data={...receipts};
+  const calls={writes:0,deletes:0,creates:0,driveReads:0,locks:0,unlocks:0};
+  const props={
+    getProperties:()=>({...data}),
+    getProperty:key=>Object.prototype.hasOwnProperty.call(data,key)?data[key]:null,
+    setProperty(key,v){calls.writes++;data[key]=String(v);},
+    deleteProperty(key){calls.deletes++;delete data[key];}
+  };
+  const sandbox={
+    API_CONFIG:{
+      REQUEST_PROPERTY_PREFIX:"REQ_",MAX_BODY_CHARS:25000000,
+      CURRENT_STORAGE_LAYOUT:"DATASTORE_V1",
+      DEFAULT_SCHEMA_VERSION:"3.0"
+    },
+    PropertiesService:{getScriptProperties:()=>props},
+    LockService:{getScriptLock:()=>({
+      waitLock(){calls.locks++;},releaseLock(){calls.unlocks++;}
+    })},
+    DriveApp:{getFileById(){
+      calls.driveReads++;
+      if(!driveAccessible)throw Error("simulated transient Drive API failure");
+      return {getName:()=>"Existing verified workbook"};
+    }},
+    SpreadsheetApp:{create(){calls.creates++;throw Error("MUST_NOT_CREATE_WORKBOOK");}},
+    Utilities:{newBlob:v=>({getBytes:()=>Buffer.from(String(v),"utf8")})},
+    normalizeString_:v=>v===null||v===undefined?"":String(v).trim(),
+    Date,console:{error(){},log(){}}
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(diag,sandbox);
+  vm.runInContext(guard,sandbox);
+  vm.runInContext(requests,sandbox);
+  vm.runInContext(entry,sandbox);
+  // Only request coordination and admission are under test. Keep the
+  // independent payload/transport validation out of this targeted harness.
+  sandbox.validateEnvelope_=()=>({ok:true});
+  sandbox.extractSpreadsheetId_=()=>("");
+  sandbox.perfMs_=()=>0;
+  sandbox.jsonOutput_=o=>o;
+  sandbox.errorOutput_=(code,message)=>({ok:false,code,message});
+  const post=()=>sandbox.doPost({postData:{contents:JSON.stringify({
+    action:"create",requestId:"SAFE_REPLAY_ID"
+  })}});
+  return {post,data,calls};
+}
+
+test("doPost refuses to erase an existing receipt when Drive API is transiently unavailable",()=>{
+  const h=makeDoPostReplayHarness({
+    REQ_SAFE_REPLAY_ID:JSON.stringify(record("SAFE_REPLAY_ID"))
+  },false);
+  const before=JSON.stringify(h.data);
+  const response=h.post();
+  assert.equal(response.ok,false);
+  assert.equal(response.code,"REQUEST_TARGET_UNVERIFIED");
+  assert.equal(JSON.stringify(h.data),before);
+  assert.equal(h.calls.writes,0);
+  assert.equal(h.calls.deletes,0);
+  assert.equal(h.calls.creates,0);
+  assert.equal(h.calls.driveReads,1);
+  assert.equal(h.calls.locks,h.calls.unlocks);
+});
+
+test("doPost refuses to create when existing receipt JSON cannot be verified",()=>{
+  const h=makeDoPostReplayHarness({REQ_SAFE_REPLAY_ID:"invalid receipt JSON"});
+  const response=h.post();
+  assert.equal(response.code,"REQUEST_RECEIPT_UNVERIFIED");
+  assert.equal(h.calls.writes,0);
+  assert.equal(h.calls.deletes,0);
+  assert.equal(h.calls.creates,0);
+  assert.equal(h.calls.driveReads,0);
+  assert.equal(h.calls.locks,h.calls.unlocks);
+});
+
+test("doPost refuses to create when existing receipt omits its workbook ID",()=>{
+  const h=makeDoPostReplayHarness({
+    REQ_SAFE_REPLAY_ID:JSON.stringify({requestId:"SAFE_REPLAY_ID",status:"ERROR"})
+  });
+  const response=h.post();
+  assert.equal(response.code,"REQUEST_RECEIPT_UNVERIFIED");
+  assert.equal(h.calls.writes,0);
+  assert.equal(h.calls.deletes,0);
+  assert.equal(h.calls.creates,0);
+});
+
+test("doPost returns existing READY record without writes when Drive file verifies",()=>{
+  const h=makeDoPostReplayHarness({
+    REQ_SAFE_REPLAY_ID:JSON.stringify(record("SAFE_REPLAY_ID"))
+  },true);
+  const response=h.post();
+  assert.equal(response.ok,true);
+  assert.equal(response.reused,true);
+  assert.equal(response.status,"READY");
+  assert.equal(response.spreadsheetId,"PRIVATE_WORKBOOK_SAFE_REPLAY_ID");
+  assert.equal(h.calls.writes,0);
+  assert.equal(h.calls.deletes,0);
+  assert.equal(h.calls.creates,0);
+  assert.equal(h.calls.locks,h.calls.unlocks);
+});
+
+test("doPost rejects a new request at 440K before any workbook or request write",()=>{
+  const h=makeDoPostReplayHarness(fill(440000));
+  const response=h.post();
+  assert.equal(response.ok,false);
+  assert.equal(response.code,"PROPERTY_CAPACITY_NEAR_LIMIT");
+  assert.equal(h.calls.creates,0);
+  assert.equal(h.calls.writes,0);
+  assert.equal(h.calls.deletes,0);
+  assert.equal(h.calls.locks,h.calls.unlocks);
+});
