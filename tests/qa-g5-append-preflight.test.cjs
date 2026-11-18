@@ -29,7 +29,7 @@ function fixture(overrides={}) {
   };
   const scope={
     API_CONFIG:{
-      ROOT_FOLDER_ID:overrides.wrongRoot?"NOT_TEST":root,
+      ROOT_FOLDER_ID:root,
       SHEET_OUTPUT_FOLDER_ID:out,
       DEFAULT_APP_VERSION:"TEST_APP",
       EXPECTED_COMMON_MASTER_VERSION:"2026.09.03-common-v1",
@@ -73,6 +73,8 @@ function fixture(overrides={}) {
   vm.runInContext(g4,ctx);
   vm.runInContext(g5,ctx);
   const original=vm.runInContext("vaaQaG4SyntheticPayload_()",ctx);
+  // Prepare fixture with valid TEST config; only then test isolation failure.
+  if(overrides.wrongRoot)scope.API_CONFIG.ROOT_FOLDER_ID="NOT_TEST";
   const existing=mergeCore.merge({
     mode:"REPLACE",incoming:JSON.parse(JSON.stringify(original.datasets))
   });
