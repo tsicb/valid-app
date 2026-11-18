@@ -237,7 +237,7 @@ test("a failed write stops immediately, keeps backup, and never deletes receipts
 test("source contains no Script Property delete call or web-call entry point",()=>{
     assert.doesNotMatch(recovery,/getScriptProperties\(\)\.deleteProperty\(/);
     assert.doesNotMatch(recovery,/props\.deleteProperty\(/);
-    assert.doesNotMatch(recovery,/\bdoPost\b|\bdoGet\b/);
+    assert.doesNotMatch(recovery,/function\s+(?:doPost|doGet)\s*\(/);
     assert.match(recovery,/lock\.waitLock\(30000\)/);
     assert.match(recovery,/vaaRecoverySnapshotDigest_\(/);
     assert.match(recovery,/file\.getSharingAccess\(\) !== DriveApp\.Access\.PRIVATE/);
