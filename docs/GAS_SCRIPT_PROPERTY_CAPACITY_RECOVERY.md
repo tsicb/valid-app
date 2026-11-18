@@ -64,6 +64,34 @@
 
 **注意：古い`REQ_`は「処理の完了記録」であり、削除すると過去のrequestIdの再送を新規処理と解釈する可能性があります。** 30日経過・READYであっても、そのまま消してよいという意味ではありません。この段階では`deleteProperty`は一度も呼びません。
 
+## フェーズ3：READY履歴を削除せずに容量回復できるか診断
+
+2026-11-18の`vaaPreviewOldReadyRequestCleanupReadOnly`の結果：
+
+- 現在の推定使用量：529,155 bytes（103.4%）。
+- 30日以上前のREADY記録で、削除対象としての検討条件を満たしたものは93件（合計321,206 bytes）。
+- そのうち古い順に46件を削除する**仮のプラン**では149,559 bytes削減し、74.1%まで下がる見込み。
+- **削除は未実施。** 古いrequestIdを再送した際の二重処理防止を維持するため、削除以外の方法を優先評価する。
+
+新しい読み取り専用関数：
+
+`vaaPreviewReadyRequestPerformanceCompactionReadOnly`
+
+旧READY記録には、応答のタイミング計測等を保持した`performance`オブジェクトがある。これだけを削除した仮の値をメモリ上で作成し、保存容量の差を集計する。実データの変更はない。
+
+候補の条件は、30日以上経過、`status=READY / stage=READY`、リースなし、キーとrequestId一致、保存先Spreadsheet IDあり、既知CREATE/UPDATE方式、`performance`データあり。処理中・ERROR・日付不明などは対象外。
+
+結果は、対象レコード数、全候補の容量削減見込み、推定使用率75%まで減らすとした仮の件数、実現可否のみを集計し、秘密情報は出さない。
+
+**重要：** この方法なら、保存先情報・updatePayloadDigest・updateStrategy・requestIdなどの重複処理防止情報を残したまま、詳細な処理性能情報のみを縮小できる可能性がある。ただし再送時の`performance`情報は一部欠け得るため、実際の縮小は別PRでバックアップ・実行前後検証・操作承認を経て実施する。
+
+### 実行
+
+1. PRをマージ後、[Central API sync to GAS](https://github.com/tsicb/valid-app/actions/workflows/central-api-sync.yml) で`main` / `SYNC`を実行する。
+2. Apps Scriptエディタで`vaaPreviewReadyRequestPerformanceCompactionReadOnly`を1回実行する。
+3. ログの`VAA_PERFORMANCE_COMPACTION_PREFLIGHT_READONLY`から始まるJSONだけを確認する。
+4. `canReachTargetWithPerformanceOnly`がtrueなら、削除ではなく小容量の値へ置換する方式を優先検討する。falseなら別の安全な保存先移行や限定削除を検討する。
+
 ## フェーズ2：結果が出てから実施すること
 
 - 容量の主要因を判定する。特に`REQ_`系が大きい場合は既存`pruneRequestProperties_`が「setPropertyより後に走る」ことが再発要因になり得る。
