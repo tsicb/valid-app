@@ -133,3 +133,41 @@
 - Script Properties画面をスクリーンショットで公開・共有しないこと。アクセスキーや共有URL管理の秘密情報が含まれる可能性がある。
 - 認証情報、トークン値、HMACキー、Drive ID一覧のエクスポートをGitHub、チャット、スプレッドシートに保存しない。
 - 診断関数は **deleteProperty / setProperty を一切呼ばない**。プロパティの削除やWeb Appデプロイは別の明示的な工程にする。
+
+## フェーズ5：COMMIT が 0 件で停止した場合の読み取り専用調査（2026-11-18）
+
+実行ログ `VAA_COMPACTION_HALTED {"appliedCount":0,...}` と
+`VAA_COMPACTION_STOPPED_AFTER_0_UPDATES_CHECK_LOG_AND_PRIVATE_BACKUP` が出た。
+
+- `appliedCount=0` は「書込み後の読戻しまで完了した件数が0」であり、最初の `setProperty` が成功して読戻しで失敗した可能性は残る。
+- 既存の `vaaCommitReadyPerformanceCompaction` は内部の例外を安全のため一律メッセージに置き換えるため、このログだけでは原因確定できない。
+- **COMMITの再実行、Script Propertiesの手動削除、非公開バックアップの削除、バックアップ内容の共有は禁止。**
+- 旧承認は再実行の承認ではない。新たな縮小案には別の確認・承認を要する。
+
+追加した読み取り専用関数：
+`vaaAuditStoppedReadyPerformanceCompactionReadOnly`
+（`central-api/17_Ready_Receipt_Halt_Audit.gs`）。
+
+当該PRのテスト成功・マージ後にCentral API syncを `main` / `SYNC` で実行し、
+既存のGASエディタでこの関数だけを手動実行する（Webアプリv61の再デプロイ不要）。
+ログ `VAA_COMPACTION_HALT_AUDIT_READONLY` のJSONだけ共有する。
+ファイルURL・ID・スクリプトプロパティ名と内容は一切共有しない。
+この関数はScript/User PropertiesもDriveファイルも書き換えない。
+
+主な判定：
+
+- `SNAPSHOT_CHANGED_SINCE_PREPARE_DO_NOT_RETRY`：
+  55件に触れていなくても他のScript Propertyが変わっている。事前計画の再利用不可。
+- `TARGET_WRITE_DETECTED_DO_NOT_RETRY`：
+  0件と表示されても対象の一部が縮小済み。再実行不可。
+- `PREWRITE_REVALIDATION_FAILED_DO_NOT_RETRY`：
+  書込み前の計画照合に失敗。診断・コード修正を優先。
+- `PREWRITE_CHECKS_PASS_FIRST_WRITE_OR_READBACK_FAILURE_SUSPECTED`：
+  スナップショット・対象・計画を再検証できるが、最初の書込みもしくは読戻しで停止した疑い。
+  容量超過による `setProperty` 拒否は一候補であり、この診断だけでは確定しない。
+- `BACKUP_DIGEST_MISMATCH` など：
+  バックアップ整合性を優先調査し、縮小を行わない。
+
+計画の期限（準備から2時間）が切れてもこの監査は読み取り専用で実行可能。
+ただし新たなCOMMITは不可。容量回復手段の選択は監査結果と現行の
+`vaaAuditScriptPropertyCapacityReadOnly` を踏まえた別工程とする。
