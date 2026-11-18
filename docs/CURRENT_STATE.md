@@ -4,6 +4,13 @@ Last updated: 2026-11-18
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Non-destructive READY request receipt compaction preview (2026-11-18)
+
+- Operator's `VAA_REQUEST_CLEANUP_PREFLIGHT_READONLY` result: total 529,155 B (103.4%), eligible 93 old READY receipts (321,206 B), deletion proposal 46 old receipts (16 CREATE / 30 UPDATE) would free 149,559 B to 379,596 B (74.1%). **No property was deleted.**
+- Removing READY `REQ_` receipts would lose requestId deduplication and can allow repeated CREATE/UPDATE processing. Rather than proceeding with deletion, we created a new read-only alternative `vaaPreviewReadyRequestPerformanceCompactionReadOnly`: simulate dropping only the optional `performance` subobject from old READY receipts, while retaining every other field, including request IDs, spreadsheet IDs, update strategy/digest, output URLs and updateStats.
+- This function estimates savings without any live writes. It returns counts and aggregate byte totals only, with no secrets or IDs. It requires a separate Apps Script editor execution after source sync; performance-only feasibility has **not yet been measured on the user's live project**.
+- Actual compaction needs its own guarded, backed-up operation and explicit approval after reviewing the new output. GAS deployed Web App v61 remains unchanged; do not repeatedly submit CSVs while quota remains exhausted.
+
 ## Script Properties saturation: 103.4% and cleanup preflight (2026-11-18)
 
 - Actual protected audit result: `propertyCount=258`, estimated `529153/512000` bytes (103.4%); `REQ_` 137 entries, `480464` estimated bytes (90.8%); 133 READY, four ERROR, zero in progress, zero active leases; 94 older than 30 days. `RPTREG_` 38 and `VIEWER_` 77 entries must not be touched during recovery. This diagnoses quota saturation as the source of the new CREATE failure, not CSV content.

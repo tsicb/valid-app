@@ -315,6 +315,170 @@ function vaaPreviewOldReadyRequestCleanupReadOnly() {
 }
 
 /**
+ * Alternative to deleting old READY request receipts:
+ * preview shrinking ONLY the optional performance timing diagnostics.
+ *
+ * Keep requestId, operationMode, status/stage, spreadsheetId/URL,
+ * updateStrategy/updatePayloadDigest, viewer URLs, updateStats and all
+ * other fields unchanged. The original request receipt stays in place,
+ * keeping the replay and target-mismatch checks available.
+ *
+ * READ ONLY: this function never calls setProperty or deleteProperty.
+ */
+function vaaReadyRequestPerformancePreview_(snapshot, nowMs) {
+  const now = Number(nowMs) || Date.now();
+  const minimumAgeDays = 30;
+  const quotaBytes = 500 * 1024;
+  const targetBytes = Math.floor(quotaBytes * 0.75);
+  const current = vaaScriptPropertyCapacitySummary_(snapshot, now);
+  const prefix = API_CONFIG.REQUEST_PROPERTY_PREFIX;
+  const eligible = [];
+  const byMode = {
+    CREATE: { count: 0, estimatedSavingsBytes: 0 },
+    UPDATE: { count: 0, estimatedSavingsBytes: 0 }
+  };
+  const exclusions = {
+    nonReady: 0,
+    recent: 0,
+    missingOrFutureDate: 0,
+    activeOrInvalidLease: 0,
+    invalidRequestId: 0,
+    noSpreadsheetId: 0,
+    unknownMode: 0,
+    missingOrEmptyPerformance: 0,
+    invalidJson: 0
+  };
+
+  Object.entries(snapshot || {}).forEach(function(entry) {
+    const key = String(entry[0]);
+    if (key.indexOf(prefix) !== 0) return;
+    const raw = String(entry[1] == null ? '' : entry[1]);
+    let record;
+    try {
+      record = JSON.parse(raw);
+      if (!record || typeof record !== 'object' || Array.isArray(record)) {
+        exclusions.invalidJson++;
+        return;
+      }
+    } catch (_) {
+      exclusions.invalidJson++;
+      return;
+    }
+
+    if (record.status !== 'READY' || record.stage !== 'READY') {
+      exclusions.nonReady++;
+      return;
+    }
+    const createdAt = Date.parse(String(record.createdAt || ''));
+    if (!Number.isFinite(createdAt) || createdAt > now) {
+      exclusions.missingOrFutureDate++;
+      return;
+    }
+    if (now - createdAt < minimumAgeDays * 86400000) {
+      exclusions.recent++;
+      return;
+    }
+    const leaseRaw = String(record.leaseUntil || '');
+    const leaseMs = leaseRaw ? Date.parse(leaseRaw) : 0;
+    if (leaseRaw && (!Number.isFinite(leaseMs) || leaseMs > now)) {
+      exclusions.activeOrInvalidLease++;
+      return;
+    }
+    if (!key.slice(prefix.length) ||
+        key.slice(prefix.length) !== String(record.requestId || '')) {
+      exclusions.invalidRequestId++;
+      return;
+    }
+    if (!String(record.spreadsheetId || '').trim()) {
+      exclusions.noSpreadsheetId++;
+      return;
+    }
+    const mode = String(record.operationMode || '').toUpperCase();
+    if (!Object.prototype.hasOwnProperty.call(byMode, mode)) {
+      exclusions.unknownMode++;
+      return;
+    }
+    if (!record.performance ||
+        typeof record.performance !== 'object' ||
+        Array.isArray(record.performance)) {
+      exclusions.missingOrEmptyPerformance++;
+      return;
+    }
+
+    // Construct a hypothetical smaller value in memory only.
+    const hypothetical = Object.assign({}, record);
+    delete hypothetical.performance;
+    const saving = vaaUtf8ByteLength_(raw) -
+      vaaUtf8ByteLength_(JSON.stringify(hypothetical));
+    if (saving <= 0) {
+      exclusions.missingOrEmptyPerformance++;
+      return;
+    }
+
+    eligible.push({
+      createdAt: createdAt,
+      saving: saving,
+      mode: mode
+    });
+    byMode[mode].count++;
+    byMode[mode].estimatedSavingsBytes += saving;
+  });
+
+  eligible.sort(function(a, b) {
+    return a.createdAt - b.createdAt || b.saving - a.saving;
+  });
+
+  let projectedBytes = current.estimatedTotalBytes;
+  let proposedCount = 0;
+  let proposedSavingsBytes = 0;
+  const proposedByMode = {
+    CREATE: { count: 0, estimatedSavingsBytes: 0 },
+    UPDATE: { count: 0, estimatedSavingsBytes: 0 }
+  };
+  eligible.forEach(function(item) {
+    if (projectedBytes <= targetBytes) return;
+    projectedBytes -= item.saving;
+    proposedCount++;
+    proposedSavingsBytes += item.saving;
+    proposedByMode[item.mode].count++;
+    proposedByMode[item.mode].estimatedSavingsBytes += item.saving;
+  });
+
+  return {
+    plan: 'READY_RECEIPT_PERFORMANCE_COMPACTION_READ_ONLY',
+    strictReadOnly: true,
+    propertiesModified: 0,
+    propertiesDeleted: 0,
+    includesPropertyKeys: false,
+    includesPropertyValues: false,
+    ageThresholdDays: minimumAgeDays,
+    quotaBytes: quotaBytes,
+    targetBytes: targetBytes,
+    beforeEstimatedBytes: current.estimatedTotalBytes,
+    eligibleCount: eligible.length,
+    eligibleSavingsBytes: eligible.reduce(function(sum, item) {
+      return sum + item.saving;
+    }, 0),
+    eligibleByMode: byMode,
+    exclusionCounts: exclusions,
+    proposedCount: proposedCount,
+    proposedSavingsBytes: proposedSavingsBytes,
+    proposedByMode: proposedByMode,
+    projectedEstimatedBytes: projectedBytes,
+    projectedUsagePercent: Math.round(projectedBytes / quotaBytes * 1000) / 10,
+    canReachTargetWithPerformanceOnly: projectedBytes <= targetBytes,
+    caveat: 'PREVIEW ONLY. Only optional performance is considered; no data has been modified.'
+  };
+}
+
+function vaaPreviewReadyRequestPerformanceCompactionReadOnly() {
+  const snapshot = PropertiesService.getScriptProperties().getProperties();
+  const plan = vaaReadyRequestPerformancePreview_(snapshot, Date.now());
+  console.log('VAA_PERFORMANCE_COMPACTION_PREFLIGHT_READONLY ' + JSON.stringify(plan));
+  return plan;
+}
+
+/**
  * Editor-run entry point. Logs and returns only numeric/aggregated metadata.
  * No properties are written, removed or modified.
  */
