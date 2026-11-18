@@ -73,8 +73,27 @@ function vaaQaG4SyntheticPayload_() {
         ]]
       },
       jobAnalysisMaster: {
-        headers: ['求人参照ID', '企業ID', '仕事番号', '仕事名', '給与金額MIN'],
-        rows: [['QA_REF_1', 'QA0001', 'QA_JOB_1', 'QA架空求人', 1200]]
+        // Same 28-column schema as Pages, using synthetic values only.
+        headers: [
+          '求人参照ID', '求人分析情報ソース', '企業ID', '仕事番号',
+          '求人管理番号', '公開情報区分', '仕事名',
+          'Indeed用求人タイトル', '職種', '雇用形態',
+          '募集背景', '求人勤務地名称', '勤務地住所',
+          '勤務地都道府県', '最寄駅', '求人備考',
+          '給与区分コード', '給与金額MIN', '給与金額MAX',
+          'メイン画像ファイル名', 'メイン画像あり',
+          '求人画像枚数', '動画タイトル', '求人動画あり',
+          '特徴コード', 'Indeed求人タグコード',
+          'Indeed求人タグ数', '求人原稿文字数'
+        ],
+        rows: [[
+          'QA_REF_1', 'JOB_CSV', 'QA0001', 'QA_JOB_1',
+          'QA_MANAGEMENT_1', '公開', 'QA架空求人',
+          'QA架空求人', '事務', '正社員',
+          '', 'QA勤務地', '', '東京都', '', '',
+          '03', 1200, 1500, '', 0, 0, '', 0,
+          '', '', 0, 0
+        ]]
       },
       processInfo: {
         headers: ['項目', '値'],
