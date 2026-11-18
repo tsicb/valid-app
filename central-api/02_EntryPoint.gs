@@ -407,11 +407,24 @@ function doPost(e) {
       );
 
     try {
+      // A stored receipt is a replay-safety fence. Never treat an
+      // unreadable receipt or unverified Drive target as a new request.
+      // Transient Drive failures must not erase requestId idempotency.
+      const storedReceiptExists = !!props.getProperty(
+        getRequestPropertyKey_(requestId)
+      );
       requestRecord =
         getRequestRecord_(
           props,
           requestId
         );
+
+      if (storedReceiptExists && !requestRecord) {
+        return errorOutput_(
+          'REQUEST_RECEIPT_UNVERIFIED',
+          '保存済みの処理履歴を確認できません。管理者へご連絡ください。'
+        );
+      }
 
       if (
         requestRecord &&
@@ -419,12 +432,11 @@ function doPost(e) {
           requestRecord
         )
       ) {
-        deleteRequestRecord_(
-          props,
-          requestId
+        return errorOutput_(
+          'REQUEST_TARGET_UNVERIFIED',
+          '以前の処理先ファイルを確認できません。' +
+            '重複作成を防ぐため処理を停止しました。管理者へご連絡ください。'
         );
-
-        requestRecord = null;
       }
 
       if (requestRecord) {
