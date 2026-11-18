@@ -300,3 +300,23 @@ test("doPost rejects a new request at 440K before any workbook or request write"
   assert.equal(h.calls.deletes,0);
   assert.equal(h.calls.locks,h.calls.unlocks);
 });
+
+test("hot-path byte-only estimator matches independent audit for mixed and malformed properties",()=>{
+  const props={
+    ACCESS_KEY:"fake-secret",
+    REQ_A:JSON.stringify({requestId:"A",notes:"日本語・emoji🎉"}),
+    REQ_B:"intentionally malformed JSON",
+    RPTREG_private:"some-report-reference",
+    VIEWER_token:"token-content",
+    SYSTEM_1:"",
+    REQ_C:"-".repeat(456)
+  };
+  const h=createHarness(props);
+  const actual=h.run("vaaRequestPropertyTotalEstimatedBytes_(globalProps.getProperties())");
+  const independentlyAudited=h.run(
+    "vaaScriptPropertyCapacitySummary_(globalProps.getProperties(),Date.now()).estimatedTotalBytes"
+  );
+  assert.equal(actual,independentlyAudited);
+  assert.equal(h.calls.writes,0);
+  assert.equal(h.calls.deletes,0);
+});
