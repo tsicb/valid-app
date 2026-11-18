@@ -4,6 +4,14 @@ Last updated: 2026-11-18
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Guarded performance compaction implementation (2026-11-18, PR review only)
+
+- Live read-only preview: `VAA_PERFORMANCE_COMPACTION_PREFLIGHT_READONLY` found 86 eligible old READY receipts (222,976 B optional performance data). Hypothetical 55-record change (20 CREATE / 35 UPDATE) would save 146,774 B and decrease estimated Script Properties usage to **382,381 / 512,000 B (74.7%)**.
+- Draft guarded recovery source `central-api/16_Ready_Receipt_Recovery.gs`: three **manual Apps Script editor-only** stages: private Drive backup of exact request receipt values, separate same-user authorization, and script-lock protected, snapshot-fenced performance-only compaction. No Script Property deletes; all replay/target/digest/viewer references remain unchanged. Backups remain private in the executing user's My Drive and are never logged.
+- Preparation verifies the new backup is private *while still empty*, then stores original receipt text; integrity digest is rechecked before allowing any Script Property write. The plan expires after 2 hours. Any concurrent property change aborts before mutation, and a partial write failure stops immediately with the original backup retained.
+- **NOT DEPLOYED OR EXECUTED.** Even a successful CI should not be interpreted as consent to change production Script Properties. The PR is kept as draft pending user review and explicit authorization; current GAS Web App v61 and production Script Properties remain unchanged.
+- [Full recovery procedure](GAS_SCRIPT_PROPERTY_CAPACITY_RECOVERY.md) details the three-stage approach, recovery limitations and post-operation verification. Subsequent recurrence prevention is a separate change.
+
 ## Non-destructive READY request receipt compaction preview (2026-11-18)
 
 - Operator's `VAA_REQUEST_CLEANUP_PREFLIGHT_READONLY` result: total 529,155 B (103.4%), eligible 93 old READY receipts (321,206 B), deletion proposal 46 old receipts (16 CREATE / 30 UPDATE) would free 149,559 B to 379,596 B (74.1%). **No property was deleted.**

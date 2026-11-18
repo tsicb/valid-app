@@ -92,6 +92,33 @@
 3. ログの`VAA_PERFORMANCE_COMPACTION_PREFLIGHT_READONLY`から始まるJSONだけを確認する。
 4. `canReachTargetWithPerformanceOnly`がtrueなら、削除ではなく小容量の値へ置換する方式を優先検討する。falseなら別の安全な保存先移行や限定削除を検討する。
 
+## フェーズ4：実際の縮小処理（準備中・まだ実施しない）
+
+実測のperformance縮小試算：
+- 30日以上前のREADYのうち、性能計測情報を縮小できる記録：86件。
+- 縮小できる容量総量：222,976 bytes。
+- 75%を達成する仮プラン：55件（CREATE 20件、UPDATE 35件）、146,774 bytesの削減、推定382,381 bytes（74.7%）。
+
+[安全な縮小処理ソース](../central-api/16_Ready_Receipt_Recovery.gs) を別PRで準備する。**この段階ではスクリプトソースを書いただけで、本番の書換えは行っていない**。
+
+安全のため、GASエディタからの**3段階の明示的な管理者操作**に分離した。
+
+1. `vaaPrepareReadyPerformanceCompactionBackup`：Script Propertiesを読み込み、候補を再計算。まず実行者のマイドライブ直下に**空のバックアップファイル**を作り、非公開であることを検証してから、縮小対象の元の記録を格納・SHA-256検証。管理者のUser Propertiesに短時間有効な作業計画を保存。**Script Propertiesは変更しない**。
+2. `vaaAuthorizeReadyPerformanceCompaction`：同じ実行者がバックアップの非公開状態とハッシュを検証し、計画に対して承認フラグをUser Propertiesへ保存する。**Script Propertiesは変更しない**。
+3. `vaaCommitReadyPerformanceCompaction`：同じ実行者が明示的に実行したときに限り、ScriptLock取得、準備時の全Script Propertiesスナップショット・候補順序・元の値を完全照合し、古いREADY記録の`performance`部分だけを`setProperty`で縮小。各書込後に読戻し、最終的な件数と容量を検証。**Script PropertiesのdeletePropertyは呼ばない**。
+
+- バックアップには元の`REQ_`保存情報（個社シートID等を含む）が格納される。**バックアップファイルの共有・公開・チャット添付は禁止**。ファイルは実行者のマイドライブに非公開のまま保持する。ファイルIDは診断ログに表示しない。
+- 計画の有効期限は2時間。準備から実行までの間にどのScript Propertyでも変化があれば**変更は0件で停止**し、再準備が必要。
+- 途中エラーでは自動で削除・ロールバックせず、バックアップを残して即停止する。容量上限超過状態では**元の値への一括復元ができるとは限らない**。中断後は個別に復旧計画を検討する。
+- Googleの上限の扱いによっては、推定容量が上限を超えている間、**値を小さくするsetPropertyさえ拒否される可能性**がある。成功を保証しないため、バックアップの確保を必須とする。
+- `REQ_`の元のrequestId・保存先・更新方式・ダイジェスト・共有情報・ステータス・件数を残すことで、古いrequestId再送の重複処理防止を維持する。
+- 応答に含まれる性能計測値のみ、過去の記録の再送時には`{}`に変わる可能性がある。シート・DataStoreに保存済みの応募情報は変更しない。
+- この処理は自動定期実行でもWeb Appの通常ルートでもなく、Apps Scriptエディタからの手動操作限定。公開Web Appの再デプロイは不要。
+
+**重要：このPRのコードがCIに通っても、利用者の明示的な承認を得るまで本番へGAS同期しない。** 先にバックアップや縮小関数を実行することもしない。
+
+縮小に成功したら、再度 `vaaAuditScriptPropertyCapacityReadOnly` で容量を確認し、500件の件数基準より先に容量が一杯になる現行の`pruneRequestProperties_`の再発防止設計を別工程で行う。
+
 ## フェーズ2：結果が出てから実施すること
 
 - 容量の主要因を判定する。特に`REQ_`系が大きい場合は既存`pruneRequestProperties_`が「setPropertyより後に走る」ことが再発要因になり得る。
