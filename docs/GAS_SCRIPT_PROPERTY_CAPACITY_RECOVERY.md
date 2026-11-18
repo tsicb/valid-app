@@ -203,3 +203,18 @@
 ### 実行上の注意
 
 PR #13の実装・CI成功は**実行許可ではない**。レビューと明示的な利用者承認が終わるまで、本番GASへ同期しない。Webアプリv61は変更しない。同期後もまずはV2 PREPAREまで、その結果を検証してから別途AUTHORIZE、COMMITを判断する。旧V1の関数は実行しない。
+
+## フェーズ7：V2実縮小の完了と次の確認（2026-11-18）
+
+本番GASエディタで実行者が、V2の準備・承認に続き、個別に承認したCOMMITを実行した結果：
+
+```text
+VAA_COMPACTION_V2_COMMITTED {"phase":"V2_COMMITTED_VERIFIED","scriptPropertiesModified":55,"scriptPropertiesDeleted":0,"estimatedBeforeBytes":529156,"estimatedAfterBytes":382382,"estimatedUsagePercent":74.7,"nonTargetDriftSinceBackup":false,"privateBackupRetained":true,"oldV1BackupUntouched":true}
+```
+
+- READY履歴55件の任意の `performance` を縮小、削除0件。完全な最終スナップショットと読戻し、件数・容量の検証はV2のコード内で成功した。
+- 推定容量は529,156B（103.4%）から382,382B（74.7%）へ減少。削減量146,774B。Googleの内部計量に対する推定値であり、別途読み取り専用の容量監査で再確認する。
+- 旧V1と新V2の非公開バックアップは保持。ファイルID・URL・内部の記録を公開しない。成功したCOMMITを繰り返さない。
+- 次は既存の読み取り専用関数 `vaaAuditScriptPropertyCapacityReadOnly` をGASエディタで実行し、`VAA_PROPERTY_CAPACITY_READONLY` の集計JSONのみ共有する。新たなソース同期やWebアプリ再デプロイは不要。
+- 容量復旧と「失敗した新規作成の続き／再作成」は別問題。以前の未完了個社シート（例：`シート1` と `98_運用ログ` のみ）および元のrequestIdの状態を確認するまで、同じCSVの新規CREATEを繰り返さない。
+- 次の開発は再発防止。保存前バイト予算確認、READY履歴の圧縮・保管方針、古いrequestId再送の冪等性維持、保護設定・VIEWER・RPTREG等の保全を別PRで設計・検証する。本番履歴の自動削除は未承認。
