@@ -1,8 +1,17 @@
 # Current State
 
-Last updated: 2026-11-14
+Last updated: 2026-11-18
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
+
+## Script Properties quota incident — read-only diagnostic ready (2026-11-18)
+
+- A newly created company workbook (2026-11-18) logged `DATA_CREATE / INTERNAL_ERROR`: Script Properties storage capacity exceeded; workbook creation had reached only the default sheet and `98_運用ログ`. User reproduced without closing index/report. **No evidence currently points to malformed applicant CSV.**
+- Existing `saveRequestRecord_()` writes a `REQ_` record before `pruneRequestProperties_()` runs; exhausted capacity can therefore block even the cleanup path. Exact allocation between `REQ_`, `RPTREG_`, `VIEWER_`, and other values remains unverified.
+- Safe diagnostic source: `central-api/15_Property_Capacity_Diagnostics.gs`, function `vaaAuditScriptPropertyCapacityReadOnly`. It reads Script Properties only and logs aggregate counts/UTF-8 byte estimates and request age/status counts. Does **not** log keys/values or change properties, Drive, Sheets, GAS Web App, viewer tokens or stored reports.
+- [Read-only recovery runbook](GAS_SCRIPT_PROPERTY_CAPACITY_RECOVERY.md) explains synchronization to the existing GAS project, Apps Script editor execution, and safe result sharing. **Do not delete any properties or repeat new CREATE while recovery investigation is incomplete.**
+- [PR #8](https://github.com/tsicb/valid-app/pull/8) prepared the diagnostic. [CI #44236295948](https://github.com/tsicb/valid-app/actions/runs/44236295948): **144/144 tests passed**. This section does not imply that code has been synced to GAS or diagnostic output collected; these are the next operator-assisted steps.
+- Existing deployed GAS Web App **v61** remains in place; no new version/deployment required just to run the diagnostic in the editor.
 
 ## Shared drilldown for basic and detailed report tables (2026-11-14)
 
