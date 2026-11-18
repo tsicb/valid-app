@@ -4,12 +4,20 @@ Last updated: 2026-11-18
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
-## Guarded performance compaction implementation (2026-11-18, PR review only)
+## Compaction HALTED after backup / approval (2026-11-18, current)
+
+- PR #11 merged at `c264d61`; user synced `main` source to GAS and ran `vaaPrepareReadyPerformanceCompactionBackup` -> `PREPARED_PRIVATE_BACKUP` (55 READY receipts; 146,774 bytes projected saving; no Script Property writes or deletes).
+- User ran `vaaAuthorizeReadyPerformanceCompaction` -> `APPROVED_NOT_COMMITTED` (backup private and verified; no Script Property writes or deletes).
+- User explicitly approved the final commit and manually ran `vaaCommitReadyPerformanceCompaction`, which returned `VAA_COMPACTION_HALTED {"appliedCount":0,"backupRetained":true,"scriptPropertiesDeleted":0}` followed by `VAA_COMPACTION_STOPPED_AFTER_0_UPDATES_CHECK_LOG_AND_PRIVATE_BACKUP`.
+- **Do not retry COMMIT or delete any property/backup.** `appliedCount=0` counts only verified writes; a first write with readback failure remains possible. A changed full snapshot or over-quota `setProperty` rejection are both plausible, not confirmed.
+- Diagnostic PR #12 adds editor-only `vaaAuditStoppedReadyPerformanceCompactionReadOnly` to inspect the current full snapshot, private backup and per-target exact comparisons **without logging IDs or writing anything**. Next operator step: after PR merge/CI and manual GAS sync, run the read-only function and share only the safe `VAA_COMPACTION_HALT_AUDIT_READONLY` JSON. GAS Web App v61 is unchanged.
+
+## Guarded performance compaction implementation (2026-11-18, historical PR review snapshot)
 
 - Live read-only preview: `VAA_PERFORMANCE_COMPACTION_PREFLIGHT_READONLY` found 86 eligible old READY receipts (222,976 B optional performance data). Hypothetical 55-record change (20 CREATE / 35 UPDATE) would save 146,774 B and decrease estimated Script Properties usage to **382,381 / 512,000 B (74.7%)**.
 - Draft guarded recovery source `central-api/16_Ready_Receipt_Recovery.gs`: three **manual Apps Script editor-only** stages: private Drive backup of exact request receipt values, separate same-user authorization, and script-lock protected, snapshot-fenced performance-only compaction. No Script Property deletes; all replay/target/digest/viewer references remain unchanged. Backups remain private in the executing user's My Drive and are never logged.
 - Preparation verifies the new backup is private *while still empty*, then stores original receipt text; integrity digest is rechecked before allowing any Script Property write. The plan expires after 2 hours. Any concurrent property change aborts before mutation, and a partial write failure stops immediately with the original backup retained.
-- **NOT DEPLOYED OR EXECUTED.** Even a successful CI should not be interpreted as consent to change production Script Properties. The PR is kept as draft pending user review and explicit authorization; current GAS Web App v61 and production Script Properties remain unchanged.
+- **Historical review status only.** Since this snapshot, PR #11 was merged and the operator executed PREPARE, AUTHORIZE and a stopped COMMIT attempt; see current section above. Web App v61 is unchanged.
 - [Full recovery procedure](GAS_SCRIPT_PROPERTY_CAPACITY_RECOVERY.md) details the three-stage approach, recovery limitations and post-operation verification. Subsequent recurrence prevention is a separate change.
 
 ## Non-destructive READY request receipt compaction preview (2026-11-18)
