@@ -8,6 +8,7 @@ const path=require("node:path");
 const dir=path.resolve(__dirname,"../central-api");
 const diagnostic=fs.readFileSync(path.join(dir,"15_Property_Capacity_Diagnostics.gs"),"utf8");
 const recovery=fs.readFileSync(path.join(dir,"16_Ready_Receipt_Recovery.gs"),"utf8");
+const haltAudit=fs.readFileSync(path.join(dir,"17_Ready_Receipt_Halt_Audit.gs"),"utf8");
 
 const secret="SUPER_PRIVATE_BACKUP_SECRET_FAKE_ONLY";
 function oldReady(id, {days=45,mode="CREATE",performanceSize=3700,extras={}}={}) {
@@ -107,6 +108,7 @@ function setup({properties=fixture(),privateBackup=true,failAt=Infinity}={}){
     });
     vm.runInContext(diagnostic,ctx);
     vm.runInContext(recovery,ctx);
+    vm.runInContext(haltAudit,ctx);
     const run=code=>vm.runInContext(code,ctx);
     return {ctx,run,calls,logs,scriptProps,userProps,files,original:{...properties}};
 }
@@ -241,4 +243,66 @@ test("source contains no Script Property delete call or web-call entry point",()
     assert.match(recovery,/lock\.waitLock\(30000\)/);
     assert.match(recovery,/vaaRecoverySnapshotDigest_\(/);
     assert.match(recovery,/file\.getSharingAccess\(\) !== DriveApp\.Access\.PRIVATE/);
+});
+
+test("halt audit is read-only; matching snapshot narrows failure to first write/readback",()=>{
+    const h=setup();
+    h.run("vaaPrepareReadyPerformanceCompactionBackup()");
+    h.run("vaaAuthorizeReadyPerformanceCompaction()");
+    const before={...h.scriptProps};
+    const uBefore={...h.userProps};
+    const result=h.run("vaaAuditStoppedReadyPerformanceCompactionReadOnly()");
+    assert.equal(result.phase,"HALTED_COMPACTION_AUDIT_READONLY");
+    assert.equal(result.strictReadOnly,true);
+    assert.equal(result.snapshotUnchanged,true);
+    assert.equal(result.backupVerifiedPrivateAndIntact,true);
+    assert.equal(result.prewritePlanRevalidationPassed,true);
+    assert.equal(result.selectedStillOriginal,result.plannedCount);
+    assert.equal(result.selectedAlreadyCompacted,0);
+    assert.equal(result.diagnostic,"PREWRITE_CHECKS_PASS_FIRST_WRITE_OR_READBACK_FAILURE_SUSPECTED");
+    assert.equal(result.commitRetryAuthorized,false);
+    assert.equal(h.calls.scriptWrites,0);
+    assert.equal(h.calls.scriptDeletes,0);
+    assert.deepEqual(h.scriptProps,before);
+    assert.deepEqual(h.userProps,uBefore);
+    assert.equal(h.calls.locks,h.calls.unlocks);
+    assert.doesNotMatch(h.logs.join(""),/SUPER_PRIVATE_BACKUP_SECRET|PRIVATE_BACKUP_FILE|private_fake_sheet|REQ001/);
+});
+test("halt audit identifies unrelated Script Property changes without writing",()=>{
+    const h=setup();
+    h.run("vaaPrepareReadyPerformanceCompactionBackup()");
+    h.run("vaaAuthorizeReadyPerformanceCompaction()");
+    h.scriptProps.RPTREG_PRIVATE="changed concurrently";
+    const result=h.run("vaaAuditStoppedReadyPerformanceCompactionReadOnly()");
+    assert.equal(result.snapshotUnchanged,false);
+    assert.equal(result.selectedStillOriginal,result.plannedCount);
+    assert.equal(result.selectedAlreadyCompacted,0);
+    assert.equal(result.diagnostic,"SNAPSHOT_CHANGED_SINCE_PREPARE_DO_NOT_RETRY");
+    assert.equal(h.calls.scriptWrites,0);
+    assert.equal(h.calls.scriptDeletes,0);
+});
+test("halt audit spots accepted first write even when prior appliedCount remained zero",()=>{
+    const h=setup();
+    h.run("vaaPrepareReadyPerformanceCompactionBackup()");
+    h.run("vaaAuthorizeReadyPerformanceCompaction()");
+    const file=[...h.files.values()][0];
+    const one=JSON.parse(file.text).selected[0];
+    h.scriptProps[one.key]=one.compacted;
+    const result=h.run("vaaAuditStoppedReadyPerformanceCompactionReadOnly()");
+    assert.equal(result.selectedAlreadyCompacted,1);
+    assert.equal(result.selectedStillOriginal,result.plannedCount-1);
+    assert.equal(result.diagnostic,"TARGET_WRITE_DETECTED_DO_NOT_RETRY");
+    assert.equal(h.calls.scriptWrites,0);
+    assert.equal(h.calls.scriptDeletes,0);
+    assert.doesNotMatch(h.logs.join(""),/SUPER_PRIVATE_BACKUP_SECRET|PRIVATE_BACKUP_FILE|private_fake_sheet/);
+});
+test("halt audit refuses compromised private backup without touching properties",()=>{
+    const h=setup();
+    h.run("vaaPrepareReadyPerformanceCompactionBackup()");
+    const file=[...h.files.values()][0];
+    file.text+="altered";
+    const result=h.run("vaaAuditStoppedReadyPerformanceCompactionReadOnly()");
+    assert.equal(result.diagnostic,"BACKUP_DIGEST_MISMATCH");
+    assert.equal(h.calls.scriptWrites,0);
+    assert.equal(h.calls.scriptDeletes,0);
 });
