@@ -202,14 +202,17 @@ function vaaPrepareReadyPerformanceCompactionBackup() {
     const backupText = JSON.stringify(packageData);
     const name = VAA_COMPACTION_BACKUP_PREFIX_ +
       new Date(preparedAt).toISOString().replace(/[:.]/g,'-') + '.json';
-    backup = DriveApp.createFile(
-      Utilities.newBlob(backupText, 'application/json', name)
-    );
-    // A newly created My Drive file should be private by default.
-    // Do not call setSharing(PRIVATE, NONE): Apps Script rejects NONE in
-    // File.setSharing for non-ANYONE access types. Fail closed instead.
+    // Create the file with EMPTY content first: no sensitive data may
+    // be written until the new root-level file is proven private.
+    backup = DriveApp.createFile(name, '', 'application/json');
     if (backup.getSharingAccess() !== DriveApp.Access.PRIVATE) {
       throw new Error('VAA_COMPACTION_BACKUP_NOT_PRIVATE');
+    }
+    backup.setContent(backupText);
+    if (backup.getSharingAccess() !== DriveApp.Access.PRIVATE ||
+        vaaRecoveryDigest_(backup.getBlob().getDataAsString('UTF-8')) !==
+          vaaRecoveryDigest_(backupText)) {
+      throw new Error('VAA_COMPACTION_BACKUP_VERIFY_FAILED');
     }
     const pending = {
       version: 1,
