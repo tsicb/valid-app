@@ -26,6 +26,7 @@ function contextFor(properties) {
     const ctx = vm.createContext({
         Utilities: {newBlob:value=>({getBytes:()=>Buffer.from(String(value), "utf8")})},
         PropertiesService: {getScriptProperties:()=>store},
+        API_CONFIG: {REQUEST_PROPERTY_PREFIX:"REQ_"},
         Date, console: {log:s=>logs.push(String(s))}
     });
     vm.runInContext(source, ctx);
@@ -127,4 +128,119 @@ test("editor-run entry point reads exactly once and logs only the safe summary",
     assert.equal(logs.length,1);
     assert.match(logs[0],/^VAA_PROPERTY_CAPACITY_READONLY /);
     assert.doesNotMatch(logs[0],/REDACT_ME|PRIVATE_CLIENT|secret_request|VIEWER_FAKE/);
+});
+
+
+function ready(id, ageDays, mode="CREATE", extra={}) {
+    return JSON.stringify({
+        requestId:id,
+        status:"READY",stage:"READY",
+        operationMode:mode,
+        spreadsheetId:"private_sheet_"+id,
+        createdAt:dateBefore(ageDays),
+        updatedAt:dateBefore(ageDays),
+        leaseUntil:"",
+        ...extra
+    });
+}
+
+test("recovery preview never changes properties and contains no sensitive keys or values",()=>{
+    const p={
+        ...properties,
+        REQ_OLD_1:ready("OLD_1",50,"CREATE",{secretData:secret}),
+        REQ_OLD_2:ready("OLD_2",40,"UPDATE",{anotherSecret:token})
+    };
+    const {ctx,reads,logs}=contextFor(p);
+    // Preview alone reads one snapshot and never calls any mutating methods.
+    const preview=vm.runInContext("vaaPreviewOldReadyRequestCleanupReadOnly()",ctx);
+    assert.equal(reads(),1);
+    assert.equal(preview.strictReadOnly,true);
+    assert.equal(preview.cleanupExecuted,false);
+    assert.equal(preview.eligibleCount,2);
+    assert.equal(preview.eligibleByMode.CREATE.count,1);
+    assert.equal(preview.eligibleByMode.UPDATE.count,1);
+    assert.equal(logs.length,1);
+    assert.match(logs[0],/^VAA_REQUEST_CLEANUP_PREFLIGHT_READONLY /);
+    for(const secretString of [secret,token,workbook,"OLD_1","OLD_2","private_sheet","SOME_UNKNOWN_KEY"]){
+        assert.equal(JSON.stringify(preview).includes(secretString),false);
+        assert.equal(logs[0].includes(secretString),false);
+    }
+});
+
+test("recovery preview excludes active, recent, nonready, mismatched, malformed and unknown records",()=>{
+    const p={
+        REQ_OLD_READY:ready("OLD_READY",40),
+        REQ_RECENT:ready("RECENT",20),
+        REQ_BROKEN:ready("other_request_id",50),
+        REQ_ERROR:JSON.stringify({status:"ERROR",stage:"READY",createdAt:dateBefore(50)}),
+        REQ_BUSY:ready("BUSY",40,"UPDATE",{leaseUntil:new Date(NOW+100000).toISOString()}),
+        REQ_MALFORMED:"not-json",
+        REQ_INCOMPLETE:ready("INCOMPLETE",50,"CREATE",{stage:"REPORT_DONE"}),
+        REQ_BADTIME:ready("BADTIME",50,"CREATE",{createdAt:"invalid-date"}),
+        REQ_NO_TARGET:ready("NO_TARGET",60,"CREATE",{spreadsheetId:""}),
+        REQ_INVALIDMODE:ready("INVALIDMODE",50,"UNK")
+    };
+    const {ctx}=contextFor(p);
+    const out=vm.runInContext(
+        "vaaOldReadyRequestCleanupPreview_(PropertiesService.getScriptProperties().getProperties(), "+NOW+")",
+        ctx
+    );
+    assert.equal(out.eligibleCount,1);
+    assert.equal(out.exclusionCounts.tooRecent,1);
+    assert.equal(out.exclusionCounts.notReady,1);
+    assert.equal(out.exclusionCounts.activeOrUnverifiableLease,1);
+    assert.equal(out.exclusionCounts.malformed,1);
+    assert.equal(out.exclusionCounts.statusOrStageMismatch,1);
+    assert.equal(out.exclusionCounts.unknownDate,1);
+    assert.equal(out.exclusionCounts.missingTarget,1);
+    assert.equal(out.exclusionCounts.missingOrMismatchedRequestId,1);
+    assert.equal(out.exclusionCounts.unknownOperationMode,1);
+    assert.equal(out.proposedCount,0,"below 75% quota should propose no changes");
+});
+
+test("recovery preview targets 75 percent by oldest first and accurately accounts bytes",()=>{
+    const p={
+        ACCESS_KEY:"PRIVATE_MASTER_SECRET",
+        ["VIEWER_ABC"]:"PRIVATE_VIEWER_MAPPING"
+    };
+    for(let i=0;i<180;i++){
+        const id="RECEIPT_"+String(i).padStart(3,"0");
+        p["REQ_"+id]=ready(id,60+i%20,i%2?"CREATE":"UPDATE",{performance:"x".repeat(3350)});
+    }
+    const {ctx}=contextFor(p);
+    const plan=vm.runInContext(
+        "vaaOldReadyRequestCleanupPreview_(PropertiesService.getScriptProperties().getProperties(), "+NOW+")",ctx
+    );
+    assert.equal(plan.eligibleCount,180);
+    assert.ok(plan.currentEstimatedBytes>512000);
+    assert.ok(plan.proposedCount>0);
+    assert.ok(plan.proposedCount<plan.eligibleCount);
+    assert.equal(plan.eligibleByMode.CREATE.count,90);
+    assert.equal(plan.eligibleByMode.UPDATE.count,90);
+    assert.equal(plan.proposedByMode.CREATE.count+plan.proposedByMode.UPDATE.count,plan.proposedCount);
+    assert.equal(plan.currentEstimatedBytes-plan.proposedEstimatedFreedBytes,plan.projectedEstimatedBytes);
+    assert.ok(plan.projectedEstimatedBytes<=plan.targetBytes);
+    assert.ok(plan.canReachTargetWithOldReadyOnly);
+});
+
+test("recovery preview reports insufficiency rather than including young or active requests",()=>{
+    const p={ACCESS_KEY:"X".repeat(530000)};
+    p.REQ_FRESH=ready("FRESH",4);
+    p.REQ_OLD=ready("OLD",45,"CREATE",{notes:"x".repeat(1000)});
+    const {ctx}=contextFor(p);
+    const plan=vm.runInContext(
+        "vaaOldReadyRequestCleanupPreview_(PropertiesService.getScriptProperties().getProperties(), "+NOW+")",ctx
+    );
+    assert.equal(plan.eligibleCount,1);
+    assert.equal(plan.proposedCount,1);
+    assert.equal(plan.canReachTargetWithOldReadyOnly,false);
+    assert.ok(plan.projectedUsagePercent>75);
+    assert.equal(plan.exclusionCounts.tooRecent,1);
+});
+
+test("read-only source has no mutation, network, Drive or spreadsheet calls",()=>{
+    assert.doesNotMatch(source, /\.setProperty\s*\(/);
+    assert.doesNotMatch(source, /\.deleteProperty\s*\(/);
+    assert.doesNotMatch(source, /\.setProperties\s*\(/);
+    assert.doesNotMatch(source, /DriveApp|SpreadsheetApp|UrlFetchApp|ScriptApp|LockService/);
 });
