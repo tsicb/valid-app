@@ -4,14 +4,23 @@ Last updated: 2026-11-18
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
-## Production recovery V2 COMMITTED and verified (2026-11-18, latest)
+## Independent production property-capacity audit confirms recovery (2026-11-18, latest)
+
+- After V2 COMMIT, the operator manually ran the **read-only** `vaaAuditScriptPropertyCapacityReadOnly` at `2026-11-18T07:38:21.501Z`. Independent reported total **382,382 / 512,000 bytes (74.7%)**, exactly matching the V2 commit summary; **258** properties. UTF-8 key+value estimate, not Google's internal billing measurement.
+- Aggregate categories: REQUEST_RECORDS 137 entries / 333,690 B (approx. 87.3% of current usage), REPORT_REGISTRY 38 / 32,485 B, VIEWER_MAPPINGS 77 / 15,850 B, PROTECTED_CONFIG 4 / 227 B, SYSTEM_CONFIG 2 / 130 B; UPDATE_LEASES 0. Largest value 4,541 B; no per-value-limit issues.
+- Request lifecycle: READY 133, ERROR 4, inProgress 0, malformed 0, activeLease 0; 94 older than 30 days and 0 older than 90 days. No additional writes, deletions, or source deployments were required for audit.
+- **Incident state: storage compaction and independent verification COMPLETE.** This is not proof of a successful end-to-end CREATE or of repair of the partially-created workbook; those require separate safe validation. No automatic cleanup is authorized.
+- Capacity headroom to 512,000 B is 129,618 B; margin under the desired 75% (384,000 B) is only 1,618 B, so recurrence-prevention design is the next priority. Current count-based `pruneRequestProperties_` does not address byte saturation at 137 REQ entries. Preserve request ID replay checks, protected config, RPTREG and VIEWER mappings; evaluate byte-budget preflight and retention/archival without deleting history as a separate change.
+- Both private backups (V1/V2) retained; never publish contents, IDs or URLs. Do not rerun a completed V2 COMMIT.
+
+## Production recovery V2 COMMITTED and verified (2026-11-18, operator commit receipt)
 
 - Operator explicitly approved and ran `vaaCommitReadyPerformanceCompactionV2` after a V2 PREPARE and separate AUTHORIZE. Live success receipt:
   `VAA_COMPACTION_V2_COMMITTED {"phase":"V2_COMMITTED_VERIFIED","scriptPropertiesModified":55,"scriptPropertiesDeleted":0,"estimatedBeforeBytes":529156,"estimatedAfterBytes":382382,"estimatedUsagePercent":74.7,"nonTargetDriftSinceBackup":false,"privateBackupRetained":true,"oldV1BackupUntouched":true}`.
 - Exactly **55** old READY receipts had only their optional `performance` removed. Zero Script Property deletions. Final code-level readback verified each write and checked the complete expected final Script Properties snapshot as well as count/capacity.
 - Estimated storage fell **529,156 → 382,382 bytes** (103.4% → 74.7% of the assumed 512,000 B quota), reducing by **146,774 B**. This is the observed V2 COMMIT summary rather than an independent post-commit audit.
 - Old V1 and new V2 private Drive backups remain retained; do not expose either backup, or property contents and identifiers, in GitHub or chat. V2 User Properties plan and approval are cleared on success. Do not rerun V1 or V2 COMMIT.
-- **Next:** run existing editor-only, read-only `vaaAuditScriptPropertyCapacityReadOnly` and share only the aggregate `VAA_PROPERTY_CAPACITY_READONLY` JSON to independently check current size and category breakdown. This does not require a new GAS sync or Web App redeploy.
+- **Completed:** independent editor-only read-only capacity audit corroborated 382,382 B / 74.7%. See the latest section above.
 - Before testing any new CREATE from the incident, reconcile the previously failed workbook (which may contain only `シート1` and `98_運用ログ`) and its original request ID/record to avoid duplicate workbook creation. No production CREATE retry performed as part of this recovery.
 - Follow-on engineering work: protect future writes with byte-budget checks **before** `saveRequestRecord_` and replace count-only `pruneRequestProperties_` (currently capped at 500 records) with a retention policy that preserves request replay/idempotency and protected VIEWER/RPTREG/identity records. Design/test in a separate PR with no automatic history deletion.
 
