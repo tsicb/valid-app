@@ -483,6 +483,17 @@ function doPost(e) {
       }
 
       if (!requestRecord) {
+        // Admission must precede SpreadsheetApp.create, UPDATE target lease
+        // allocation, or any new REQ_ write.
+        const budgetAdmission = vaaCheckNewRequestCapacityReadOnly_(props);
+        if (!budgetAdmission.allowed) {
+          return errorOutput_(
+            'PROPERTY_CAPACITY_NEAR_LIMIT',
+            '保存履歴の容量が安全上限に近づいているため、' +
+              '新規の作成・更新を開始しませんでした。管理者へご連絡ください。'
+          );
+        }
+
         const nowIso =
           new Date().toISOString();
 
@@ -570,7 +581,6 @@ function doPost(e) {
             requestRecord
           );
 
-          pruneRequestProperties_(props);
 
         } else {
           currentPhase =
@@ -628,7 +638,6 @@ function doPost(e) {
             requestRecord
           );
 
-          pruneRequestProperties_(props);
         }
       }
 
