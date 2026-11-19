@@ -255,8 +255,18 @@ function vaaLedgerJournalAppendVerified_(sheet,id,identity,phase,
  * TEST-only and not integrated into doPost. RESERVED itself never authorizes
  * resuming or launching side effects without a separate reviewed cutover.
  */
-function vaaLedgerJournalReserveUnderLock_(props,input) {
-  vaaLedgerJournalAssertTestScope_(props);
+/**
+ * Scope is explicit: existing calls without a third parameter remain
+ * strictly TEST-only. PROD requires the independent gated ACL assertion.
+ */
+function vaaLedgerJournalAssertWriteScope_(props,scope) {
+  if(scope==='PROD')return vaaLedgerProdAssertScope_(props);
+  if(scope==null)return vaaLedgerJournalAssertTestScope_(props);
+  throw vaaLedgerJournalError_('JOURNAL_SCOPE_INVALID');
+}
+
+function vaaLedgerJournalReserveUnderLock_(props,input,scope) {
+  vaaLedgerJournalAssertWriteScope_(props,scope);
   const identity=vaaLedgerJournalIdentity_(input);
   if(props.getProperty(getRequestPropertyKey_(identity.requestId))){
     throw vaaLedgerJournalError_('JOURNAL_PROPERTY_COLLISION');
@@ -284,8 +294,8 @@ function vaaLedgerJournalReserveUnderLock_(props,input) {
  * Complete reservation only after canonical READY REQ_ exists.
  * Preserve REQ_. Never use this to mark PROCESSING/ERROR as READY.
  */
-function vaaLedgerJournalFinalizeReadyUnderLock_(props,requestId) {
-  vaaLedgerJournalAssertTestScope_(props);
+function vaaLedgerJournalFinalizeReadyUnderLock_(props,requestId,scope) {
+  vaaLedgerJournalAssertWriteScope_(props,scope);
   const id=vaaLedgerReadyRequestId_(requestId);
   const tabs=vaaLedgerJournalOpenReadOnly_(props);
   const prior=vaaLedgerJournalLookupFromSheet_(tabs.sheet,id);
