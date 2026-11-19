@@ -133,6 +133,7 @@ function setup(o={}){
     "central-api/20_Request_Ready_Ledger_Foundation.gs",
     "central-api/13_Append_Update_Guard.gs",
     "central-api/21_Request_Ready_Ledger_Replay_Gate.gs",
+    "central-api/23_Request_Ledger_V2_DoPost_Bridge.gs",
     "central-api/02_EntryPoint.gs"
   ])vm.runInContext(read(f),ctx);
   scope.validateEnvelope_=()=>({ok:true});
