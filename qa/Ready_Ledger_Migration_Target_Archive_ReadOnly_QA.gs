@@ -35,6 +35,7 @@ function vaaQaReadyMigrationTargetArchiveReadOnly() {
     v2PreviousFiveEventsPreserved:false,
     v2ReadyReceiptsMatchProperties:false,
     failedCreateV1Preserved:false,
+    failedCreateV1ReceiptPreserved:false,
     ledgerReadOnly:true,
     driveReadOnly:true,
     archiveWrites:0,
@@ -112,6 +113,15 @@ function vaaQaReadyMigrationTargetArchiveReadOnly() {
       );
       out.failedCreateV1Preserved=
         old.state==='RESERVED' && old.revision===1;
+      const oldRaw=String(before[getRequestPropertyKey_(
+        VAA_QA_LEDGER_E2E_CREATE_.requestId
+      )]||'');
+      try{
+        const oldRec=JSON.parse(oldRaw);
+        out.failedCreateV1ReceiptPreserved=
+          oldRec.requestId===VAA_QA_LEDGER_E2E_CREATE_.requestId &&
+          oldRec.status!=='READY' && !!oldRec.spreadsheetId;
+      }catch(_){}
       out.v2ReadyReceiptsMatchProperties=
         create.state==='READY' && create.revision===2 &&
         update.state==='READY' && update.revision===2 &&
@@ -125,6 +135,7 @@ function vaaQaReadyMigrationTargetArchiveReadOnly() {
           )]||'');
       out.v2PreviousFiveEventsPreserved=v2.sheet.getLastRow()===6 &&
         out.failedCreateV1Preserved &&
+        out.failedCreateV1ReceiptPreserved &&
         out.v2ReadyReceiptsMatchProperties;
 
       phase='HISTORIC_TARGET_AND_LEDGER_LOOKUP';
