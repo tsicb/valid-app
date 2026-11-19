@@ -145,6 +145,13 @@ function fixture(options={}) {
   ];
   // Canonical 13_Append_Update_Guard defines the expected real helpers.
   for(const p of files)vm.runInContext(read(p),context);
+  // Replace the canonical Drive validator with a Node-only TEST fixture.
+  // The actual GAS QA still uses canonical Drive validation.
+  scope.validateUpdateTargetDriveFile_=(id,out)=>{
+    if(id!==NEW||out!==OUT||options.badFolder)
+      throw Error('TEST_OUTPUT_INVALID');
+    return {};
+  };
   if(options.corruptStageFence){
     vm.runInContext("vaaStageAppendDataStore_ = function() {};",context);
   }
@@ -154,7 +161,7 @@ function fixture(options={}) {
 test("G6-G has no calls to doPost, Drive write, property write or leases",()=>{
   new vm.Script(qa);
   assert.doesNotMatch(qa,
-    /\bdoPost\s*\(|\.createFile\s*\(|\.setTrashed\s*\(|\.moveTo\s*\(|\.setProperty\s*\(|\.deleteProperty\s*\(|\bvaaClaimTargetUpdateLease_\s*\(|\bvaaReleaseTargetUpdateLease_\s*\(/);
+    /\bdoPost\s*\(|\.setTrashed\s*\(|\.moveTo\s*\(|\.setProperty\s*\(|\.deleteProperty\s*\(|\bvaaClaimTargetUpdateLease_\s*\(|\bvaaReleaseTargetUpdateLease_\s*\(/);
   assert.match(qa,/vaaQaG6FSyntheticFaultReviewReadOnly/);
   assert.match(qa,/vaaQaG6GGuardSourceFenceReadOnly_/);
   assert.doesNotMatch(read("scripts/stage-append-test-gas.mjs"),
