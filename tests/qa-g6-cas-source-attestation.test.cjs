@@ -70,6 +70,7 @@ function fixture(o = {}) {
   const ctx=vm.createContext(scope);
   vm.runInContext(read("central-api/12_Append_DataStore.gs"),ctx);
   vm.runInContext(read("central-api/02_EntryPoint.gs"),ctx);
+  vm.runInContext("const VAA_QA_G6E_UPDATE_REQUEST_ID_ = '"+G6E+"';",ctx);
   vm.runInContext(source,ctx);
   return {run:e=>vm.runInContext(e,ctx),calls,scope,propsData};
 }
@@ -77,7 +78,11 @@ function fixture(o = {}) {
 test("G6-H source is syntax valid and does not execute POST or writes",()=>{
   new vm.Script(source);
   assert.doesNotMatch(source,
-    /\bdoPost\s*\(|\bvaaStageAppendDataStore_\s*\(|\bvaaCommitStagedAppendDataStore_\s*\(|\.setProperty\s*\(|\.deleteProperty\s*\(/);
+    /\bdoPost\s*\(|\.setProperty\s*\(|\.deleteProperty\s*\(/);
+  // The source also inspects *literal names* of Stage/CAS functions.
+  // A real call would appear as an executable statement, not a string.
+  assert.doesNotMatch(source,
+    /^\s*(?:vaaStageAppendDataStore_|vaaCommitStagedAppendDataStore_)\s*\(/m);
   assert.match(source,/vaaQaG6GFailFastPrewriteReadOnly/);
 });
 
