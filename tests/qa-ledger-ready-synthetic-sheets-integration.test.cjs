@@ -75,7 +75,16 @@ function make(opts={}) {
       Access:{PRIVATE:"PRIVATE"},
       getFileById:id=>{
         if(id===ledgerId){effects.ledgerReads++;return ledgerFile;}
-        if(id===target){effects.targetReads++;return {getName:()=>"QA_G6D_SYNTHETIC"};}
+        if(id===target){effects.targetReads++;return {
+          getName:()=>"QA_G6D_SYNTHETIC",
+          getMimeType:()=>"application/vnd.google-apps.spreadsheet",
+          getParents:()=>{
+            let used=false;
+            return {hasNext:()=>!used,next:()=>{
+              used=true;return {getId:()=>output};
+            }};
+          }
+        };}
         throw Error("UNKNOWN_DRIVE_FILE");
       }
     },
