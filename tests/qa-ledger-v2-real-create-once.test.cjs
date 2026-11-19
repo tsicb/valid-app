@@ -59,13 +59,28 @@ function harness(o={}) {
     VAA_LEDGER_REPLAY_MODE_PROPERTY_:"VAA_REQUEST_LEDGER_REPLAY_MODE",
     VAA_LEDGER_JOURNAL_TEST_MODE_:"TEST_RESERVATION_V1",
     VAA_LEDGER_REPLAY_TEST_MODE_:"TEST_READY_REPLAY_ONLY_V1",
-    API_CONFIG:{REQUEST_PROPERTY_PREFIX:"REQ_",SHEET_OUTPUT_FOLDER_ID:output},
+    API_CONFIG:{REQUEST_PROPERTY_PREFIX:"REQ_",SHEET_OUTPUT_FOLDER_ID:output,MAX_DATASET_ROWS:100000},
+    VAAAppendMergeCore:{merge:({incoming})=>({
+      applicationData:copy(incoming.applicationData),
+      jobAnalysisMaster:copy(incoming.jobAnalysisMaster)
+    })},
+    SpreadsheetApp:{openById:id=>{
+      if(id!==target||o.invalidTarget)throw Error("TEST_TARGET_UNVERIFIED");
+      return {getId:()=>id};
+    }},
+    vaaQaG5ReadTestDataStore_:()=>({
+      applicationData:{headers:["X"],rows:[["1"]]},
+      jobAnalysisMaster:{headers:["job"],rows:[["QJ1"]]}
+    }),
     PropertiesService:{getScriptProperties:()=>props},
     vaaQaG4IsolatedConfig_:()=>props,
     vaaQaG4SyntheticPayload_:()=>({
       action:"create",requestId:oldIds[0],accessKey:"QA_SECRET_MUST_NOT_LOG",
       outputFolderId:output,companyDisplayName:"QA_G4_OLD",
-      datasets:{applicationData:{headers:["X"],rows:[["1"]]}}
+      datasets:{
+        applicationData:{headers:["X"],rows:[["1"]]},
+        jobAnalysisMaster:{headers:["job"],rows:[["QJ1"]]}
+      }
     }),
     vaaQaG4Invoke_:payload=>{
       writes.posts++;
@@ -154,6 +169,7 @@ test("Create Once writes a synthetic READY and returns V2 rev2 verified result",
   assert.equal(r.responseMatchesVerifiedTestReceipt,true);
   assert.equal(r.journalRevision,2);
   assert.equal(r.journalReadyAfterPost,true);
+  assert.equal(h.run("vaaQaLedgerE2ECreateInspectReadOnly").syntheticWorkbookDataMatchesExpected,true);
   assert.equal(h.writes.posts,1);
   assert.deepEqual(oldIds.map(id=>h.propsMap["REQ_"+id]),originals);
   assert.equal(h.writes.deleted,0);
