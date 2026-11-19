@@ -252,14 +252,20 @@ test("G6-I blocks any prior stage artifact, prior receipt, lease or reserved UPD
 });
 
 test("G6-I blocks low capacity and pointer/merge/source uncertainty",()=>{
-  for(const o of [
-    {noCapacity:true},{badSourcePointer:true},
-    {badSourceOwner:true},{corruptExisting:true},
-    {pointerChanged:true}
-  ]){
+  // A safe but unfavorable budget/pointer check returns a review denial.
+  for(const o of [{noCapacity:true},{pointerChanged:true}]){
     const h=makeHarness(o);
     const r=h.run("vaaQaG6IStagePreflightReadOnly()");
     assert.equal(r.readyForStageOnlyDesignReview,false);
+    assert.equal(h.state.writes,0);
+    assert.equal(h.state.filesCreated,0);
+  }
+  // Invalid source / baseline is a stronger gate and must throw closed.
+  for(const o of [
+    {badSourcePointer:true},{badSourceOwner:true},{corruptExisting:true}
+  ]){
+    const h=makeHarness(o);
+    assert.throws(()=>h.run("vaaQaG6IStagePreflightReadOnly()"));
     assert.equal(h.state.writes,0);
     assert.equal(h.state.filesCreated,0);
   }
