@@ -52,7 +52,7 @@ function makeHarness(opts={}){
   };
   const scope={
     API_CONFIG:{
-      ROOT_FOLDER_ID:opts.wrongRoot?"NOT_TEST_ROOT":root,
+      ROOT_FOLDER_ID:root,
       SHEET_OUTPUT_FOLDER_ID:output,
       REQUEST_PROPERTY_PREFIX:"REQ_",
       ANALYSIS_DATASTORE_FOLDER_PROPERTY:"ANALYSIS_DATASTORE_FOLDER_ID",
@@ -159,6 +159,18 @@ function makeHarness(opts={}){
   // Use the actual pure canonical merge wrapper, not an independent
   // fake merger. The stage and commit functions are loaded, never invoked.
   vm.runInContext(read("central-api/12_Append_DataStore.gs"),ctx);
+  // Node harness only: the canonical read helper uses DriveApp, but this
+  // particular test supplies a fully validated synthetic source object.
+  // Keep the real vaaBuildAppendStorePlan_ merger untouched.
+  scope.vaaReadAppendStoreSource_=()=>({
+    fileId:opts.badSourcePointer?"UNKNOWN_FILE":newPointer,
+    dataObject:opts.badSourceOwner?{
+      ...clone(stored),requestId:"OTHER_REQUEST"
+    }:clone(stored)
+  });
+  // Construct fixture data in the TEST root, then deliberately violate it
+  // before invoking G6-I when testing the wrong-root guard.
+  if(opts.wrongRoot)scope.API_CONFIG.ROOT_FOLDER_ID="NOT_TEST_ROOT";
   vm.runInContext(source,ctx);
   return {run:x=>vm.runInContext(x,ctx),state,properties};
 }
