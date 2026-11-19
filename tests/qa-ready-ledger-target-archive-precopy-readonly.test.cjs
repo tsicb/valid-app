@@ -139,7 +139,11 @@ function harness(opts={}){
   };
   const ctx=vm.createContext(mock);
   vm.runInContext(capacity,ctx);
+  // Keep the real READY receipt validator, but retain the in-memory mock
+  // for Sheets queries; loading the 20_ source declares a lookup function.
+  const readMock=mock.vaaLedgerReadyLookupFromSheet_;
   vm.runInContext(archive,ctx);
+  ctx.vaaLedgerReadyLookupFromSheet_=readMock;
   vm.runInContext(inventory,ctx);
   vm.runInContext(qa,ctx);
   return {run:()=>ctx.vaaQaReadyMigrationTargetArchiveReadOnly(),calls,propsMap};
