@@ -160,7 +160,7 @@ function harness(opts={}){
 test("OFF state read-only preflight passes but armed one rejects",()=>{
   const h=harness();
   const a=h.off(),b=h.armed();
-  assert.equal(a.pass,true);
+  assert.equal(a.pass,true,JSON.stringify(a));
   assert.equal(a.copyModeOff,true);
   assert.equal(a.propertiesWritten,false);
   assert.equal(b.pass,false);
@@ -173,7 +173,7 @@ test("armed preflight passes only for explicit TEST mode, selected G4 CREATE, an
   const h=harness({arm:true});
   assert.equal(h.off().pass,false);
   const a=h.armed();
-  assert.equal(a.pass,true);
+  assert.equal(a.pass,true,JSON.stringify(a));
   assert.equal(a.knownOneG4CreateTarget,true);
   assert.equal(a.selectedLegacyReadyAbsentFromV1,true);
   assert.equal(h.state.calls.copy,0);
