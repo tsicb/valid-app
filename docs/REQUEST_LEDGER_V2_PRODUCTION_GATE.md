@@ -51,6 +51,23 @@
 4. 新規REQ_の自動退避を有効化する場合は、その後の検証結果をもって別途承認する。REPLAYゲートをOFFに戻してはならない。
 5. 旧REQ_の容量削減には、**別途**バックアップ、V1への一括コピー・検証、既存のREQなし再送ゲートの照合、そして承認付きの整理が必要。今回のPRでは旧REQを削除しない。
 
+## 旧READY履歴の一括移管と容量解放（別承認、初期OFF）
+
+本PRは `25_Request_Ledger_V2_Legacy_Batch_Migration.gs` も追加する。これにより、旧READYを1件ずつの専用QAで処理する方式を終了し、管理者がまとめて移管・監査できる。ただし本番書き込みは本PRでは実行しない。
+
+旧READYの移管には本番PRIVATE `receipts` 台帳のほかに、独立したPRIVATE Google Sheetsバックアップを追加で用意する。バックアップには同じ`receipts` 7列ヘッダーを設定し、Script Property `VAA_PROD_LEGACY_BACKUP_SPREADSHEET_ID` にIDを保存する。バックアップは主台帳と異なるGoogleファイルで、いずれも本番管理ルートの直下・非公開とする。
+
+| 手動関数 | 条件・操作 |
+|---|---|
+| `vaaLedgerProdLegacyAuditReadOnly` | コピー状況・未バックアップ件数・除外件数を読み取り専用で集計。ID・値はログに出さない |
+| `vaaLedgerProdLegacyCopyBatchOnce` | `VAA_PROD_LEGACY_MIGRATION_MODE=COPY_DUAL_ARCHIVE_READY_V1`を明示設定したときのみ、最大10件を「独立バックアップ→V1本台帳」の順に書込・全値照合。REQは維持 |
+| `vaaLedgerProdLegacyRetireBatchOnce` | **別途** `VAA_PROD_LEGACY_MIGRATION_MODE=RETIRE_DUAL_VERIFIED_READY_V1`の承認後のみ。全残存READYが両台帳に完全一致している状態で最大10件を削除し、即時に台帳READY再送を独立照合 |
+| `VAA_PROD_LEGACY_MIGRATION_MODE=OFF` | 初期状態。コピー・削除とも不可 |
+
+3つの関数はプロダクションV2のゲートが有効・PRIVATE台帳アクセス正常であることを前提とする。途中でAPIエラーや応答喪失が発生した場合、その回の完了状態は不明である。**自動再実行せず**読み取り専用の`vaaLedgerProdLegacyAuditReadOnly`で状況を確認する。ERROR/PROCESSINGのREQ、未知の権限、現存しない対象、UPDATEリースのある履歴、V2にRESERVEDがある履歴は処理しない。元REQが削除された履歴は非公開の二重アーカイブから再送でき、OFFに戻して従来コードへ無条件フォールバックすることは禁止する。
+
+上記はあくまで将来の本番移行のための「コード準備」。本番での実移管、退避設定の有効化、実際の削除はそれぞれ事前の確認と明示承認が必要。
+
 ## 既存の隔離TEST実績
 
 - 新規V2 CREATE/UPDATEは隔離TESTでREADY rev2まで成功。
