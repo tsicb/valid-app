@@ -71,6 +71,7 @@ TESTモード有効期間中、許可された1件以外の通常requestIdを`do
 
 実行後監査 `VAA_QA_LEDGER_V2_E2E_CREATE_INSPECT`：
 - `journalState:"READY"`、`journalRevision:2`、`journalReady:true`
+- `syntheticWorkbookDataMatchesExpected:true`（新規TEST DataStoreの架空応募1件・架空求人1件が期待データと完全一致）
 - `journalStableAcrossReads:true`、`newReceiptReady:true`、`readyJournalMatchesReceipt:true`
 - `historicReadyCount:4`、`historicReadyUnchangedAcrossInspection:true`
 - `v1PreviousSyntheticRowPreserved:true`、`newRequestNotDuplicatedInV1:true`
@@ -78,7 +79,7 @@ TESTモード有効期間中、許可された1件以外の通常requestIdを`do
 
 ## 次のUPDATE試験への引継ぎとフラグ
 
-CREATEが成功したら、同じTEST workbookに**別の新規合成UPDATE requestId**を用いて、同じRESERVED→UPDATE→READYの経路を1回検証する。UPDATEまで成功した後に切替フラグをOFFへ戻す。CREATEが不明・失敗した場合はフラグや履歴の状態を確認してから対応を決める（自動再開しない）。
+CREATEが成功したら、同じTEST workbookに**別の新規合成UPDATE requestId**を用いて、同じRESERVED→UPDATE→READYの経路を1回検証する。ただし、その実装・事前検証を開始するまで、TESTの`VAA_JOURNAL_DOP_MODE`は`OFF`に戻しておく。後でUPDATEの許可範囲を改めて1件だけ設定する。CREATEが不明・失敗した場合も、Inspectorの結果を保全したうえで`VAA_JOURNAL_DOP_MODE`を`OFF`にし、自動再開しない。**モードOFFでもE2E用合成requestIdはブリッジが新規受付を遮断する。**
 
 TEST用の新しいREADY履歴を作成した時点では容量は減らない。最終的な容量対策は、READY履歴を外部台帳へ移し、履歴を削減しても同じrequestIdの再実行が起こらないことを独立検証してから本番切替すること。
 
