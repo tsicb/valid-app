@@ -93,6 +93,7 @@ function harness(opts={}){
         targetFilesVerified:4,v1ArchiveMissingCount:noCopy?4:3,
         v1ArchiveExactMatchCount:noCopy?0:1,
         v1ArchiveConflictCount:0,v2LegacyAbsentCount:4,
+        v2LegacyCollisionCount:0,
         v2PreviousFiveEventsPreserved:true,
         v1ArchiveExpectedRowCount:noCopy,
         v1SyntheticOriginalPreserved:true,archiveWrites:0,
