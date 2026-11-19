@@ -164,6 +164,15 @@ function make(opts={}){
     "central-api/23_Request_Ledger_V2_DoPost_Bridge.gs",
     "central-api/02_EntryPoint.gs"
   ])vm.runInContext(read(file),ctx);
+  // Override all targeted test stubs AFTER canonical source declarations
+  // are loaded. Function declarations in 02/04/13 replace earlier values.
+  scope.validateEnvelope_=()=>({ok:true});
+  scope.extractSpreadsheetId_=v=>v===TARGET?TARGET:"";
+  scope.vaaDigestUpdateRequest_=()=>opts.badDigest ?
+    "CHANGED_DIGEST":"qa_digest_001";
+  scope.resolveCreateOutputFolder_=()=>({
+    getId:()=>OUTPUT,getName:()=>"QA_TEST_OUTPUT"
+  });
   // The canonical 04 declaration overrides the fixture's test stub.
   // Override ONLY the UPDATE side effect boundary after VM loading.
   if(opts.update)scope.validateUpdateTargetDriveFile_=()=>{
