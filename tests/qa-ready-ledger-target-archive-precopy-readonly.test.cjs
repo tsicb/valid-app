@@ -148,7 +148,7 @@ function harness(opts={}){
 test("known seven-REQ TEST baseline: all four legacy targets valid and absent from V1/V2",()=>{
   const h=harness();
   const r=h.run();
-  assert.equal(r.pass,true);
+  assert.equal(r.pass,true,JSON.stringify(r));
   assert.equal(r.expectedSevenReceipts,true);
   assert.equal(r.fourHistoricCandidatesVerified,true);
   assert.equal(r.targetFilesVerified,4);
