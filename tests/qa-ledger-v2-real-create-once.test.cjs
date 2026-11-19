@@ -87,7 +87,7 @@ function harness(o={}) {
     },
     validateEnvelope_:()=>({ok:!o.invalidPayload,code:"BAD_PAYLOAD"}),
     vaaCheckNewRequestCapacityReadOnly_:()=>({allowed:!o.noCapacity}),
-    vaaLedgerReadyCheckPrivateTestLedger_:()=>readySheet,
+    vaaQaLedgerReadyCheckPrivateTestLedger_:()=>readySheet,
     vaaLedgerJournalOpenReadOnly_:()=>({
       sheet,readySheet
     }),
