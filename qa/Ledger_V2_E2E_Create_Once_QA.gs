@@ -221,6 +221,28 @@ function vaaQaLedgerE2ECreateInspectReadOnly() {
     receipt.stage==='READY' &&
     receipt.operationMode==='CREATE' &&
     targetValid;
+  // The file's existence alone does not prove it contains the intended
+  // synthetic data. Read actual TEST DataStore contents and compare with
+  // the canonical REPLACE merge shape used by the existing G6-D QA.
+  let workbookSyntheticDataVerified=false;
+  if(receiptReady) {
+    try {
+      const ss=SpreadsheetApp.openById(receipt.spreadsheetId);
+      const actual=vaaQaG5ReadTestDataStore_(ss);
+      const expected=VAAAppendMergeCore.merge({
+        mode:'REPLACE',
+        incoming:vaaQaLedgerE2ECreatePayload_().datasets,
+        maxRows:API_CONFIG.MAX_DATASET_ROWS
+      });
+      workbookSyntheticDataVerified=
+        JSON.stringify(actual.applicationData)===
+          JSON.stringify(expected.applicationData) &&
+        JSON.stringify(actual.jobAnalysisMaster)===
+          JSON.stringify(expected.jobAnalysisMaster) &&
+        actual.applicationData.rows.length===1 &&
+        actual.jobAnalysisMaster.rows.length===1;
+    }catch(_){}
+  }
   const matchesJournal=receiptReady && journalReady &&
     JSON.stringify(first.latest.body.receipt)===raw;
   const archive=vaaLedgerReadyLookupFromSheet_(readySheet,id);
@@ -240,6 +262,7 @@ function vaaQaLedgerE2ECreateInspectReadOnly() {
     newReceiptExists:!!raw,
     newReceiptReady:receiptReady,
     verifiedTargetInIsolatedTestOutput:targetValid,
+    syntheticWorkbookDataMatchesExpected:workbookSyntheticDataVerified,
     readyJournalMatchesReceipt:matchesJournal,
     v1PreviousSyntheticRowPreserved:oldSynthetic.state==='FOUND',
     newRequestNotDuplicatedInV1:archive.state==='NOT_FOUND',
@@ -258,6 +281,7 @@ function vaaQaLedgerE2ECreateInspectReadOnly() {
   out.pass=!!(out.journalStableAcrossReads &&
     out.journalReady && out.journalRevision===2 &&
     receiptReady && matchesJournal &&
+    workbookSyntheticDataVerified &&
     out.v1PreviousSyntheticRowPreserved &&
     out.newRequestNotDuplicatedInV1 &&
     out.historicReadyCount===4 &&
