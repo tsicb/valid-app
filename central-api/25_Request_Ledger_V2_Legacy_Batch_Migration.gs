@@ -18,6 +18,14 @@ const VAA_PROD_LEGACY_RETIRE_MODE_='RETIRE_DUAL_VERIFIED_READY_V1';
 const VAA_PROD_LEGACY_BACKUP_PROP_='VAA_PROD_LEGACY_BACKUP_SPREADSHEET_ID';
 const VAA_PROD_LEGACY_BATCH_LIMIT_=10;
 
+function vaaLedgerProdLegacySnapshotsEqual_(left,right){
+  const ak=Object.keys(left||{}).sort();
+  const bk=Object.keys(right||{}).sort();
+  return ak.length===bk.length && ak.every(function(key,i){
+    return key===bk[i] && left[key]===right[key];
+  });
+}
+
 function vaaLedgerProdLegacyBackupSheet_(props){
   vaaLedgerProdAssertScope_(props);
   const id=String(props.getProperty(VAA_PROD_LEGACY_BACKUP_PROP_)||'').trim();
@@ -173,7 +181,7 @@ function vaaLedgerProdLegacyAuditReadOnly(){
       modernJournalExcluded:reviewed.modernJournalExcluded,
       targetsVerified:reviewed.targetsVerified
     });
-    out.sourceStable=vaaQaReadyMigrationSameSnapshot_(
+    out.sourceStable=vaaLedgerProdLegacySnapshotsEqual_(
       before,props.getProperties()
     );
     out.pass=out.sourceStable && reviewed.conflicting===0;
@@ -308,7 +316,7 @@ function vaaLedgerProdLegacyMutateBatch_(action){
         delete acceptable[getRequestPropertyKey_(item.id)];
       });
     }
-    out.sourceStableAfter=vaaQaReadyMigrationSameSnapshot_(acceptable,after);
+    out.sourceStableAfter=vaaLedgerProdLegacySnapshotsEqual_(acceptable,after);
     if(!out.sourceStableAfter){
       throw vaaLedgerReadyError_('LEGACY_BATCH_SOURCE_CHANGED');
     }
