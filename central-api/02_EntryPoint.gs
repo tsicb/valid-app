@@ -419,6 +419,28 @@ function doPost(e) {
           requestId
         );
 
+      // TEST-ONLY ledger replay: default OFF. With explicitly approved
+      // synthetic TEST settings, a missing REQ_ may replay one archived
+      // READY, but missing ledger evidence MUST NOT admit a new CREATE/UPDATE.
+      // This check precedes all new-workbook/lease/receipt side effects.
+      if (!storedReceiptExists) {
+        const ledgerReplay = vaaLedgerReplayDecisionReadOnly_(
+          props, requestId, operationMode, targetSpreadsheetId,
+          updateStrategy, updateRequestDigest
+        );
+        if (ledgerReplay.state === 'HALT') {
+          return errorOutput_(
+            ledgerReplay.code,
+            '履歴台帳で安全な再送判定ができないため、処理を停止しました。'
+          );
+        }
+        if (ledgerReplay.state === 'READY') {
+          return jsonOutput_(buildReadyResponse_(
+            ledgerReplay.record, requestId, true, startedAt
+          ));
+        }
+      }
+
       if (storedReceiptExists && !requestRecord) {
         return errorOutput_(
           'REQUEST_RECEIPT_UNVERIFIED',
