@@ -65,7 +65,8 @@ function setup(o={}){
   };
   const targetFile={
     getMimeType:()=>"application/vnd.google-apps.spreadsheet",
-    getParents:()=>iter([{getId:()=>o.targetOutside?"OTHER_FOLDER":output}]),
+    getParents:()=>iter([{getId:()=>o.targetOutside?"OTHER_FOLDER":output,
+      getParents:()=>iter([])}]),
     getName:()=>"QA_INDEPENDENT_TEST_WORKBOOK"
   };
   const sheet={
