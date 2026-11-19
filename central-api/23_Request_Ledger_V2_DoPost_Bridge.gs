@@ -37,7 +37,7 @@ function vaaLedgerDopScopeCode_(props,id,operationMode) {
     typeof VAA_QA_G4_CONFIG_!=='undefined' ?
       VAA_QA_G4_CONFIG_ : null;
   if(!qa || !qa.testRootId || !qa.testOutputId ||
-     !/^QA_JOURNAL_E2E_(CREATE|UPDATE)_[0-9]{8}_V1$/.test(id) ||
+     !/^QA_JOURNAL_E2E_(CREATE|UPDATE)_[0-9]{8}_V[12]$/.test(id) ||
      allowed!==id ||
      (operationMode==='CREATE' &&
       id.indexOf('QA_JOURNAL_E2E_CREATE_')!==0) ||
