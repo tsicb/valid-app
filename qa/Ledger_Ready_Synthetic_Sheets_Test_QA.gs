@@ -199,7 +199,6 @@ function vaaQaLedgerReadySyntheticCopyOnce() {
       syntheticArchiveRowCount:sheet.getLastRow()-1,
       historicReadyReceipts:source.domain.readyCount,
       originalRequestPropertiesUnchanged:noPropertyWrites,
-      existingSyntheticStageUnchanged:true,
       realRequestIdReplayed:false,
       actualUpdatePerformed:false,
       actualCasPerformed:false,
