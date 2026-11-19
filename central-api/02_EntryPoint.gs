@@ -35,6 +35,8 @@ function doPost(e) {
   let updateRequestDigest = '';
   let updateLeaseHeld = false;
   let appendWriteResult = null;
+  // True only after the V2 TEST journal has verified RESERVED rev1.
+  let journalAdmissionRequired = false;
   const pipelineTrace = {
     transportMode:
       'PLAIN_JSON',
@@ -419,11 +421,33 @@ function doPost(e) {
           requestId
         );
 
-      // TEST-ONLY ledger replay: default OFF. With explicitly approved
-      // synthetic TEST settings, a missing REQ_ may replay one archived
-      // READY, but missing ledger evidence MUST NOT admit a new CREATE/UPDATE.
-      // This check precedes all new-workbook/lease/receipt side effects.
-      if (!storedReceiptExists) {
+      // V2 reservation-before-side-effects gate. Default OFF.
+      // When TEST scope is explicitly enabled, journal READY is replayed,
+      // RESERVED/ERROR fails closed, and a verified new reservation must
+      // exist before ANY workbook/lease/REQ_ write.
+      const journalDecision = vaaLedgerDopDecideUnderLock_(
+        props, requestId, operationMode, targetSpreadsheetId,
+        updateStrategy, updateRequestDigest, storedReceiptExists
+      );
+      if (journalDecision.state === 'HALT') {
+        return errorOutput_(
+          journalDecision.code,
+          '予約履歴台帳で安全な判定ができないため、処理を停止しました。'
+        );
+      }
+      if (journalDecision.state === 'READY') {
+        return jsonOutput_(buildReadyResponse_(
+          journalDecision.record, requestId, true, startedAt
+        ));
+      }
+      if (journalDecision.state === 'ADMITTED') {
+        journalAdmissionRequired = true;
+      }
+
+      // V1 READY-only TEST replay is independent and default OFF.
+      // Once V2 has RESERVED, do not call the V1-only gate.
+      if (journalDecision.state === 'DISABLED' &&
+          !storedReceiptExists) {
         const ledgerReplay = vaaLedgerReplayDecisionReadOnly_(
           props, requestId, operationMode, targetSpreadsheetId,
           updateStrategy, updateRequestDigest
@@ -1930,6 +1954,21 @@ requestPerformance
       } catch (releaseError) {
         console.error('Target lease cleanup: ' +
           safeErrorMessage_(releaseError));
+      }
+    }
+
+    // REQ_ READY and (for UPDATE) lease release are already complete.
+    // Only V2-admitted TEST requests must then persist READY revision 2.
+    // An uncertain result HALTs without changing READY back to ERROR.
+    if (journalAdmissionRequired) {
+      const journalReady = vaaLedgerDopFinalizeReady_(
+        props, requestId, operationMode
+      );
+      if (journalReady.state !== 'READY') {
+        return errorOutput_(
+          journalReady.code || 'JOURNAL_DOP_FINALIZE_UNVERIFIED',
+          '台帳の完了記録を確認できません。再実行せず管理者にご連絡ください。'
+        );
       }
     }
 
