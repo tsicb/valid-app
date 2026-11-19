@@ -2106,12 +2106,19 @@ requestPerformance
           requestRecord.performance
             ? requestRecord.performance
             : {},
+        // Legacy non-journal errors may be resumed by the existing
+        // recovery workflow. A V2 RESERVED request must NEVER be retried:
+        // its workbook may already exist and dataset writes may be partial.
         retryable:
+          !journalAdmissionRequired &&
           !!(
             requestRecord &&
             requestRecord
               .spreadsheetId
           ),
+        journalRecoveryDisposition:
+          journalAdmissionRequired ?
+            'INSPECT_ONLY_NO_RETRY' : '',
         status:
           requestRecord
             ? requestRecord.status
