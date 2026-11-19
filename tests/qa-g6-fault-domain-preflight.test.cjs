@@ -72,6 +72,12 @@ function fixture(opts={}) {
   if(opts.missingHelper)delete scope.vaaStageAppendDataStore_;
   const ctx=vm.createContext(scope);
   vm.runInContext(g4,ctx);
+  // Simulate constants defined by the already-installed G5 QA files.
+  vm.runInContext(
+    "const VAA_QA_G5_APPEND_REQUEST_ID_ = 'QA_G5_SYNTHETIC_APPEND_20261118_V1';" +
+    "const VAA_QA_G5_REPLACE_REQUEST_ID_ = 'QA_G5_SYNTHETIC_REPLACE_20261119_V1';",
+    ctx
+  );
   vm.runInContext(g6c,ctx);
   return {state,values,run:expr=>vm.runInContext(expr,ctx)};
 }
