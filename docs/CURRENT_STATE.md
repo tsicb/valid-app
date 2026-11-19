@@ -1,8 +1,17 @@
 # Current State
 
-Last updated: 2026-11-18
+Last updated: 2026-11-20
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
+
+## Production V2 request-journal integration (2026-11-20, PR #48; source only, OFF)
+
+- Added `central-api/24_Request_Ledger_V2_Production_Gate.gs` and integrated its gated admission/READY finalization into `doPost`. Production mode is **dormant** by default. Existing TEST journal and legacy request behavior remain available when the PROD gate is not armed.
+- Production gateway checks private Google Sheets ledger ACL and direct root folder, V1 READY + V2 journal, UPDATE target/strategy/digest and target file before replay; reserves a new V2 event before any CREATE/UPDATE side effect; RESERVED/ERROR/unavailable/corrupt journal is fail-closed. A sticky Script Property fence refuses unsafe OFF fallback after activation.
+- New V2 READY hot receipt retirement is a **separate OFF-by-default mode**, only for new PROD-V2-admitted requests after verified journal READY. Historical legacy REQ_ are never auto-deleted by this path.
+- Scope-aware journal functions retain the original isolated TEST default. Targeted Node regression tests pass; no production GAS sync, Web App deployment, property changes or data migration were performed by this GitHub PR. See [full activation and cutover notes](REQUEST_LEDGER_V2_PRODUCTION_GATE.md).
+- Also added `central-api/25_Request_Ledger_V2_Legacy_Batch_Migration.gs`: default-OFF, editor-only dual-private-ledger backup + V1 COPY of up to 10 historic READY receipts per call, separate gated RETIRE after 100% dual-copy verification and safe READY replay. Non-READY, V2 pending and active leases are excluded; no automatic retry. See the [batch migration section](REQUEST_LEDGER_V2_PRODUCTION_GATE.md).
+- Remaining for completion: production private ledger and independent backup provisioning/verification; guarded activation and end-to-end test; actual historic READY dual-copy/inspect and separately authorized retirement; gradual enablement of new-request READY retirement. The previous isolated TEST one-off legacy READY copy is verified and the mode returned to OFF.
 
 ## Request receipt capacity recurrence guard (2026-11-18, PR #16 draft)
 
