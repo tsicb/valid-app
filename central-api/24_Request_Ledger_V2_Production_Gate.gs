@@ -1,0 +1,218 @@
+/**
+ * Authoritative V2 request journal production gateway.
+ *
+ * This source is DORMANT until all explicit PROD properties are set.
+ * It reuses the same immutable journal, READY archive, and ScriptLock
+ * ordering proven in isolated TEST. No production action is authorized
+ * by merely merging/syncing this source.
+ *
+ * Safety invariants:
+ *  - all new CREATE/UPDATE require a VERIFIED RESERVED event BEFORE
+ *    target creation, UPDATE lease, or REQ_ writes;
+ *  - existing REQ_ entries remain authoritative for legacy requests;
+ *  - archived READY (V1 or V2) can replay with REQ_ absent, never re-run;
+ *  - RESERVED/ERROR, invalid/corrupt/unavailable ledger or mismatch HALT;
+ *  - sticky production fence HALTs if the journal mode is turned OFF;
+ *  - retiring newly finalized READY properties requires a *separate*
+ *    explicit setting, is disabled by default, and never touches legacy.
+ *
+ * Never print requestId, receipt JSON, private ledger IDs or config values.
+ */
+const VAA_LEDGER_PROD_MODE_='PROD_V2_GATED';
+const VAA_LEDGER_PROD_JOURNAL_MODE_='PROD_RESERVATION_V2';
+const VAA_LEDGER_PROD_FENCE_PROP_='VAA_PROD_LEDGER_FENCE';
+const VAA_LEDGER_PROD_FENCE_ON_='ACTIVE_V1';
+const VAA_LEDGER_PROD_ROOT_PROP_='VAA_PROD_LEDGER_ROOT_ID';
+const VAA_LEDGER_PROD_OUTPUT_PROP_='VAA_PROD_LEDGER_OUTPUT_ID';
+const VAA_LEDGER_PROD_RETIRE_PROP_='VAA_PROD_READY_RETIRE_MODE';
+const VAA_LEDGER_PROD_RETIRE_ON_='RETIRE_VERIFIED_NEW_READY_V1';
+
+function vaaLedgerProdModeStatus_(props) {
+  const dop=String(props.getProperty(VAA_JOURNAL_DOP_MODE_PROP_)||'').trim();
+  const journal=String(props.getProperty(VAA_LEDGER_JOURNAL_MODE_PROP_)||'').trim();
+  const fence=String(props.getProperty(VAA_LEDGER_PROD_FENCE_PROP_)||'').trim();
+  const retire=String(props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)||'').trim();
+  if (retire && retire!=='OFF' && retire!==VAA_LEDGER_PROD_RETIRE_ON_) {
+    return {state:'HALT',code:'JOURNAL_PROD_RETIRE_MODE_INVALID'};
+  }
+  if (!dop || dop==='OFF') {
+    // Prevent accidentally falling back to legacy admission after cutover.
+    if (fence===VAA_LEDGER_PROD_FENCE_ON_ || retire===VAA_LEDGER_PROD_RETIRE_ON_ ||
+        journal===VAA_LEDGER_PROD_JOURNAL_MODE_) {
+      return {state:'HALT',code:'JOURNAL_PROD_STICKY_FENCE'};
+    }
+    return {state:'DISABLED'};
+  }
+  if (dop!==VAA_LEDGER_PROD_MODE_) {
+    // The existing TEST bridge rejects unknown / mismatched TEST modes.
+    if (fence===VAA_LEDGER_PROD_FENCE_ON_) {
+      return {state:'HALT',code:'JOURNAL_PROD_STICKY_FENCE'};
+    }
+    return {state:'DISABLED'};
+  }
+  if (fence!==VAA_LEDGER_PROD_FENCE_ON_ ||
+      journal!==VAA_LEDGER_PROD_JOURNAL_MODE_) {
+    return {state:'HALT',code:'JOURNAL_PROD_NOT_ARMED'};
+  }
+  return {state:'ENABLED'};
+}
+
+/**
+ * Scope/ACL validation on EACH admission and finalize. No TEST-only
+ * hardcoded folders or IDs. Production root must match explicit operator
+ * confirmation; ledger must be private, one-parent, direct root child.
+ */
+function vaaLedgerProdAssertScope_(props) {
+  if (vaaLedgerProdModeStatus_(props).state!=='ENABLED') {
+    throw vaaLedgerJournalError_('JOURNAL_PROD_MODE_REQUIRED');
+  }
+  const root=String(props.getProperty(VAA_LEDGER_PROD_ROOT_PROP_)||'').trim();
+  const output=String(props.getProperty(VAA_LEDGER_PROD_OUTPUT_PROP_)||'').trim();
+  if(!root || !output || root===output ||
+     root!==API_CONFIG.ROOT_FOLDER_ID ||
+     output!==API_CONFIG.SHEET_OUTPUT_FOLDER_ID) {
+    throw vaaLedgerJournalError_('JOURNAL_PROD_SCOPE_DENIED');
+  }
+  const ledgerId=String(props.getProperty(VAA_LEDGER_READY_PROPERTY_)||'').trim();
+  if(!ledgerId || ledgerId===root || ledgerId===output ||
+     !/^[A-Za-z0-9_-]{20,}$/.test(ledgerId)) {
+    throw vaaLedgerJournalError_('JOURNAL_PROD_LEDGER_UNVERIFIED');
+  }
+  try{
+    const file=DriveApp.getFileById(ledgerId);
+    if(file.getMimeType()!==MimeType.GOOGLE_SHEETS ||
+       file.getSharingAccess()!==DriveApp.Access.PRIVATE ||
+       (typeof file.isTrashed==='function' && file.isTrashed())) {
+      throw Error('INVALID_LEDGER');
+    }
+    const parents=file.getParents();
+    let count=0,matched=true;
+    while(parents.hasNext() && count<2){
+      const parent=parents.next();count++;
+      if(parent.getId()!==root)matched=false;
+    }
+    if(count!==1 || !matched)throw Error('INVALID_PARENT');
+  }catch(_){
+    throw vaaLedgerJournalError_('JOURNAL_PROD_LEDGER_UNVERIFIED');
+  }
+}
+
+/** This helper handles both hot legacy REQ_ and fully archived histories. */
+function vaaLedgerProdDecideUnderLock_(props,id,mode,target,strategy,
+  digest,storedReceiptExists) {
+  const active=vaaLedgerProdModeStatus_(props);
+  if(active.state!=='ENABLED')return active;
+  try{
+    vaaLedgerProdAssertScope_(props);
+    const tabs=vaaLedgerJournalOpenReadOnly_(props);
+    const old=vaaLedgerReadyLookupFromSheet_(tabs.readySheet,id);
+    const modern=vaaLedgerJournalLookupFromSheet_(tabs.sheet,id);
+    const raw=String(props.getProperty(getRequestPropertyKey_(id))||'');
+    if(!!raw!==!!storedReceiptExists){
+      return {state:'HALT',code:'JOURNAL_PROD_PROPERTY_RACE'};
+    }
+    if(modern.state==='RESERVED' || modern.state==='ERROR'){
+      return {state:'HALT',code:'JOURNAL_PROD_REQUEST_PENDING_REVIEW'};
+    }
+
+    if(modern.state==='READY' || old.state==='FOUND'){
+      if(modern.state==='READY' && old.state==='FOUND' &&
+         JSON.stringify(modern.latest.body.receipt)!==old.raw){
+        return {state:'HALT',code:'JOURNAL_PROD_ARCHIVE_CONFLICT'};
+      }
+      const rec=modern.state==='READY'?modern.latest.body.receipt:old.record;
+      const serialized=modern.state==='READY'?
+        JSON.stringify(rec):old.raw;
+      if(raw && raw!==serialized){
+        return {state:'HALT',code:'JOURNAL_PROD_PROPERTY_CONFLICT'};
+      }
+      if(!vaaLedgerDopReceiptMatches_(rec,id,mode,target,
+        strategy,digest,API_CONFIG.SHEET_OUTPUT_FOLDER_ID)){
+        return {state:'HALT',code:'JOURNAL_PROD_READY_UNVERIFIED'};
+      }
+      return {state:'READY',record:rec};
+    }
+    if(modern.state!=='ABSENT' || old.state!=='NOT_FOUND'){
+      return {state:'HALT',code:'JOURNAL_PROD_LEDGER_UNVERIFIED'};
+    }
+    // A pre-cutover, existing REQ_ (READY/PROCESSING/ERROR) must continue
+    // down the exact legacy processing path. Do not retro-reserve it.
+    if(raw)return {state:'LEGACY'};
+
+    const budget=vaaCheckNewRequestCapacityReadOnly_(props);
+    if(!budget.allowed){
+      return {state:'HALT',code:'PROPERTY_CAPACITY_NEAR_LIMIT'};
+    }
+    const identity={
+      requestId:id,operationMode:mode,
+      targetSpreadsheetId:mode==='UPDATE'?target:'',
+      updateStrategy:mode==='UPDATE'?strategy:'',
+      updatePayloadDigest:mode==='UPDATE'?digest:''
+    };
+    const reserved=vaaLedgerJournalReserveUnderLock_(props,identity,'PROD');
+    if(reserved.state!=='RESERVED'||reserved.revision!==1){
+      return {state:'HALT',code:'JOURNAL_PROD_RESERVE_UNVERIFIED'};
+    }
+    return {state:'ADMITTED'};
+  }catch(_){
+    // Lost-response append may have committed: NEVER start a new request.
+    return {state:'HALT',code:'JOURNAL_PROD_UNVERIFIED'};
+  }
+}
+
+/**
+ * After the canonical REQ_ READY is written, use a new ScriptLock to
+ * append V2 READY. Source retirement, if separately enabled, happens ONLY
+ * after dual-ledger readback and matching original READY JSON.
+ */
+function vaaLedgerProdFinalizeReady_(props,id,mode) {
+  const state=vaaLedgerProdModeStatus_(props);
+  if(state.state!=='ENABLED'){
+    return {state:'HALT',code:state.code||'JOURNAL_PROD_MODE_REQUIRED'};
+  }
+  const lock=LockService.getScriptLock();
+  let held=false;
+  try{
+    lock.waitLock(20000);held=true;
+    vaaLedgerProdAssertScope_(props);
+    const finalized=vaaLedgerJournalFinalizeReadyUnderLock_(props,id,'PROD');
+    if(finalized.state!=='READY'||finalized.revision!==2){
+      return {state:'HALT',code:'JOURNAL_PROD_FINALIZE_UNVERIFIED'};
+    }
+    const retire=String(
+      props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)||''
+    ).trim()===VAA_LEDGER_PROD_RETIRE_ON_;
+    if(retire){
+      const key=getRequestPropertyKey_(id);
+      const raw=props.getProperty(key);
+      const parsed=vaaLedgerReadyValidateRaw_(id,raw);
+      if(parsed.operationMode!==mode){
+        throw vaaLedgerJournalError_('JOURNAL_PROD_SOURCE_CHANGED');
+      }
+      const before=vaaLedgerJournalReadOnly_(props,id);
+      if(before.state!=='READY' || before.revision!==2 ||
+         JSON.stringify(before.latest.body.receipt)!==raw){
+        throw vaaLedgerJournalError_('JOURNAL_PROD_RETIRE_UNVERIFIED');
+      }
+      if(props.getProperty(key)!==raw){
+        throw vaaLedgerJournalError_('JOURNAL_PROD_SOURCE_CHANGED');
+      }
+      // Only NEW requests admitted by this V2 gateway reach here. Never
+      // retire legacy REQ_ records by this path.
+      props.deleteProperty(key);
+      const after=vaaLedgerJournalReadOnly_(props,id);
+      if(props.getProperty(key) ||
+         after.state!=='READY' ||
+         JSON.stringify(after.latest.body.receipt)!==raw){
+        throw vaaLedgerJournalError_('JOURNAL_PROD_RETIRE_UNVERIFIED');
+      }
+    }
+    return {state:'READY',retired:retire};
+  }catch(_){
+    return {state:'HALT',code:'JOURNAL_PROD_FINALIZE_UNVERIFIED'};
+  }finally{
+    if(held){
+      try{lock.releaseLock();}catch(_){}
+    }
+  }
+}
