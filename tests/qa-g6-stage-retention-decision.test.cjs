@@ -233,10 +233,14 @@ test("G6-M rejects nonunique parents, wrong name, or wrong folder membership",()
 });
 
 test("G6-M fails closed when known references or request/lease records exist",()=>{
-  for(const o of [
-    {hasPointerRef:true},{hasPropertyRef:true},
-    {stageReceipt:true},{updateReceipt:true},{lease:true}
-  ]){
+  // Known references MUST stop immediately in the G6-L precondition gate.
+  for(const o of [{hasPointerRef:true},{hasPropertyRef:true}]){
+    const h=fixture(o);
+    assert.throws(()=>h.run(),/QA_G6M_IMPACT_AUDIT_NOT_READY/);
+    noWrites(h);
+  }
+  // Request/lease collisions must deny readiness without authorizing action.
+  for(const o of [{stageReceipt:true},{updateReceipt:true},{lease:true}]){
     const h=fixture(o);const r=h.run();
     assert.equal(r.pass,false);
     assert.equal(r.cleanupAuthorized,false);
