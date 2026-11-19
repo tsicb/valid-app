@@ -104,7 +104,7 @@ function harness(o={}) {
       "DISABLED":"ENABLED",
     vaaLedgerDopScopeCode_:()=>o.invalidAllowlist?
       "JOURNAL_DOP_TEST_SCOPE_DENIED":"",
-    vaaLedgerReadyPropsEqual_:(a,b)=>{
+    vaaQaLedgerReadyPropsEqual_:(a,b)=>{
       const keysA=Object.keys(a).sort(),keysB=Object.keys(b).sort();
       return keysA.length===keysB.length &&
         keysA.every((k,i)=>k===keysB[i]&&a[k]===b[k]);
@@ -125,7 +125,7 @@ function harness(o={}) {
 test("V2 CREATE QA module is syntax-valid, calls canonical G4 doPost entrypoint only once",()=>{
   new vm.Script(code);
   assert.match(code,/vaaQaG4Invoke_\s*\(/);
-  assert.match(code,/vaaQaLedgerJournalLookupFromSheet_\s*\(/);
+  assert.match(code,/vaaLedgerJournalLookupFromSheet_\s*\(/);
   assert.doesNotMatch(code,/\.deleteProperty\s*\(|\.setTrashed\s*\(|\.createFile\s*\(|vaaLedgerJournalReserveUnderLock_\s*\(/);
   assert.match(code,/automaticRetryAuthorized:false/);
 });
