@@ -348,14 +348,20 @@ test("enabled journal cannot admit unknown/nonallowlisted or unscoped input",()=
   assert.equal(h.counts.journalWrites,0);
 });
 
-test("default-OFF path never touches the journal or errors from absent journal",()=>{
+test("default-OFF legacy requests stay unchanged, but synthetic IDs remain fenced",()=>{
   const h=make({off:true,ledgerUnavailable:true});
-  const r=h.post();
+  // A normal legacy request (not the V2 synthetic namespace) remains allowed.
+  const r=h.post({requestId:"NORMAL_LEGACY_CREATE_ID"});
   assert.equal(r.ok,false);
   assert.equal(h.counts.journalWrites,0);
-  // Default-OFF retains legacy admission until the controlled side-effect.
   assert.equal(h.counts.creates,1);
   assertBefore(h);
+  // An E2E ID can have a durable reservation; disabling mode cannot
+  // silently turn that ID into a new CREATE.
+  const f=make({off:true});
+  assert.equal(f.post().code,"JOURNAL_DOP_SYNTHETIC_FENCE");
+  assert.equal(f.counts.creates,0);
+  assert.equal(f.counts.journalWrites,0);
 });
 
 test("low Script Properties quota blocks reservation before any new work",()=>{
