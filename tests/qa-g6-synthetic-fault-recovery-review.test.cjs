@@ -164,7 +164,7 @@ test("G6-F recovery classifier never returns automatic-retry permission",()=>{
     "HALT_CAS_COMMITTED_MIRRORS_UNCERTAIN",
     "REVIEW_READY_REPLAY_AFTER_AUDIT"
   ];
-  assert.deepEqual(r.scenarios.map(x=>x.actualDecision),expected);
+  assert.deepEqual(Array.from(r.scenarios,x=>x.actualDecision),expected);
   assert.equal(r.automaticRetryAuthorized,false);
 });
 
