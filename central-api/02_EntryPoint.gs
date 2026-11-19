@@ -37,6 +37,7 @@ function doPost(e) {
   let appendWriteResult = null;
   // True only after the V2 TEST journal has verified RESERVED rev1.
   let journalAdmissionRequired = false;
+  let journalAdmissionSource = '';
   const pipelineTrace = {
     transportMode:
       'PLAIN_JSON',
@@ -425,10 +426,21 @@ function doPost(e) {
       // When TEST scope is explicitly enabled, journal READY is replayed,
       // RESERVED/ERROR fails closed, and a verified new reservation must
       // exist before ANY workbook/lease/REQ_ write.
-      const journalDecision = vaaLedgerDopDecideUnderLock_(
-        props, requestId, operationMode, targetSpreadsheetId,
-        updateStrategy, updateRequestDigest, storedReceiptExists
-      );
+      // Production V2 admission shares the verified journal engine, but
+      // must be independently armed. OFF continues into the TEST/legacy
+      // bridge exactly as before. Existing REQ_ remain legacy-compatible.
+      const prodJournalDecision =
+        typeof vaaLedgerProdDecideUnderLock_ === 'function' ?
+        vaaLedgerProdDecideUnderLock_(
+          props, requestId, operationMode, targetSpreadsheetId,
+          updateStrategy, updateRequestDigest, storedReceiptExists
+        ) : {state:'DISABLED'};
+      const journalDecision =
+        prodJournalDecision.state === 'DISABLED' ?
+        vaaLedgerDopDecideUnderLock_(
+          props, requestId, operationMode, targetSpreadsheetId,
+          updateStrategy, updateRequestDigest, storedReceiptExists
+        ) : prodJournalDecision;
       if (journalDecision.state === 'HALT') {
         return errorOutput_(
           journalDecision.code,
@@ -442,6 +454,8 @@ function doPost(e) {
       }
       if (journalDecision.state === 'ADMITTED') {
         journalAdmissionRequired = true;
+        journalAdmissionSource =
+          prodJournalDecision.state === 'ADMITTED' ? 'PROD' : 'TEST';
       }
 
       // V1 READY-only TEST replay is independent and default OFF.
@@ -1961,9 +1975,12 @@ requestPerformance
     // Only V2-admitted TEST requests must then persist READY revision 2.
     // An uncertain result HALTs without changing READY back to ERROR.
     if (journalAdmissionRequired) {
-      const journalReady = vaaLedgerDopFinalizeReady_(
-        props, requestId, operationMode
-      );
+      const journalReady = journalAdmissionSource === 'PROD' ?
+        vaaLedgerProdFinalizeReady_(
+          props, requestId, operationMode
+        ) : vaaLedgerDopFinalizeReady_(
+          props, requestId, operationMode
+        );
       if (journalReady.state !== 'READY') {
         return errorOutput_(
           journalReady.code || 'JOURNAL_DOP_FINALIZE_UNVERIFIED',
