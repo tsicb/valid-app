@@ -139,7 +139,7 @@ function make(opts={}){
     extractSpreadsheetId_:v=>v===TARGET?TARGET:"",
     perfMs_:()=>0,
     jsonOutput_:v=>{counts.readyResponse++;return v;},
-    errorOutput_:(code,msg)=>{counts.errorResponse++;return {ok:false,code,message:msg};},
+    errorOutput_:(code,msg,details)=>{counts.errorResponse++;return {ok:false,code,message:msg,...(details||{})};},
     vaaCheckNewRequestCapacityReadOnly_:()=>({allowed:!opts.capacityDenied}),
     resolveCreateOutputFolder_:()=>({getId:()=>OUTPUT,getName:()=>"QA_TEST_OUTPUT"}),
     buildOutputFileName_:()=>"QA_TEST_WORKBOOK",
@@ -226,6 +226,8 @@ test("real doPost synthetic CREATE saves RESERVED before attempting spreadsheet"
   const h=make();
   const r=h.post();
   assert.equal(r.ok,false);
+  assert.equal(r.retryable,false);
+  assert.equal(r.journalRecoveryDisposition,"INSPECT_ONLY_NO_RETRY");
   assert.equal(h.counts.journalWrites,1);
   assert.equal(h.counts.creates,1);
   assert.equal(h.lookup().state,"RESERVED");
@@ -244,6 +246,8 @@ test("real doPost synthetic UPDATE reserves before target validation side effect
   const h=make({update:true});
   const r=h.post();
   assert.equal(r.ok,false);
+  assert.equal(r.retryable,false);
+  assert.equal(r.journalRecoveryDisposition,"INSPECT_ONLY_NO_RETRY");
   assert.equal(h.counts.journalWrites,1);
   assert.equal(h.counts.updateValidation,1);
   assert.equal(h.lookup().state,"RESERVED");
