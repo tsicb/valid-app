@@ -87,10 +87,11 @@ function vaaLedgerDopDecideUnderLock_(props, id,mode,target,
   // A TEST requestId once reserved in the journal must NOT fall back to
   // legacy new-request admission if an operator flips the mode OFF.
   // The reserved test namespace stays fenced even without configuration.
-  if(setting==='DISABLED')return
-    /^QA_JOURNAL_E2E_(CREATE|UPDATE)_/.test(id) ?
+  if(setting==='DISABLED') {
+    return /^QA_JOURNAL_E2E_(CREATE|UPDATE)_/.test(id) ?
       {state:'HALT',code:'JOURNAL_DOP_SYNTHETIC_FENCE'} :
       {state:'DISABLED'};
+  }
   if(setting!=='ENABLED')return {
     state:'HALT',code:'JOURNAL_DOP_MODE_INVALID'
   };
