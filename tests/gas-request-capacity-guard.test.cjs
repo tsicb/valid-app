@@ -11,6 +11,7 @@ const guard = fs.readFileSync(path.join(directory, "19_Request_Property_Byte_Gua
 const requests = fs.readFileSync(path.join(directory, "04_Request_Target.gs"), "utf8");
 const entry = fs.readFileSync(path.join(directory, "02_EntryPoint.gs"), "utf8");
 const replayGate = fs.readFileSync(path.join(directory, "21_Request_Ready_Ledger_Replay_Gate.gs"), "utf8");
+const journalBridge = fs.readFileSync(path.join(directory, "23_Request_Ledger_V2_DoPost_Bridge.gs"), "utf8");
 
 function createHarness(properties = {}) {
   const data = {...properties};
@@ -225,6 +226,7 @@ function makeDoPostReplayHarness(receipts,driveAccessible=false) {
   vm.runInContext(guard,sandbox);
   vm.runInContext(requests,sandbox);
   vm.runInContext(replayGate,sandbox);
+  vm.runInContext(journalBridge,sandbox);
   vm.runInContext(entry,sandbox);
   // Only request coordination and admission are under test. Keep the
   // independent payload/transport validation out of this targeted harness.
