@@ -330,12 +330,13 @@ test("G6-J candidate request collision, lease, UPDATE reuse or unsafe preflight 
   }
 });
 
-test("G6-J refuses duplicate staged files or out-of-TEST folder",()=>{
+test("G6-J halts on out-of-TEST folder before any file write",()=>{
   for(const opts of [{wrongFolderName:true},{wrongParent:true}]) {
     const h=fixture(opts);
-    const r=h.run("vaaQaG6JInspectStageReadOnly()");
-    assert.equal(r.pass,false);
-    // A wrong folder name is an exception; wrong parent likewise.
+    assert.throws(()=>h.run("vaaQaG6JInspectStageReadOnly()"),
+      /QA_G6J_DATASTORE_FOLDER_OUTSIDE_TEST/);
+    assert.equal(h.state.created,0);
+    unchanged(h);
   }
 });
 
