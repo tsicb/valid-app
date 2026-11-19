@@ -230,7 +230,7 @@ test("one-shot APPEND updates exactly 1+1 into 2+2, journal READY2, all historic
   const r=h.run("vaaQaLedgerV2UpdateOnce");
   assert.equal(r.pass,true);
   assert.equal(r.journalRevision,2);
-  assert.equal(r.newJournalReady,true);
+  assert.equal(r.journalReady,true);
   assert.equal(h.flags.posts,1);
   assert.equal(h.state.dataset.applicationData.rows.length,2);
   assert.equal(h.state.dataset.jobAnalysisMaster.rows.length,2);
