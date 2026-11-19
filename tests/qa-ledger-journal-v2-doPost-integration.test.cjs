@@ -405,3 +405,36 @@ test("ledger READY replay rejects invalid target folder, not only missing file",
   h.scope.fileIsInManagedOutputTree_=original;
   assert.equal(h.counts.creates,0);
 });
+
+test("V2 synthetic CREATE ID is accepted only with exact 1-ID TEST allowlist",()=>{
+  const h=make();
+  const newId="QA_JOURNAL_E2E_CREATE_20261119_V2";
+  h.propsMap.VAA_JOURNAL_DOP_SYNTHETIC_REQUEST_ID=newId;
+  const props={getProperty:key=>h.propsMap[key]??null};
+  assert.equal(
+    h.scope.vaaLedgerDopScopeCode_(props,newId,"CREATE"),""
+  );
+  assert.equal(
+    h.scope.vaaLedgerDopScopeCode_(
+      props,"QA_JOURNAL_E2E_CREATE_20261119_V1","CREATE"
+    ),"JOURNAL_DOP_TEST_SCOPE_DENIED"
+  );
+  assert.equal(
+    h.scope.vaaLedgerDopScopeCode_(
+      props,"QA_JOURNAL_E2E_CREATE_20261119_V3","CREATE"
+    ),"JOURNAL_DOP_TEST_SCOPE_DENIED"
+  );
+  assert.equal(
+    h.scope.vaaLedgerDopScopeCode_(props,newId,"UPDATE"),
+    "JOURNAL_DOP_TEST_SCOPE_DENIED"
+  );
+  h.propsMap.VAA_JOURNAL_DOP_MODE="OFF";
+  assert.equal(
+    h.scope.vaaLedgerDopDecideUnderLock_(
+      props,newId,"CREATE","","","",false
+    ).code,
+    "JOURNAL_DOP_SYNTHETIC_FENCE"
+  );
+  assert.equal(h.counts.journalWrites,0);
+  assert.equal(h.counts.creates,0);
+});
