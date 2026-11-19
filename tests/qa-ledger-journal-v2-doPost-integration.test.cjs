@@ -164,6 +164,12 @@ function make(opts={}){
     "central-api/23_Request_Ledger_V2_DoPost_Bridge.gs",
     "central-api/02_EntryPoint.gs"
   ])vm.runInContext(read(file),ctx);
+  // The canonical 04 declaration overrides the fixture's test stub.
+  // Override ONLY the UPDATE side effect boundary after VM loading.
+  if(opts.update)scope.validateUpdateTargetDriveFile_=()=>{
+    counts.updateValidation++;
+    throw Error("QA_STOP_AFTER_RESERVATION_BEFORE_TARGET_UPDATE");
+  };
   const post=(overrides={})=>{
     const payload={
       action:"create",requestId:id,
