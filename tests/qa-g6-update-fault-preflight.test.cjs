@@ -47,7 +47,7 @@ function fixture(options={}) {
   let baseline=null;
   const scope={
     API_CONFIG:{
-      ROOT_FOLDER_ID:options.wrongRoot?"NOT_TEST":ROOT,
+      ROOT_FOLDER_ID:ROOT,
       SHEET_OUTPUT_FOLDER_ID:OUT,
       REQUEST_PROPERTY_PREFIX:"REQ_",
       DEFAULT_APP_VERSION:"TEST_QA",
@@ -134,6 +134,9 @@ function fixture(options={}) {
     applicationData:coreResult.applicationData,
     jobAnalysisMaster:coreResult.jobAnalysisMaster
   };
+  // Construct the synthetic fixture in TEST scope, then simulate wrong-root
+  // only for the action under test (otherwise setup itself would throw).
+  if(options.wrongRoot)scope.API_CONFIG.ROOT_FOLDER_ID="NOT_TEST";
   vm.runInContext(g6e,ctx);
   return {
     run:expr=>vm.runInContext(expr,ctx),
