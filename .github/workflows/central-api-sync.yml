@@ -35,6 +35,10 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # The guarded recovery may compare the remote file 25 with an
+          # immutable, pinned historical Git revision.
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -206,6 +210,15 @@ jobs:
             exit 1
           fi
 
+      - name: Guard file 25 against unrecognized live source before SYNC
+        if: ${{ inputs.confirm == 'SYNC' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The pinned source remains on this runner. Never echo its contents.
+          git show 0c4be7c5e9e3eb39eafcd341618dacb79797dd36:central-api/25_Request_Ledger_V2_Legacy_Batch_Migration.gs > "$RUNNER_TEMP/vaa_pinned_legacy25.gs"
+          VAA_HISTORIC_FILE25="$RUNNER_TEMP/vaa_pinned_legacy25.gs" node scripts/verify-central-api-sync.cjs preflight
+
       - name: Replace only server-side GAS source in staging
         if: ${{ inputs.confirm == 'SYNC' }}
         shell: bash
@@ -234,6 +247,19 @@ jobs:
           set -euo pipefail
           clasp push --force
 
+      - name: Verify GAS source by independent remote pull after push
+        if: ${{ inputs.confirm == 'SYNC' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A successful clasp push is not proof that the remote source stuck.
+          # Pull afresh and compare all script files without printing contents.
+          rm -rf .gas-stage
+          mkdir -p .gas-stage
+          clasp pull
+          test -f .gas-stage/appsscript.json
+          node scripts/verify-central-api-sync.cjs postflight
+
       - name: Sync summary
         if: ${{ success() && inputs.confirm == 'SYNC' }}
         shell: bash
@@ -244,6 +270,7 @@ jobs:
             printf '%s\n' "- Source: central-api/*.gs at commit ${GITHUB_SHA::7}"
             echo '- Target script ID: stored in repository secret GAS_SCRIPT_ID'
             echo '- Existing GAS appsscript.json and non-server files were preserved from a pre-push pull.'
+            echo '- Independently re-pulled and verified every canonical GAS script after push.'
             echo '- This workflow updates project source only.'
             echo '- It does not create a new Apps Script version or redeploy the Web App.'
           } >> "$GITHUB_STEP_SUMMARY"
