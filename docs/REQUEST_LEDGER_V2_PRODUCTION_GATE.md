@@ -51,6 +51,16 @@
 4. 新規REQ_の自動退避を有効化する場合は、その後の検証結果をもって別途承認する。REPLAYゲートをOFFに戻してはならない。
 5. 旧REQ_の容量削減には、**別途**バックアップ、V1への一括コピー・検証、既存のREQなし再送ゲートの照合、そして承認付きの整理が必要。今回のPRでは旧REQを削除しない。
 
+## 新規V2 READYの1件限定カナリア設計（2026-11-21、初期OFF）
+
+現在の `VAA_PROD_READY_RETIRE_MODE=RETIRE_VERIFIED_NEW_READY_V1` は新規V2 READY全件に作用するため、カナリア試験には使用禁止。これとは別に `VAA_PROD_READY_RETIRE_MODE=CANARY_ONE_NEW_READY_V1` を追加した。新規の通常リクエストを巻き込まないため、`VAA_PROD_READY_RETIRE_CANARY_REQUEST_ID` の完全一致、および `VAA_PROD_READY_RETIRE_CANARY_OPERATION_MODE=CREATE|UPDATE` が必須である。
+
+カナリアIDは `VAA_READY_RETIRE_CANARY_CREATE_YYYYMMDD_XXXXXXXX` または `VAA_READY_RETIRE_CANARY_UPDATE_YYYYMMDD_XXXXXXXX` 形式（末尾は大文字英数字8文字）に限定し、同じIDの既存REQやV1/V2台帳の記録が存在しないことを `vaaLedgerProdRetireCanaryPreflightReadOnly` で確認する。監査は本番V2 ON・自動削除OFF・旧移管OFFの間にのみ実行し、管理フォルダ権限や元データ安定性を照合して結果を集計表示する。いずれも元IDや台帳の値はログに出さない。
+
+有効化の順序は、別工程で安全な専用カナリアの生成方法を確認したうえで、ID・処理モードを登録 → 読み取り専用監査合格 → 一件限定の本番認可 → カナリアモードを明示的に有効化 → 指定の1件のみ実処理 → READY・元REQの欠落・同一ID再送・重複作成／更新なしを照合 → カナリアモードをOFFに戻す、を想定する。現時点では本番操作の認可・自動化は行わない。設定を途中で変更・再利用しない。
+
+カナリアモード中であっても、それ以外のリクエストは通常のV2記録を続け、REQを削除しない。カナリアの台帳照合や元REQ確認に失敗した場合はHALTし、実行結果が不明な場合は自動再実行しない。削除フラグの全件モードへの切替や旧履歴の一括削除は別承認が必要。
+
 ## 事前監査合格後の「REQなし」再送シミュレーション（2026-11-21）
 
 本番の監査ログは `pass:true`、`journalEvents:2`、`journalReady:1`、`journalPending:0`、`modernReadyWithReq:1`、`eligibleForFutureRetirement:1`、`sourceStable:true`、書き込み・削除0件であった。現時点で新規V2 READYは1件のみ確認済みで、REQが残る状態からの読取整合性を示している。
