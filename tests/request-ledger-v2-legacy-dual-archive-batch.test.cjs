@@ -32,11 +32,16 @@ function fixture(opt={}){
   if(opt.invalidReceipt)properties["REQ_"+ID]="BAD_JSON";
   if(opt.nonready)properties["REQ_"+ID]=JSON.stringify({...original,status:"ERROR"});
   const LEGACY_ID="LEGACY_UPDATE_WITHOUT_DIGEST_OR_STRATEGY";
-  if(opt.legacyUpdateWithoutMetadata || opt.legacyUpdateBadTarget){
+  if(opt.legacyUpdateWithoutMetadata || opt.legacyUpdateBadTarget ||
+     opt.legacyUpdateNoncanonicalTarget || opt.legacyUpdateMissingTarget){
+    const originalTarget=opt.legacyUpdateNoncanonicalTarget?
+      "legacy:https://old.example/target":"SENSITIVE_ISOLATED_TARGET";
     properties["REQ_"+LEGACY_ID]=JSON.stringify({
       requestId:LEGACY_ID,operationMode:"UPDATE",
-      status:"READY",stage:"READY",spreadsheetId:TARGET,
-      targetSpreadsheetId:opt.legacyUpdateBadTarget?"OTHER_TARGET":TARGET,
+      status:"READY",stage:"READY",spreadsheetId:
+        opt.legacyUpdateMissingTarget?"":originalTarget,
+      targetSpreadsheetId:opt.legacyUpdateBadTarget?"OTHER_TARGET":
+        opt.legacyUpdateMissingTarget?"":originalTarget,
       updateStrategy:"",updatePayloadDigest:""
     });
   }
@@ -101,7 +106,7 @@ function fixture(opt={}){
         (x.operationMode==="UPDATE" && (
           !x.updatePayloadDigest || !["APPEND","REPLACE"].includes(x.updateStrategy) ||
           !x.targetSpreadsheetId || x.targetSpreadsheetId!==x.spreadsheetId
-        )))throw Error(SECRET);
+        )))throw Object.assign(new Error("REDACTED"),{code:"LEDGER_RECEIPT_INVALID"});
       return x;
     },
     vaaTargetUpdateLeaseKey_:id=>"VAA_TARGET_UPDATE_"+id,
@@ -255,6 +260,51 @@ test("known legacy UPDATE missing replay proof is quarantined without failing sa
   assert.equal(denied.pass,false,JSON.stringify(denied));
   assert.equal(denied.errorStage,"INVENTORY");
   assert.equal(f.calls.deletes,0);
+});
+test("legacy noncanonical target references remain protected, never archived",()=>{
+  const f=fixture({mode:"COPY_DUAL_ARCHIVE_READY_V1",
+    legacyUpdateNoncanonicalTarget:true});
+  const sourceBefore=JSON.stringify(f.properties);
+  const result=f.audit();
+  assert.equal(result.pass,true,JSON.stringify(result));
+  assert.equal(result.quarantinedLegacyReady,1);
+  assert.equal(result.ready,1);
+  const copied=f.copy();
+  assert.equal(copied.pass,true,JSON.stringify(copied));
+  assert.equal(copied.copied,1);
+  assert.equal(f.calls.primaryWrites,1);
+  assert.equal(f.calls.backupWrites,1);
+  assert.equal(f.calls.deletes,0);
+  assert.equal(JSON.stringify(f.properties),sourceBefore);
+  f.setMode("RETIRE_DUAL_VERIFIED_READY_V1");
+  assert.equal(f.retire().pass,false);
+  assert.equal(f.calls.deletes,0);
+});
+test("missing target is not mistaken for protected old UPDATE metadata",()=>{
+  const f=fixture({legacyUpdateMissingTarget:true});
+  const result=f.audit();
+  assert.equal(result.pass,false);
+  assert.equal(result.errorStage,"ENUMERATE");
+  assert.equal(result.errorCode,"LEDGER_RECEIPT_INVALID");
+  assert.equal(f.calls.primaryWrites,0);
+  assert.equal(f.calls.backupWrites,0);
+  assert.equal(f.calls.deletes,0);
+});
+test("audit surfaces only allowlisted error codes and exact failure stage",()=>{
+  const known=fixture({legacyUpdateBadTarget:true});
+  const denied=known.audit();
+  assert.equal(denied.pass,false);
+  assert.equal(denied.errorStage,"ENUMERATE");
+  assert.equal(denied.errorCode,"LEDGER_RECEIPT_INVALID");
+  const unknown=fixture({targetInvalid:true});
+  const result=unknown.audit();
+  assert.equal(result.pass,false);
+  assert.equal(result.errorStage,"REVIEW");
+  assert.equal(result.errorCode,"UNCLASSIFIED");
+  const logs=known.calls.logs.join("\n")+unknown.calls.logs.join("\n");
+  assert.equal(logs.includes(SECRET),false);
+  assert.equal(logs.includes("LEGACY_UPDATE_WITHOUT_DIGEST_OR_STRATEGY"),false);
+  assert.equal(logs.includes("SENSITIVE_ISOLATED_TARGET"),false);
 });
 test("quarantine does not suppress unrelated invalid READY or journal collision",()=>{
   for(const options of [
