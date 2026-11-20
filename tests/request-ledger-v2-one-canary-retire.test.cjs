@@ -75,11 +75,13 @@ function fixture(options={}){
     VAA_LEDGER_JOURNAL_MODE_PROP_:"VAA_REQUEST_JOURNAL_MODE",
     VAA_LEDGER_READY_PROPERTY_:"VAA_REQUEST_LEDGER_SPREADSHEET_ID",
     vaaLedgerJournalError_:code=>Object.assign(new Error("REDACTED"),{code}),
+    PropertiesService:{getScriptProperties:()=>props},
     vaaLedgerJournalOpenReadOnly_:()=>{
       effects.journalReads++;
       return {readySheet:{},sheet:{}};
     },
-    vaaLedgerReadyLookupFromSheet_:()=>({state:"NOT_FOUND"}),
+    vaaLedgerReadyLookupFromSheet_:()=>options.v1Collision?
+      {state:"FOUND"}:{state:"NOT_FOUND"},
     vaaLedgerJournalLookupFromSheet_:()=>{
       const state=options.journalState||"ABSENT";
       return state==="READY"?
@@ -119,6 +121,7 @@ function fixture(options={}){
   const ctx=vm.createContext(mock);vm.runInContext(source,ctx);
   return {
     finalize:(kind=op)=>ctx.vaaLedgerProdFinalizeReady_(props,id,kind),
+    preflight:()=>ctx.vaaLedgerProdRetireCanaryPreflightReadOnly(),
     decide:(kind=op)=>ctx.vaaLedgerProdDecideUnderLock_(
       props,id,kind,kind==="UPDATE"?TARGET:"",
       kind==="UPDATE"?"APPEND":"",
@@ -228,6 +231,45 @@ test("global mode remains separately supported (never implied by canary)",()=>{
     id:OTHER,configuredId:C_CREATE});
   assert.equal(h.finalize().retired,true);
   assert.equal(h.effects.deleteCalls,1);
+});
+
+test("read-only canary preflight passes only before exact ID is used",()=>{
+  const h=fixture({retireMode:"OFF"});
+  const before={...h.data};
+  assert.equal(h.preflight().pass,false);
+  assert.equal(h.preflight().errorCode,"CANARY_PREFLIGHT_ID_IN_USE");
+  assert.equal(h.effects.deleteCalls,0);
+  delete h.data["REQ_"+C_CREATE];
+  const p=h.preflight();
+  assert.equal(p.pass,true,JSON.stringify(p));
+  assert.equal(p.sourceStable,true);
+  assert.equal(p.canaryUnused,true);
+  assert.equal(p.activationAuthorized,false);
+  assert.equal(p.propertyDeletes,0);
+  assert.equal(h.effects.deleteCalls,0);
+  assert.equal(h.effects.reserves,0);
+  for(const secret of [C_CREATE,TARGET,LEDGER,ROOT,SECRET]){
+    assert.equal((JSON.stringify(p)+" "+h.effects.logs.join(" ")).includes(secret),
+      false,secret);
+  }
+  // This only changed the isolated test fixture's REQ_ flag.
+  assert.equal(before["REQ_"+C_CREATE],h.raw);
+});
+test("canary preflight fails closed on armed mode, occupied journal or bad config",()=>{
+  for(const bad of [
+    {retireMode:"CANARY_ONE_NEW_READY_V1"},
+    {configuredId:OTHER},
+    {legacyMode:"COPY_DUAL_ARCHIVE_READY_V1"},
+    {journalState:"READY"},{journalState:"RESERVED"},{journalState:"ERROR"},
+    {v1Collision:true},{v2Off:true}
+  ]){
+    const h=fixture(bad);
+    delete h.data["REQ_"+C_CREATE];
+    const out=h.preflight();
+    assert.equal(out.pass,false,JSON.stringify(bad));
+    assert.equal(out.activationAuthorized,false);
+    assert.equal(h.effects.deleteCalls,0);
+  }
 });
 test("canary source adds no logging, doPost changes or extra delete path",()=>{
   new vm.Script(source);
