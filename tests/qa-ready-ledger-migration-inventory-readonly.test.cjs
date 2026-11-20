@@ -9,7 +9,9 @@ const read = p => fs.readFileSync(path.join(__dirname, "..", p), "utf8");
 const source = read("qa/Ready_Ledger_Migration_Inventory_ReadOnly_QA.gs");
 const capacity = read("central-api/15_Property_Capacity_Diagnostics.gs");
 const archive = read("central-api/20_Request_Ready_Ledger_Foundation.gs");
-const NOW = Date.parse("2026-11-20T10:00:00Z");
+// All relative lease / age fixtures must follow the runtime date. A fixed
+// test date caused "future" leases to become expired on the real clock.
+const NOW = Date.now();
 const daysAgo = n => new Date(NOW - n * 86400000).toISOString();
 const SECRET = "SECRET_TOKEN_VALUE_NEVER_LOG_999";
 const TARGET = "SENSITIVE_SPREADSHEET_ID_123";

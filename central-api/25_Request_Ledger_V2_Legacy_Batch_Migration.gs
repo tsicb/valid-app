@@ -121,10 +121,47 @@ function vaaLedgerProdLegacyEntries_(props,snapshot){
   return result;
 }
 
+/**
+ * Classify historical target availability without weakening the managed
+ * output-folder rule for any receipt allowed into the READY replay ledger.
+ * A former target that is inaccessible, trashed, wrong MIME or outside the
+ * managed tree is protected as a source-only legacy REQ_, never copied.
+ * Unknown Drive/validation errors continue to fail CLOSED.
+ */
+function vaaLedgerProdLegacyTargetStatus_(spreadsheetId){
+  let file;
+  try{
+    file=DriveApp.getFileById(spreadsheetId);
+  }catch(_){
+    return 'CANNOT_OPEN';
+  }
+  if(file && typeof file.isTrashed==='function' && file.isTrashed()){
+    return 'TRASHED';
+  }
+  if(!file || file.getMimeType()!==MimeType.GOOGLE_SHEETS){
+    return 'WRONG_MIME';
+  }
+  try{
+    const verified=validateUpdateTargetDriveFile_(
+      spreadsheetId,API_CONFIG.SHEET_OUTPUT_FOLDER_ID
+    );
+    if(verified && typeof verified.isTrashed==='function' &&
+       verified.isTrashed())return 'TRASHED';
+  }catch(err){
+    if(err&&err.code==='TARGET_INVALID')return 'CANNOT_OPEN';
+    if(err&&err.code==='TARGET_OUTSIDE_OUTPUT_FOLDER')return 'OUTSIDE';
+    throw err;
+  }
+  return 'VERIFIED';
+}
+
 function vaaLedgerProdLegacyReview_(props,entries,v1,backup,v2){
   const summary={
-    legacyReady:0,nonReady:entries.nonReady,modernExcluded:entries.modern,
-    quarantinedLegacyReady:0,
+    legacyReady:0,legacyReadySeen:0,
+    nonReady:entries.nonReady,modernExcluded:entries.modern,
+    quarantinedLegacyReady:0,quarantinedTargetReady:0,
+    targetCannotOpen:0,targetWrongMime:0,targetTrashed:0,
+    targetOutsideManagedOutput:0,
     verifiedBoth:0,needPrimaryCopy:0,needBackupCopy:0,
     conflicting:0,modernJournalExcluded:0,targetsVerified:0
   };
@@ -150,14 +187,9 @@ function vaaLedgerProdLegacyReview_(props,entries,v1,backup,v2){
     if(journal.state!=='ABSENT'){
       throw vaaLedgerReadyError_('LEGACY_JOURNAL_COLLISION');
     }
-    summary.legacyReady++;
-    const file=validateUpdateTargetDriveFile_(
-      item.record.spreadsheetId,API_CONFIG.SHEET_OUTPUT_FOLDER_ID
-    );
-    if(file && typeof file.isTrashed==='function' && file.isTrashed()){
-      throw vaaLedgerReadyError_('LEGACY_TARGET_TRASHED');
-    }
-    summary.targetsVerified++;
+    summary.legacyReadySeen++;
+    // Check both archives for conflicts BEFORE excluding an unavailable
+    // historic target. Exclusion is never permission to hide a mismatch.
     const first=vaaLedgerReadyLookupFromSheet_(v1,item.id);
     const second=vaaLedgerReadyLookupFromSheet_(backup,item.id);
     if((first.state==='FOUND'&&first.raw!==item.raw) ||
@@ -167,6 +199,20 @@ function vaaLedgerProdLegacyReview_(props,entries,v1,backup,v2){
       summary.conflicting++;
       throw vaaLedgerReadyError_('LEGACY_ARCHIVE_CONFLICT');
     }
+    const status=vaaLedgerProdLegacyTargetStatus_(
+      item.record.spreadsheetId
+    );
+    if(status!=='VERIFIED'){
+      summary.quarantinedTargetReady++;
+      if(status==='CANNOT_OPEN')summary.targetCannotOpen++;
+      else if(status==='WRONG_MIME')summary.targetWrongMime++;
+      else if(status==='TRASHED')summary.targetTrashed++;
+      else if(status==='OUTSIDE')summary.targetOutsideManagedOutput++;
+      else throw vaaLedgerReadyError_('LEGACY_TARGET_CLASSIFICATION_INVALID');
+      return; // Preserve original REQ_, never archive or retire this ID.
+    }
+    summary.legacyReady++;
+    summary.targetsVerified++;
     if(first.state==='FOUND' && second.state==='FOUND'){
       summary.verifiedBoth++;
       toRetire.push(item);
@@ -208,8 +254,10 @@ function vaaLedgerProdLegacyAuditReadOnly(){
   const out={
     phase:'PROD_LEGACY_DUAL_ARCHIVE_AUDIT_READ_ONLY',
     strictReadOnly:true,sourceStable:false,
-    ready:0,nonReady:0,modernExcluded:0,
-    quarantinedLegacyReady:0,
+    ready:0,legacyReadySeen:0,nonReady:0,modernExcluded:0,
+    quarantinedLegacyReady:0,quarantinedTargetReady:0,
+    targetCannotOpen:0,targetWrongMime:0,targetTrashed:0,
+    targetOutsideManagedOutput:0,
     verifiedBoth:0,needPrimaryCopy:0,needBackupCopy:0,
     modernJournalExcluded:0,targetsVerified:0,
     copyAuthorized:false,retireAuthorized:false,
@@ -231,9 +279,14 @@ function vaaLedgerProdLegacyAuditReadOnly(){
       props,entries,v1,backup,journal
     ).summary;
     Object.assign(out,{
-      ready:reviewed.legacyReady,nonReady:reviewed.nonReady,
-      modernExcluded:reviewed.modernExcluded,
+      ready:reviewed.legacyReady,legacyReadySeen:reviewed.legacyReadySeen,
+      nonReady:reviewed.nonReady,modernExcluded:reviewed.modernExcluded,
       quarantinedLegacyReady:reviewed.quarantinedLegacyReady,
+      quarantinedTargetReady:reviewed.quarantinedTargetReady,
+      targetCannotOpen:reviewed.targetCannotOpen,
+      targetWrongMime:reviewed.targetWrongMime,
+      targetTrashed:reviewed.targetTrashed,
+      targetOutsideManagedOutput:reviewed.targetOutsideManagedOutput,
       verifiedBoth:reviewed.verifiedBoth,
       needPrimaryCopy:reviewed.needPrimaryCopy,
       needBackupCopy:reviewed.needBackupCopy,
@@ -274,7 +327,9 @@ function vaaLedgerProdLegacyMutateBatch_(action){
       'PROD_LEGACY_RETIRE_BATCH',
     action:action,scriptLockHeld:false,scopeVerified:false,
     beforeReadyCount:0,alreadyDualVerified:0,
-    quarantinedLegacyReady:0,
+    quarantinedLegacyReady:0,quarantinedTargetReady:0,
+    targetCannotOpen:0,targetWrongMime:0,targetTrashed:0,
+    targetOutsideManagedOutput:0,
     copied:0,retired:0,remainingNeedCopy:0,
     sourceStableAfter:false,unknownCompletion:false,
     automaticRetryAuthorized:false,cleanupAuthorized:false,
@@ -307,10 +362,18 @@ function vaaLedgerProdLegacyMutateBatch_(action){
     );
     out.beforeReadyCount=review.summary.legacyReady;
     out.quarantinedLegacyReady=review.summary.quarantinedLegacyReady;
+    out.quarantinedTargetReady=review.summary.quarantinedTargetReady;
+    out.targetCannotOpen=review.summary.targetCannotOpen;
+    out.targetWrongMime=review.summary.targetWrongMime;
+    out.targetTrashed=review.summary.targetTrashed;
+    out.targetOutsideManagedOutput=review.summary.targetOutsideManagedOutput;
     out.alreadyDualVerified=review.summary.verifiedBoth;
-    // No historic source deletion while ANY older UPDATE lacks replay
-    // identity proof. A future separately reviewed policy is required.
-    if(action==='RETIRE' && entries.quarantined.length>0){
+    // Deleting any historic REQ is globally barred while a protected
+    // legacy UPDATE OR an unverifiable target exists. COPY remains
+    // independently gated, and always preserves every original REQ_.
+    if(action==='RETIRE' &&
+       (entries.quarantined.length>0 ||
+        review.summary.quarantinedTargetReady>0)){
       throw vaaLedgerReadyError_('LEGACY_QUARANTINED_READY_PROTECTED');
     }
     out.remainingNeedCopy=review.toCopy.length;
