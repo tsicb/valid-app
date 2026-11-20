@@ -409,3 +409,77 @@ function vaaLedgerProdReadyRetirePreflightReadOnly(){
   console.log('VAA_PROD_READY_RETIRE_PREFLIGHT '+JSON.stringify(out));
   return out;
 }
+
+/**
+ * Editor-only read-only canary preflight. Configure an exact canary ID
+ * and operation while RETIRE_MODE is OFF; check it has never been used.
+ * It is NOT an activation command and does not authorize any deletion.
+ */
+function vaaLedgerProdRetireCanaryPreflightReadOnly(){
+  const out={
+    phase:'PROD_V2_SINGLE_CANARY_PREFLIGHT_READ_ONLY',
+    strictReadOnly:true,prodV2Enabled:false,
+    globalRetireOff:false,legacyMigrationOff:false,
+    canaryConfigValid:false,canaryUnused:false,
+    sourceStable:false,propertyWrites:0,journalWrites:0,
+    propertyDeletes:0,activationAuthorized:false,
+    errorStage:'NONE',errorCode:'NONE',pass:false
+  };
+  let stage='MODE';
+  try{
+    const props=PropertiesService.getScriptProperties();
+    const before=props.getProperties();
+    out.prodV2Enabled=vaaLedgerProdModeStatus_(props).state==='ENABLED';
+    const retire=String(props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)||
+      '').trim();
+    const legacy=String(props.getProperty(
+      'VAA_PROD_LEGACY_MIGRATION_MODE'
+    )||'').trim();
+    out.globalRetireOff=!retire||retire==='OFF';
+    out.legacyMigrationOff=!legacy||legacy==='OFF';
+    const canary=vaaLedgerProdRetireCanary_(props);
+    out.canaryConfigValid=!!canary;
+    if(!out.prodV2Enabled||!out.globalRetireOff||
+       !out.legacyMigrationOff||!canary){
+      throw vaaLedgerJournalError_('CANARY_PREFLIGHT_MODE_INVALID');
+    }
+    stage='SCOPE';
+    vaaLedgerProdAssertScope_(props);
+    const tabs=vaaLedgerJournalOpenReadOnly_(props);
+    stage='ABSENCE';
+    if(before[getRequestPropertyKey_(canary.id)]){
+      throw vaaLedgerJournalError_('CANARY_PREFLIGHT_ID_IN_USE');
+    }
+    const old=vaaLedgerReadyLookupFromSheet_(tabs.readySheet,canary.id);
+    const modern=vaaLedgerJournalLookupFromSheet_(tabs.sheet,canary.id);
+    if(old.state!=='NOT_FOUND'||modern.state!=='ABSENT'){
+      throw vaaLedgerJournalError_('CANARY_PREFLIGHT_ID_IN_USE');
+    }
+    out.canaryUnused=true;
+    stage='SOURCE_STABILITY';
+    const after=props.getProperties();
+    const a=Object.keys(before).sort(),b=Object.keys(after).sort();
+    out.sourceStable=a.length===b.length && a.every(function(key,i){
+      return key===b[i] && before[key]===after[key];
+    });
+    if(!out.sourceStable){
+      throw vaaLedgerJournalError_('CANARY_PREFLIGHT_SOURCE_CHANGED');
+    }
+    out.pass=true;
+  }catch(err){
+    out.pass=false;
+    out.errorStage=stage;
+    const code=String(err&&err.code||'');
+    const allow=[
+      'CANARY_PREFLIGHT_MODE_INVALID',
+      'CANARY_PREFLIGHT_ID_IN_USE',
+      'CANARY_PREFLIGHT_SOURCE_CHANGED',
+      'JOURNAL_UNAVAILABLE','JOURNAL_ROW_UNVERIFIED',
+      'JOURNAL_CHAIN_UNVERIFIED','LEDGER_UNAVAILABLE',
+      'LEDGER_ROW_UNVERIFIED'
+    ];
+    out.errorCode=allow.indexOf(code)>=0?code:'UNCLASSIFIED';
+  }
+  console.log('VAA_PROD_RETIRE_CANARY_PREFLIGHT '+JSON.stringify(out));
+  return out;
+}
