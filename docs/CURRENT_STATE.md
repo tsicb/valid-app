@@ -4,13 +4,14 @@ Last updated: 2026-11-20
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
-## GAS file 25 historical version fingerprint refinement (2026-11-21; read-only)
+## GAS file 25 historical version fingerprint refinement (2026-11-21; PR #57 merged, read-only)
 
 - Operator's read-only drift diagnosis: `CONTENT_DIFFERENCE_REVIEW_REQUIRED`, GitHub **468 lines / 19,229 chars** versus live GAS **337 lines / 13,190 chars**; first mismatching aligned line 68, and 385 differing aligned line positions. No BOM and both end in LF. This is real content difference, not whitespace-only; SYNC is blocked pending reconciliation.
 - GitHub's file 25 history reveals a pinned prior version from commit `0c4be7c5e9e3eb39eafcd341618dacb79797dd36` (2026-11-19) containing exactly **337 lines / 13,190 chars**; its line 68 differs at the same newly added quarantine field. The current GitHub source has 468 lines / 19,229 chars. The matching lengths strongly suggest the live file is the pre-quarantine revision, but do **not** prove exact content identity.
 - The earlier controlled `clasp push --force` in run #44756995296 reported success. It has not been established why GAS still returns an apparently older file. Avoid assuming a failed push or manual editing without evidence.
 - Extend the independent `Central API legacy source drift diagnosis (read only)` workflow to check the remote file 25 source against the **exact, pinned Git historical revision** using byte-for-byte equality after EOL normalization. The old text is obtained by `git show` onto the private CI runner and never logged, committed or exposed. The result is a boolean-like known-version label, not a source dump. No GAS modifications, production Script Property access or Web App deployment.
-- If exact version match is proven, check production scope and the earlier SYNC behavior before targeted reconciliation. If not matched, stop and investigate unknown content differences. Do not SYNC, COPY, RETIRE or enable any canary deletion until the discrepancy is resolved.
+- [PR #57](https://github.com/tsicb/valid-app/pull/57) merged to `main` as `1bd4ec3de69abceb19b5c5a0b6d3ebac8f4726fa`, after CI passed 527 Node.js tests, 4 Python tests, GAS syntax and SHA manifest validation. No canonical GAS sources or existing SYNC workflow changed.
+- Next: operator reruns `Central API legacy source drift diagnosis (read only)` on `main`, with `confirm=DIAGNOSE`, and reports the new `Matches pinned 2026-11-19 GitHub source` field. If exact version match is proven, check production scope and the earlier SYNC behavior before targeted reconciliation. If not matched, stop and investigate unknown content differences. Do not SYNC, COPY, RETIRE or enable any canary deletion until the discrepancy is resolved.
 
 ## Historical migration file 25 unexpectedly drifted in GAS AUDIT (2026-11-21; PR #56 diagnostics merged, SYNC blocked)
 
