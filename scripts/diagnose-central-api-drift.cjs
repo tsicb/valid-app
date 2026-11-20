@@ -38,12 +38,22 @@ function classify(gitText, gasText) {
     gasHasBom:gasText.startsWith("\uFEFF")
   };
 }
+// Compare normalized bytes against a pinned, immutable Git history revision.
+// A same-length source is not considered equal unless every byte matches.
+function fingerprintHistoricalSource(gasText,historicalText) {
+  const normalize = s => String(s).replace(/\r\n?/g,"\n");
+  return normalize(gasText)===normalize(historicalText) ?
+    "MATCHES_2026_11_19_GITHUB_REVISION" :
+    "DOES_NOT_MATCH_KNOWN_2026_11_19_REVISION";
+}
 function createSummary(result) {
   const rows = [
     "## Central API legacy migration source drift (read only)",
     "",
     "- Target file: `25_Request_Ledger_V2_Legacy_Batch_Migration.gs`",
     "- Source classification: `"+result.category+"`",
+    "- Matches pinned 2026-11-19 GitHub source: `"+
+      (result.historicalVersion||"NOT_CHECKED")+"`",
     "- Equal after line-ending normalization: "+result.exactAfterEol,
     "- GitHub lines / GAS lines: "+result.gitLines+" / "+result.gasLines,
     "- GitHub characters / GAS characters: "+result.gitChars+" / "+result.gasChars,
@@ -65,16 +75,19 @@ if (require.main === module) {
   const local=path.join("central-api",target+".gs");
   const remoteGs=path.join(".gas-stage",target+".gs");
   const remoteJs=path.join(".gas-stage",target+".js");
+  const historical=path.join(".gas-stage",".historic-file25");
   try {
     const remote=fs.existsSync(remoteGs)?remoteGs:
       fs.existsSync(remoteJs)?remoteJs:null;
-    if (!remote || !fs.existsSync(local)) {
+    if (!remote || !fs.existsSync(local) || !fs.existsSync(historical)) {
       process.stdout.write("DRIFT_DIAGNOSTIC: TARGET_MISSING\n");
       process.exitCode=2;
     } else {
-      const report=createSummary(classify(
-        fs.readFileSync(local,"utf8"),fs.readFileSync(remote,"utf8")
-      ));
+      const remoteSource=fs.readFileSync(remote,"utf8");
+      const result=classify(fs.readFileSync(local,"utf8"),remoteSource);
+      result.historicalVersion=fingerprintHistoricalSource(
+        remoteSource,fs.readFileSync(historical,"utf8"));
+      const report=createSummary(result);
       if (process.env.GITHUB_STEP_SUMMARY)
         fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,report);
       process.stdout.write("DRIFT_DIAGNOSTIC: REPORT_WRITTEN_READ_ONLY\n");
@@ -84,4 +97,4 @@ if (require.main === module) {
     process.exitCode=2;
   }
 }
-module.exports={classify,createSummary};
+module.exports={classify,createSummary,fingerprintHistoricalSource};
