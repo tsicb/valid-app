@@ -4,6 +4,20 @@ Last updated: 2026-11-20
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Single-request V2 READY canary source preparation (2026-11-21; OFF in production)
+
+- Added a strictly scoped `VAA_PROD_READY_RETIRE_MODE=CANARY_ONE_NEW_READY_V1` mode in `24_Request_Ledger_V2_Production_Gate.gs`. This mode is dormant until a separately authorized operator configuration change. The existing `RETIRE_VERIFIED_NEW_READY_V1` global mode is untouched and **must stay OFF**. An exact canary ID (`VAA_PROD_READY_RETIRE_CANARY_REQUEST_ID`) and matching CREATE/UPDATE type (`VAA_PROD_READY_RETIRE_CANARY_OPERATION_MODE`) must match `^VAA_READY_RETIRE_CANARY_(CREATE|UPDATE)_[0-9]{8}_[A-Z0-9]{8}# Current State
+
+Last updated: 2026-11-20
+
+This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
+
+. No wildcard, no ordinary report request ID.
+- If canary mode is armed, V2 sticky mode must be enabled, historical migration OFF, and canary identity syntactically valid, otherwise HALT before new work. A wrong operation for the named canary ID HALTs before reservation; unrelated newly admitted requests continue normally and retain their REQ. Only an exact canary match can reach the **existing** verified V2 READY + ScriptLock + source readback retirement procedure.
+- Added `vaaLedgerProdRetireCanaryPreflightReadOnly` for manual operator verification that the configured ID has never appeared in original Script Properties, V1 READY archive or V2 journal. It requires the retirement flag OFF, scope/ACL valid and a stable source snapshot; reports only aggregate booleans, with zero writes/deletes and `activationAuthorized:false`. It cannot generate a canary job or enable the flag.
+- Newly created tests exercise one-request CREATE and UPDATE deletion, ordinary request non-deletion, preflight ID uniqueness, malformed flag/identity, V2 OFF/legacy migration collision, mismatched mode, source/archive disagreement, lost delete response and no private identifier logging.
+- **No live canary request launched; no deletion approved.** This is GitHub source preparation only until separate AUDIT/SYNC, controlled Web App deployment verification and explicit test approval. Existing 145 historic REQ records are untouched. Do not set any canary properties during code sync, and do not turn `VAA_PROD_LEDGER_FENCE` OFF.
+
 ## Verified production V2 retirement preflight; virtual no-REQ replay tests passed (2026-11-21; PR #54 merged)
 
 - Operator ran live editor-only `vaaLedgerProdReadyRetirePreflightReadOnly` after the controlled source sync. Result: `strictReadOnly:true`, `sourceStable:true`, `prodV2Enabled:true`, `retireModeOff:true`, `legacyMigrationOff:true`, `journalEvents:2`, `journalReady:1`, `journalPending:0`, `modernReadyWithReq:1`, `modernReadyWithoutReq:0`, `eligibleForFutureRetirement:1`, `propertyWrites:0`, `journalWrites:0`, `propertyDeletes:0`, `activationAuthorized:false`, `errorStage:NONE`, `errorCode:NONE`, `pass:true`. This is proof of **one** successful live V2 READY history and consistent retained REQ, not a live removal or CREATE proof.
