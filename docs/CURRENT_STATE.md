@@ -4,6 +4,12 @@ Last updated: 2026-11-20
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Legacy migration read-only diagnostic: historic receipt format mismatch (2026-11-20)
+
+- Operator ran `vaaLegacyAuditFailureDiagnosticReadOnly` on live GAS. Returned `pass:false`, `errorStage:VALIDATE_RECEIPT`, `errorCode:LEDGER_RECEIPT_INVALID`, `requestPropertiesSeen:145`, `requestsInspected:2`, `readyInspected:2`, `sourceStable:true`, `propertyWrites:0`, `archiveWrites:0`. The second inspected READY receipt did not satisfy the current strict V1 receipt format; it does **not** mean all 145 properties are invalid.
+- Failure occurs during source enumeration, before target or archive checks. The source snapshot was stable. Do not copy, retire, edit historic `REQ_` or modify the sticky V2 flags.
+- Next: append and run a single temporary read-only *aggregate shape inventory* across all REQ properties, reporting only fixed field-issue category counts (not record values, IDs, URLs or hashes). Determine compatibility policy from complete counts before changing migration code. This diagnostic is not part of the published GAS mirror; no Web App redeploy required.
+
 ## Production V2 gate ACTIVE — first normal UPDATE independently verified (2026-11-20)
 
 - Operator activated the production V2 sticky gate using the one-time preflight/activation function. Their GAS result was `VAA_PROD_V2_ACTIVATION` with `pass:true`, `productionActivated:true`, `checkedFiles:2`, `checkedTabs:3`, `capacityAllowed:true`, `readyRetirementEnabled:false`, `legacyMigrationEnabled:false`, `requestHistoryModified:false`. `modesOff:true` describes the pre-activation state.
