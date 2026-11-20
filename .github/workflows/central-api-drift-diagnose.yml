@@ -14,7 +14,6 @@ permissions:
 jobs:
   diagnose:
     name: Diagnose legacy migration source drift without writing GAS
-    if: ${{ inputs.confirm == 'DIAGNOSE' }}
     runs-on: ubuntu-latest
     env:
       GAS_SCRIPT_ID: ${{ secrets.GAS_SCRIPT_ID }}
