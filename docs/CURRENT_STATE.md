@@ -4,12 +4,12 @@ Last updated: 2026-11-20
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
-## Legacy READY shape inventory and protected-copy fix (2026-11-20; branch only)
+## Legacy READY shape inventory and protected-copy fix (2026-11-20; PR #50 merged)
 
 - Operator's complete read-only inventory reported `requestPropertiesSeen:145`, `validReady:102`, `invalidReady:39`, `nonReady:4`, `invalidJson:0`, and `sourceStable:true` with zero writes. All 39 invalid READY were historical UPDATE receipts simultaneously missing `updatePayloadDigest` and an allowed `updateStrategy`; the other validation failure counters were zero. Do not reconstruct/guess replay identity from old payloads.
 - `25_Request_Ledger_V2_Legacy_Batch_Migration.gs` has a narrowly scoped **GitHub-only** fix: classify those provably legacy UPDATE receipts as quarantined, leave original REQ_ untouched, reject any new/unknown malformed READY, and audit/copy only strictly valid READY receipts (excluding fresh V2 journal READY). New `quarantinedLegacyReady` aggregate counter; RETIRE is blocked while any quarantined READY exists, even after dual backups. COPY continues to preserve every original REQ_.
 - 102 strict-valid READY **includes** the first modern V2 UPDATE; likely up to 101 legacy-ready candidates pending journal and target checks. The exact count must come from the next read-only audit, not inferred as guaranteed.
-- **Not yet live**: branch changes, test updates and docs are pending CI/review, and have not been synced/deployed to production GAS. Legacy migration mode remains OFF. Old REQ_ COPY/RETIRE remains unperformed.
+- **GitHub integration:** [PR #50](https://github.com/tsicb/valid-app/pull/50) merged to `main` at `3bbd774e3f2c8a7e564fb881c0b13a20f66a51a9`; branch CI passed 484 Node regression tests, 4 Python tests, GAS syntax and SHA-256 source verification. Main-branch Central API check also passed. **Not yet live:** this modified editor-only GAS migration source has not been synchronized to production GAS. Legacy migration mode remains OFF. Old REQ_ COPY/RETIRE remains unperformed. Before any new `SYNC`, run `AUDIT` and reconcile temporary diagnostics left in the GAS editor.
 
 ## Legacy migration read-only diagnostic: historic receipt format mismatch (2026-11-20)
 
