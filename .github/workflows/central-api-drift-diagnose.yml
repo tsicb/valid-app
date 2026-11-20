@@ -20,8 +20,10 @@ jobs:
       CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
 
     steps:
-      - name: Checkout exact GitHub main
+      - name: Checkout exact GitHub main with immutable source history
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -64,8 +66,10 @@ jobs:
           clasp pull
           test -f .gas-stage/appsscript.json
 
-      - name: Classify only file 25 source drift without exposing source
+      - name: Classify file 25 against current and pinned 2026-11-19 source
         shell: bash
         run: |
           set -euo pipefail
+          # Git show output stays on runner. Nothing is printed or uploaded.
+          git show 0c4be7c5e9e3eb39eafcd341618dacb79797dd36:central-api/25_Request_Ledger_V2_Legacy_Batch_Migration.gs > .gas-stage/.historic-file25
           node scripts/diagnose-central-api-drift.cjs
