@@ -26,18 +26,51 @@ const VAA_LEDGER_PROD_ROOT_PROP_='VAA_PROD_LEDGER_ROOT_ID';
 const VAA_LEDGER_PROD_OUTPUT_PROP_='VAA_PROD_LEDGER_OUTPUT_ID';
 const VAA_LEDGER_PROD_RETIRE_PROP_='VAA_PROD_READY_RETIRE_MODE';
 const VAA_LEDGER_PROD_RETIRE_ON_='RETIRE_VERIFIED_NEW_READY_V1';
+// Independent one-request canary; broad retirement remains separately gated.
+// The canary must be identified by a specific reserved namespace and mode.
+const VAA_LEDGER_PROD_RETIRE_CANARY_ON_='CANARY_ONE_NEW_READY_V1';
+const VAA_LEDGER_PROD_RETIRE_CANARY_ID_PROP_=
+  'VAA_PROD_READY_RETIRE_CANARY_REQUEST_ID';
+const VAA_LEDGER_PROD_RETIRE_CANARY_KIND_PROP_=
+  'VAA_PROD_READY_RETIRE_CANARY_OPERATION_MODE';
+
+/** Pure read of exact canary identity; no wildcard or general-purpose IDs. */
+function vaaLedgerProdRetireCanary_(props){
+  const id=String(props.getProperty(
+    VAA_LEDGER_PROD_RETIRE_CANARY_ID_PROP_
+  )||'').trim();
+  const kind=String(props.getProperty(
+    VAA_LEDGER_PROD_RETIRE_CANARY_KIND_PROP_
+  )||'').trim();
+  const match=/^VAA_READY_RETIRE_CANARY_(CREATE|UPDATE)_[0-9]{8}_[A-Z0-9]{8}$/
+    .exec(id);
+  if(!match || kind!==match[1])return null;
+  return {id:id,operationMode:kind};
+}
 
 function vaaLedgerProdModeStatus_(props) {
   const dop=String(props.getProperty(VAA_JOURNAL_DOP_MODE_PROP_)||'').trim();
   const journal=String(props.getProperty(VAA_LEDGER_JOURNAL_MODE_PROP_)||'').trim();
   const fence=String(props.getProperty(VAA_LEDGER_PROD_FENCE_PROP_)||'').trim();
   const retire=String(props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)||'').trim();
-  if (retire && retire!=='OFF' && retire!==VAA_LEDGER_PROD_RETIRE_ON_) {
+  if (retire && retire!=='OFF' && retire!==VAA_LEDGER_PROD_RETIRE_ON_ &&
+      retire!==VAA_LEDGER_PROD_RETIRE_CANARY_ON_) {
     return {state:'HALT',code:'JOURNAL_PROD_RETIRE_MODE_INVALID'};
+  }
+  if(retire===VAA_LEDGER_PROD_RETIRE_CANARY_ON_){
+    const canary=vaaLedgerProdRetireCanary_(props);
+    const legacy=String(props.getProperty(
+      'VAA_PROD_LEGACY_MIGRATION_MODE'
+    )||'').trim();
+    if(!canary || (legacy && legacy!=='OFF')){
+      return {state:'HALT',code:'JOURNAL_PROD_CANARY_SCOPE_INVALID'};
+    }
   }
   if (!dop || dop==='OFF') {
     // Prevent accidentally falling back to legacy admission after cutover.
-    if (fence===VAA_LEDGER_PROD_FENCE_ON_ || retire===VAA_LEDGER_PROD_RETIRE_ON_ ||
+    if (fence===VAA_LEDGER_PROD_FENCE_ON_ ||
+        retire===VAA_LEDGER_PROD_RETIRE_ON_ ||
+        retire===VAA_LEDGER_PROD_RETIRE_CANARY_ON_ ||
         journal===VAA_LEDGER_PROD_JOURNAL_MODE_) {
       return {state:'HALT',code:'JOURNAL_PROD_STICKY_FENCE'};
     }
@@ -139,6 +172,15 @@ function vaaLedgerProdDecideUnderLock_(props,id,mode,target,strategy,
     // down the exact legacy processing path. Do not retro-reserve it.
     if(raw)return {state:'LEGACY'};
 
+    // An accidentally reused canary ID with the wrong operation must not
+    // reserve a new request or reach any CREATE / UPDATE side effects.
+    if(String(props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)||'').trim()===
+       VAA_LEDGER_PROD_RETIRE_CANARY_ON_){
+      const canary=vaaLedgerProdRetireCanary_(props);
+      if(canary && canary.id===id && canary.operationMode!==mode){
+        return {state:'HALT',code:'JOURNAL_PROD_CANARY_MODE_MISMATCH'};
+      }
+    }
     const budget=vaaCheckNewRequestCapacityReadOnly_(props);
     if(!budget.allowed){
       return {state:'HALT',code:'PROPERTY_CAPACITY_NEAR_LIMIT'};
@@ -179,9 +221,13 @@ function vaaLedgerProdFinalizeReady_(props,id,mode) {
     if(finalized.state!=='READY'||finalized.revision!==2){
       return {state:'HALT',code:'JOURNAL_PROD_FINALIZE_UNVERIFIED'};
     }
-    const retire=String(
+    const retireSetting=String(
       props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)||''
-    ).trim()===VAA_LEDGER_PROD_RETIRE_ON_;
+    ).trim();
+    const canary=retireSetting===VAA_LEDGER_PROD_RETIRE_CANARY_ON_ ?
+      vaaLedgerProdRetireCanary_(props) : null;
+    const retire=retireSetting===VAA_LEDGER_PROD_RETIRE_ON_ ||
+      !!(canary && canary.id===id && canary.operationMode===mode);
     if(retire){
       const key=getRequestPropertyKey_(id);
       const raw=props.getProperty(key);
