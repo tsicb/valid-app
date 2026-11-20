@@ -51,6 +51,14 @@
 4. 新規REQ_の自動退避を有効化する場合は、その後の検証結果をもって別途承認する。REPLAYゲートをOFFに戻してはならない。
 5. 旧REQ_の容量削減には、**別途**バックアップ、V1への一括コピー・検証、既存のREQなし再送ゲートの照合、そして承認付きの整理が必要。今回のPRでは旧REQを削除しない。
 
+## 事前監査合格後の「REQなし」再送シミュレーション（2026-11-21）
+
+本番の監査ログは `pass:true`、`journalEvents:2`、`journalReady:1`、`journalPending:0`、`modernReadyWithReq:1`、`eligibleForFutureRetirement:1`、`sourceStable:true`、書き込み・削除0件であった。現時点で新規V2 READYは1件のみ確認済みで、REQが残る状態からの読取整合性を示している。
+
+次の安全な検証として、GitHub上の `tests/request-ledger-v2-no-req-shadow-replay.test.cjs` を使用する。既存の本番判定関数 `vaaLedgerProdDecideUnderLock_` および `vaaLedgerDopReceiptMatches_` を隔離メモリで実行し、元REQを仮想的に隠してもCREATE/UPDATEのREADYを返し、RESERVED再登録・Driveへの作成やGASへの書き込みを一切行わないことを確認する。UPDATEのdigest・strategy・対象ファイル違いはHALT、READY未確定や権限エラーもHALTとする。元の本番REQを消す試験は絶対に実施しない。
+
+既存の退避フラグは有効化すると全ての新規V2 READYに適用される。したがって、本番での初回削除テストは一件のカナリアだけに対象を限定する改修を別途設計してから承認する。現在の `VAA_PROD_READY_RETIRE_MODE=OFF` および `VAA_PROD_LEGACY_MIGRATION_MODE=OFF` は維持する。
+
 ## 新規V2 READY履歴の自動整理：有効化前の読み取り専用監査（2026-11-20）
 
 現行の `24_Request_Ledger_V2_Production_Gate.gs` には、本番V2で新たに受け付けた処理に限り、台帳のREADY rev2を検証して `REQ_` を削除する独立フラグ `VAA_PROD_READY_RETIRE_MODE` が既にある。新しいフラグや削除ルートを増やすのではなく、まず **`vaaLedgerProdReadyRetirePreflightReadOnly`** を手動実行し、本番台帳の安全性を監査する。
