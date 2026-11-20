@@ -72,6 +72,13 @@ function fixture(opt={}){
     MimeType:{GOOGLE_SHEETS:"GOOGLE_SHEETS"},
     DriveApp:{Access:{PRIVATE:"PRIVATE"},getFileById:id=>{
       if(opt.badBackupAcl && id===BACK)throw Error(SECRET);
+      if(id===TARGET){
+        if(opt.targetCannotOpen)throw Error(SECRET);
+        return {
+          getMimeType:()=>opt.targetWrongMime?"OTHER_MIME":"GOOGLE_SHEETS",
+          isTrashed:()=>!!opt.targetTrashed
+        };
+      }
       return file;
     }},
     PropertiesService:{getScriptProperties:()=>props},
@@ -112,7 +119,10 @@ function fixture(opt={}){
     vaaTargetUpdateLeaseKey_:id=>"VAA_TARGET_UPDATE_"+id,
     validateUpdateTargetDriveFile_:(id,output)=>{
       if(id!==TARGET||output!==OUT||opt.targetInvalid)throw Error(SECRET);
-      return {isTrashed:()=>false};
+      if(opt.targetOutsideManagedOutput){
+        throw Object.assign(new Error(SECRET),{code:"TARGET_OUTSIDE_OUTPUT_FOLDER"});
+      }
+      return {isTrashed:()=>!!opt.targetTrashed};
     },
     vaaLedgerReadyCopyOneUnderLock_:(adapter,id)=>{
       const book=getBook(adapter.getProperty("VAA_REQUEST_LEDGER_SPREADSHEET_ID"));
@@ -326,6 +336,84 @@ test("quarantine diagnostic totals do not log source request IDs or records",()=
   assert.equal(logs.includes("LEGACY_UPDATE_WITHOUT_DIGEST_OR_STRATEGY"),false);
   assert.equal(logs.includes(TARGET),false);
   assert.equal(logs.includes(SECRET),false);
+});
+test("unavailable historic targets are counted, excluded from COPY and never retired",()=>{
+  const cases=[
+    ["targetCannotOpen","targetCannotOpen"],
+    ["targetWrongMime","targetWrongMime"],
+    ["targetTrashed","targetTrashed"],
+    ["targetOutsideManagedOutput","targetOutsideManagedOutput"]
+  ];
+  for(const [flag,counter] of cases){
+    const f=fixture({[flag]:true,mode:"COPY_DUAL_ARCHIVE_READY_V1"});
+    const before=JSON.stringify(f.properties);
+    const audit=f.audit();
+    assert.equal(audit.pass,true,JSON.stringify({flag,audit}));
+    assert.equal(audit.legacyReadySeen,1);
+    assert.equal(audit.ready,0);
+    assert.equal(audit.quarantinedTargetReady,1);
+    assert.equal(audit[counter],1);
+    assert.equal(audit.needPrimaryCopy,0);
+    assert.equal(audit.needBackupCopy,0);
+    const res=f.copy();
+    assert.equal(res.pass,true,JSON.stringify({flag,res}));
+    assert.equal(res.copied,0);
+    assert.equal(res.quarantinedTargetReady,1);
+    assert.equal(f.calls.primaryWrites,0);
+    assert.equal(f.calls.backupWrites,0);
+    assert.equal(f.calls.deletes,0);
+    assert.equal(JSON.stringify(f.properties),before);
+    f.setMode("RETIRE_DUAL_VERIFIED_READY_V1");
+    const denied=f.retire();
+    assert.equal(denied.pass,false);
+    assert.equal(denied.errorStage,"INVENTORY");
+    assert.equal(f.calls.deletes,0);
+    const log=f.calls.logs.join("\n");
+    for(const secret of [ID,TARGET,SECRET,ROOT,OUT,MAIN,BACK,raw]){
+      assert.equal(log.includes(secret),false,flag+" leaked "+secret);
+    }
+  }
+});
+test("previous archive conflict is not hidden by a target quarantine",()=>{
+  const f=fixture({mode:"COPY_DUAL_ARCHIVE_READY_V1",
+    targetCannotOpen:true,conflictBackup:true});
+  const audit=f.audit();
+  assert.equal(audit.pass,false);
+  assert.equal(audit.errorStage,"REVIEW");
+  assert.equal(audit.errorCode,"LEGACY_ARCHIVE_CONFLICT");
+  const result=f.copy();
+  assert.equal(result.pass,false);
+  assert.equal(f.calls.backupWrites,0);
+  assert.equal(f.calls.primaryWrites,0);
+  assert.equal(f.calls.deletes,0);
+});
+test("unknown validation errors still fail closed, unlike missing or trashed targets",()=>{
+  const f=fixture({mode:"COPY_DUAL_ARCHIVE_READY_V1",targetInvalid:true});
+  const audit=f.audit();
+  assert.equal(audit.pass,false);
+  assert.equal(audit.errorStage,"REVIEW");
+  assert.equal(audit.errorCode,"UNCLASSIFIED");
+  assert.equal(f.copy().pass,false);
+  assert.equal(f.calls.primaryWrites,0);
+  assert.equal(f.calls.backupWrites,0);
+  assert.equal(f.calls.deletes,0);
+});
+test("valid historical target stays eligible for backup copy",()=>{
+  const f=fixture({mode:"COPY_DUAL_ARCHIVE_READY_V1"});
+  const audit=f.audit();
+  assert.equal(audit.pass,true);
+  assert.equal(audit.legacyReadySeen,1);
+  assert.equal(audit.ready,1);
+  assert.equal(audit.targetsVerified,1);
+  assert.equal(audit.quarantinedTargetReady,0);
+  assert.equal(audit.needPrimaryCopy,1);
+  assert.equal(audit.needBackupCopy,1);
+  const result=f.copy();
+  assert.equal(result.pass,true);
+  assert.equal(result.copied,1);
+  assert.equal(f.calls.primaryWrites,1);
+  assert.equal(f.calls.backupWrites,1);
+  assert.equal(f.calls.deletes,0);
 });
 test("non-READY historical error is excluded from copy and retirement",()=>{
   const f=fixture({mode:"COPY_DUAL_ARCHIVE_READY_V1",nonready:true});
