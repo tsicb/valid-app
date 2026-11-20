@@ -4,6 +4,14 @@ Last updated: 2026-11-20
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## GAS file 25 historical version fingerprint refinement (2026-11-21; read-only)
+
+- Operator's read-only drift diagnosis: `CONTENT_DIFFERENCE_REVIEW_REQUIRED`, GitHub **468 lines / 19,229 chars** versus live GAS **337 lines / 13,190 chars**; first mismatching aligned line 68, and 385 differing aligned line positions. No BOM and both end in LF. This is real content difference, not whitespace-only; SYNC is blocked pending reconciliation.
+- GitHub's file 25 history reveals a pinned prior version from commit `0c4be7c5e9e3eb39eafcd341618dacb79797dd36` (2026-11-19) containing exactly **337 lines / 13,190 chars**; its line 68 differs at the same newly added quarantine field. The current GitHub source has 468 lines / 19,229 chars. The matching lengths strongly suggest the live file is the pre-quarantine revision, but do **not** prove exact content identity.
+- The earlier controlled `clasp push --force` in run #44756995296 reported success. It has not been established why GAS still returns an apparently older file. Avoid assuming a failed push or manual editing without evidence.
+- Extend the independent `Central API legacy source drift diagnosis (read only)` workflow to check the remote file 25 source against the **exact, pinned Git historical revision** using byte-for-byte equality after EOL normalization. The old text is obtained by `git show` onto the private CI runner and never logged, committed or exposed. The result is a boolean-like known-version label, not a source dump. No GAS modifications, production Script Property access or Web App deployment.
+- If exact version match is proven, check production scope and the earlier SYNC behavior before targeted reconciliation. If not matched, stop and investigate unknown content differences. Do not SYNC, COPY, RETIRE or enable any canary deletion until the discrepancy is resolved.
+
 ## Historical migration file 25 unexpectedly drifted in GAS AUDIT (2026-11-21; PR #56 diagnostics merged, SYNC blocked)
 
 - The user ran a fresh read-only Central API source AUDIT: `remote=26 expected=26 changed=2 new=0 identical=24 unexpected=0`. Changed files: `24_Request_Ledger_V2_Production_Gate.gs` (new single-ID canary, expected) and `25_Request_Ledger_V2_Legacy_Batch_Migration.gs` (unexpected).
