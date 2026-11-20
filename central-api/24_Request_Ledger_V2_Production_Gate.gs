@@ -269,10 +269,12 @@ function vaaLedgerProdReadyRetirePreflightReadOnly(){
       sheet.getRange(2,1,last-1,8).getValues();
     out.journalEvents=rows.length;
     const seen={};
+    const pendingHashes={};
+    const completedHashes={};
     for(let i=0;i<rows.length;i++){
       const row=rows[i];
       if(row[2]==='RESERVED'||row[2]==='ERROR'){
-        out.journalPending++;
+        pendingHashes[String(row[0])]=true;
         continue;
       }
       if(row[2]!=='READY'||Number(row[1])!==2){
@@ -287,6 +289,7 @@ function vaaLedgerProdReadyRetirePreflightReadOnly(){
         throw vaaLedgerJournalError_('PREFLIGHT_JOURNAL_DUPLICATE');
       }
       seen[id]=true;
+      completedHashes[String(row[0])]=true;
       const journal=vaaLedgerJournalLookupFromSheet_(sheet,id);
       if(journal.state!=='READY'||journal.revision!==2){
         throw vaaLedgerJournalError_('PREFLIGHT_JOURNAL_UNVERIFIED');
@@ -325,6 +328,8 @@ function vaaLedgerProdReadyRetirePreflightReadOnly(){
       }
       out.eligibleForFutureRetirement++;
     }
+    out.journalPending=Object.keys(pendingHashes)
+      .filter(function(hash){return !completedHashes[hash];}).length;
     stage='SOURCE_STABILITY';
     const after=props.getProperties();
     const keys=Object.keys(before).sort();
@@ -336,9 +341,11 @@ function vaaLedgerProdReadyRetirePreflightReadOnly(){
     if(!out.sourceStable){
       throw vaaLedgerJournalError_('PREFLIGHT_SOURCE_CHANGED');
     }
-    out.pass=out.journalReady>0;
-    out.errorStage=out.pass?'NONE':'NO_MODERN_READY';
-    out.errorCode=out.pass?'NONE':'PREFLIGHT_NO_READY';
+    out.pass=out.journalReady>0 && out.journalPending===0;
+    out.errorStage=out.pass?'NONE':
+      out.journalPending>0?'PENDING_JOURNAL':'NO_MODERN_READY';
+    out.errorCode=out.pass?'NONE':
+      out.journalPending>0?'PREFLIGHT_JOURNAL_PENDING':'PREFLIGHT_NO_READY';
   }catch(err){
     out.pass=false;out.errorStage=stage;
     // Never echo Error.message or values potentially derived from IDs.
