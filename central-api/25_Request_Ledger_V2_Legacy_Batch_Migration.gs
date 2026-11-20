@@ -92,8 +92,11 @@ function vaaLedgerProdLegacyEntries_(props,snapshot){
         record && !Array.isArray(record) &&
         record.requestId===id && record.status==='READY' &&
         record.stage==='READY' && record.operationMode==='UPDATE' &&
-        typeof record.spreadsheetId==='string' &&
-        /^[A-Za-z0-9_-]{20,}$/.test(record.spreadsheetId) &&
+        // Do not add stricter ID-format requirements than the original
+        // READY validator. This is a protected/non-replayable category,
+        // never permission to archive, replay or retire the old record.
+        // Older receipts can contain noncanonical target references.
+        !!record.spreadsheetId &&
         record.targetSpreadsheetId===record.spreadsheetId &&
         !String(record.updatePayloadDigest||'').trim() &&
         record.updateStrategy!=='APPEND' &&
@@ -176,6 +179,28 @@ function vaaLedgerProdLegacyReview_(props,entries,v1,backup,v2){
   return {summary:summary,toCopy:toCopy,toRetire:toRetire};
 }
 
+/** Static allowlist: return no raw Error.message or dynamic identifiers. */
+function vaaLedgerProdLegacyAuditErrorCode_(err){
+  const code=String(err&&err.code||'');
+  const allowed=[
+    'LEDGER_RECEIPT_INVALID','LEDGER_REQUEST_ID_INVALID',
+    'LEGACY_SOURCE_INVALID','LEGACY_SOURCE_ACTIVE',
+    'LEGACY_TARGET_LEASE_PRESENT','LEGACY_QUARANTINE_JOURNAL_COLLISION',
+    'LEGACY_JOURNAL_COLLISION','LEGACY_TARGET_TRASHED',
+    'LEGACY_ARCHIVE_CONFLICT','JOURNAL_UNAVAILABLE',
+    'JOURNAL_ROW_UNVERIFIED','JOURNAL_SCHEMA_MISMATCH',
+    'JOURNAL_CHAIN_UNVERIFIED','JOURNAL_EVENT_COUNT_INVALID',
+    'LEDGER_UNAVAILABLE','LEDGER_ROW_UNVERIFIED',
+    'LEDGER_SCHEMA_MISMATCH','LEDGER_DUPLICATE_KEY',
+    'TARGET_INVALID','TARGET_OUTSIDE_OUTPUT_FOLDER',
+    'LEGACY_BACKUP_NOT_CONFIGURED',
+    'LEGACY_BACKUP_PRIVATE_SCOPE_FAILED',
+    'JOURNAL_PROD_SCOPE_DENIED','JOURNAL_PROD_MODE_REQUIRED',
+    'JOURNAL_PROD_LEDGER_UNVERIFIED'
+  ];
+  return allowed.indexOf(code)>=0?code:'UNCLASSIFIED';
+}
+
 /** Read-only aggregate inventory. IDs, original REQ data and error strings
  * never appear in output. Safe after an unknown COPY/RETIRE result.
  */
@@ -189,7 +214,7 @@ function vaaLedgerProdLegacyAuditReadOnly(){
     modernJournalExcluded:0,targetsVerified:0,
     copyAuthorized:false,retireAuthorized:false,
     propertyWrites:0,archiveWrites:0,
-    errorStage:'NONE',pass:false
+    errorStage:'NONE',errorCode:'NONE',pass:false
   };
   let stage='SCOPE';
   try{
@@ -199,8 +224,9 @@ function vaaLedgerProdLegacyAuditReadOnly(){
     const v1=vaaLedgerReadyOpenReadOnly_(props);
     const backup=vaaLedgerProdLegacyBackupSheet_(props).sheet;
     const journal=vaaLedgerJournalOpenReadOnly_(props).sheet;
-    stage='REVIEW';
+    stage='ENUMERATE';
     const entries=vaaLedgerProdLegacyEntries_(props,before);
+    stage='REVIEW';
     const reviewed=vaaLedgerProdLegacyReview_(
       props,entries,v1,backup,journal
     ).summary;
@@ -219,9 +245,11 @@ function vaaLedgerProdLegacyAuditReadOnly(){
     );
     out.pass=out.sourceStable && reviewed.conflicting===0;
     out.errorStage=out.pass?'NONE':'SOURCE_CHANGED';
-  }catch(_){
+    out.errorCode=out.pass?'NONE':'SOURCE_CHANGED';
+  }catch(err){
     out.pass=false;
     out.errorStage=stage;
+    out.errorCode=vaaLedgerProdLegacyAuditErrorCode_(err);
   }
   console.log('VAA_PROD_LEGACY_AUDIT '+JSON.stringify(out));
   return out;
