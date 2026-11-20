@@ -1,0 +1,71 @@
+name: Central API legacy source drift diagnosis (read only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type DIAGNOSE for read-only script source classification'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Diagnose legacy migration source drift without writing GAS
+    runs-on: ubuntu-latest
+    env:
+      GAS_SCRIPT_ID: ${{ secrets.GAS_SCRIPT_ID }}
+      CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+
+    steps:
+      - name: Checkout exact GitHub main
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify access configuration and diagnosis input
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirm }}" = "DIAGNOSE"
+          test -n "${GAS_SCRIPT_ID:-}"
+          test -n "${CLASPRC_JSON:-}"
+
+      - name: Install clasp
+        shell: bash
+        run: npm install --global @google/clasp@3.3.0
+
+      - name: Configure temporary read-only clasp session
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          node <<'NODE'
+          const fs=require('fs');
+          fs.writeFileSync('.clasp.json',JSON.stringify({
+            scriptId:process.env.GAS_SCRIPT_ID,
+            rootDir:'.gas-stage',
+            scriptExtensions:['.gs','.js']
+          },null,2)+'\n');
+          NODE
+
+      - name: Pull current GAS script source (read only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .gas-stage
+          mkdir -p .gas-stage
+          clasp pull
+          test -f .gas-stage/appsscript.json
+
+      - name: Classify only file 25 source drift without exposing source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/diagnose-central-api-drift.cjs
