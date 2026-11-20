@@ -303,7 +303,7 @@ test("audit surfaces only allowlisted error codes and exact failure stage",()=>{
   assert.equal(result.errorCode,"UNCLASSIFIED");
   const logs=known.calls.logs.join("\n")+unknown.calls.logs.join("\n");
   assert.equal(logs.includes(SECRET),false);
-  assert.equal(logs.includes(LEGACY_ID),false);
+  assert.equal(logs.includes("LEGACY_UPDATE_WITHOUT_DIGEST_OR_STRATEGY"),false);
   assert.equal(logs.includes("SENSITIVE_ISOLATED_TARGET"),false);
 });
 test("quarantine does not suppress unrelated invalid READY or journal collision",()=>{
