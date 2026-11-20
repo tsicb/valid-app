@@ -4,13 +4,14 @@ Last updated: 2026-11-20
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
-## Historical migration file 25 unexpectedly drifted in GAS AUDIT (2026-11-21; SYNC BLOCKED pending diagnosis)
+## Historical migration file 25 unexpectedly drifted in GAS AUDIT (2026-11-21; PR #56 diagnostics merged, SYNC blocked)
 
 - The user ran a fresh read-only Central API source AUDIT: `remote=26 expected=26 changed=2 new=0 identical=24 unexpected=0`. Changed files: `24_Request_Ledger_V2_Production_Gate.gs` (new single-ID canary, expected) and `25_Request_Ledger_V2_Legacy_Batch_Migration.gs` (unexpected).
 - Verified GitHub file 25 blob SHA `0932577840bb163128f206f803beade80d6119d0` **is identical** at the last successful GAS source SYNC commit `0f70a7e68375445eb063a1e54599d65f28c96284` and current `main`. The previous `clasp push --force` completed successfully in [run #44756995296](https://github.com/tsicb/valid-app/actions/runs/44756995296). Therefore the extra drift is not a GitHub change introduced by PR #55.
 - Root cause of the remote-vs-GitHub source mismatch remains unknown (manual GAS edit, server-side transformation, etc. are hypotheses only). **Do not run SYNC just because unexpected=0**: it would overwrite the remote file 25 without explaining why it differs.
 - Prepared a **separate manual read-only** `Central API legacy source drift diagnosis` GitHub workflow (confirmation `DIAGNOSE`) and a source-free classifier. It uses `clasp pull` only, compares file 25 after line-ending normalization, and exposes only category, line/character counts, first mismatching line number, trailing newline/BOM flags. It never prints remote source or property values, and has no `clasp push` or deployment step.
-- Next: run independent diagnostic on `main` after CI/merge, review the metadata, then decide whether a targeted manual code reconciliation is needed before any further production GAS sync. Keep the existing PROD V2 fence ON, all READY retirement modes OFF, and legacy migration OFF. No real canary execution has been authorized.
+- [PR #56](https://github.com/tsicb/valid-app/pull/56) merged to `main` at `cc5bd94e5f64fb89f1da809767755a20f8842e88`, after CI passed 525 Node.js tests, 4 Python tests, GAS syntax and SHA manifest validation. Only new independent GitHub Action, a diagnostic helper script, tests and docs were changed—no `central-api/*.gs` code or existing sync workflow was modified.
+- Next: open `Actions -> Central API legacy source drift diagnosis (read only) -> Run workflow`, choose `main`, enter `DIAGNOSE`; share the generated metadata summary (category, counts and line metrics), not source code. Review the result to decide if a targeted reconciliation is needed before any further production GAS sync. Keep the PROD V2 fence ON, all READY retirement modes OFF, and legacy migration OFF. No real canary execution has been authorized.
 
 ## Single-request V2 READY canary source preparation (2026-11-21; PR #55 merged, NOT synced to GAS)
 
