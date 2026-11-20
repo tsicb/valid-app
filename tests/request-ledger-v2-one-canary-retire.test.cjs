@@ -18,7 +18,8 @@ const SECRET="PRIVATE_RECEIPT_DATA_NEVER_TO_LOG";
 function fixture(options={}){
   const op=options.operationMode||"CREATE";
   const id=options.id||C_CREATE;
-  const configuredId=options.configuredId||C_CREATE;
+  const configuredId=options.configuredId===undefined ?
+    C_CREATE:options.configuredId;
   const mode=options.retireMode||"OFF";
   const record={
     requestId:id,operationMode:op,status:"READY",stage:"READY",
@@ -181,18 +182,24 @@ test("canary cannot be armed with a broad or wrong-mode ID",()=>{
 test("wrong operation on configured canary ID HALTs before reservation",()=>{
   const h=fixture({retireMode:"CANARY_ONE_NEW_READY_V1",
     journalState:"ABSENT"});
+  delete h.data["REQ_"+C_CREATE];
   const r=h.decide("UPDATE");
   assert.equal(r.state,"HALT");
   assert.equal(r.code,"JOURNAL_PROD_CANARY_MODE_MISMATCH");
   assert.equal(h.effects.reserves,0);
 });
-test("normal non-canary ID can reserve during canary mode without deletion",()=>{
+test("normal non-canary ID reserves and later retains REQ in canary mode",()=>{
   const h=fixture({id:OTHER,retireMode:"CANARY_ONE_NEW_READY_V1",
     journalState:"ABSENT"});
-  assert.equal(h.decide().state,"LEGACY"); // Existing REQ remains legacy.
-  assert.equal(h.effects.reserves,0);
+  // A new request has no REQ until after its RESERVED journal write.
+  delete h.data["REQ_"+OTHER];
+  assert.equal(h.decide().state,"ADMITTED");
+  assert.equal(h.effects.reserves,1);
+  // Simulate the existing production request pipeline writing READY.
+  h.data["REQ_"+OTHER]=h.raw;
   assert.equal(h.finalize().retired,false);
   assert.equal(h.effects.deleteCalls,0);
+  assert.equal(h.props.getProperty("REQ_"+OTHER),h.raw);
 });
 test("canary archive mismatch or journal fault never deletes",()=>{
   for(const opt of [
