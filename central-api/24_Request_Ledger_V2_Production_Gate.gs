@@ -216,3 +216,143 @@ function vaaLedgerProdFinalizeReady_(props,id,mode) {
     }
   }
 }
+
+/**
+ * Manually invoked, production READ-ONLY readiness assessment for the
+ * independently gated NEW V2 READY source-retirement mode.
+ *
+ * Does not change mode properties, edit the journal or delete any REQ_.
+ * Historical non-V2 READY/ERROR receipts are not considered for retirement.
+ * Requires an intact PRIVATE V2 ledger. Caps journal scan to avoid a
+ * potentially expensive whole-sheet read at future large scales.
+ * Returns aggregate counts only; never logs IDs, raw records or errors.
+ */
+function vaaLedgerProdReadyRetirePreflightReadOnly(){
+  const out={
+    phase:'PROD_NEW_V2_READY_RETIRE_PREFLIGHT_READ_ONLY',
+    strictReadOnly:true,sourceStable:false,
+    prodV2Enabled:false,retireModeOff:false,legacyMigrationOff:false,
+    journalEvents:0,journalReady:0,journalPending:0,
+    modernReadyWithReq:0,modernReadyWithoutReq:0,
+    eligibleForFutureRetirement:0,
+    propertyWrites:0,journalWrites:0,propertyDeletes:0,
+    activationAuthorized:false,errorStage:'NONE',
+    errorCode:'NONE',pass:false
+  };
+  let stage='MODE';
+  try {
+    const props=PropertiesService.getScriptProperties();
+    const before=props.getProperties();
+    out.prodV2Enabled=vaaLedgerProdModeStatus_(props).state==='ENABLED';
+    const retire=String(
+      props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)||''
+    ).trim();
+    const legacy=String(
+      props.getProperty('VAA_PROD_LEGACY_MIGRATION_MODE')||''
+    ).trim();
+    out.retireModeOff=!retire||retire==='OFF';
+    out.legacyMigrationOff=!legacy||legacy==='OFF';
+    if(!out.prodV2Enabled||!out.retireModeOff||
+       !out.legacyMigrationOff){
+      throw vaaLedgerJournalError_('PREFLIGHT_MODE_NOT_SAFE');
+    }
+    stage='SCOPE';
+    vaaLedgerProdAssertScope_(props);
+    const tabs=vaaLedgerJournalOpenReadOnly_(props);
+    stage='JOURNAL';
+    const sheet=tabs.sheet;
+    const last=sheet.getLastRow();
+    if(last<1||last-1>1000){
+      throw vaaLedgerJournalError_('PREFLIGHT_JOURNAL_SCAN_BOUNDS');
+    }
+    const rows=last===1?[]:
+      sheet.getRange(2,1,last-1,8).getValues();
+    out.journalEvents=rows.length;
+    const seen={};
+    for(let i=0;i<rows.length;i++){
+      const row=rows[i];
+      if(row[2]==='RESERVED'||row[2]==='ERROR'){
+        out.journalPending++;
+        continue;
+      }
+      if(row[2]!=='READY'||Number(row[1])!==2){
+        throw vaaLedgerJournalError_('PREFLIGHT_JOURNAL_UNEXPECTED');
+      }
+      let body;
+      try{body=JSON.parse(row[3]);}catch(_){
+        throw vaaLedgerJournalError_('PREFLIGHT_JOURNAL_UNEXPECTED');
+      }
+      const id=vaaLedgerReadyRequestId_(body&&body.requestId);
+      if(Object.prototype.hasOwnProperty.call(seen,id)){
+        throw vaaLedgerJournalError_('PREFLIGHT_JOURNAL_DUPLICATE');
+      }
+      seen[id]=true;
+      const journal=vaaLedgerJournalLookupFromSheet_(sheet,id);
+      if(journal.state!=='READY'||journal.revision!==2){
+        throw vaaLedgerJournalError_('PREFLIGHT_JOURNAL_UNVERIFIED');
+      }
+      const rec=journal.latest.body.receipt;
+      const serialized=JSON.stringify(rec);
+      vaaLedgerReadyValidateRaw_(id,serialized);
+      out.journalReady++;
+      const old=vaaLedgerReadyLookupFromSheet_(tabs.readySheet,id);
+      if(old.state!=='NOT_FOUND'){
+        throw vaaLedgerJournalError_('PREFLIGHT_V1_COLLISION');
+      }
+      const raw=before[getRequestPropertyKey_(id)];
+      if(!raw){
+        out.modernReadyWithoutReq++;
+        continue;
+      }
+      out.modernReadyWithReq++;
+      vaaLedgerReadyValidateRaw_(id,raw);
+      if(raw!==serialized || isLeaseActive_(rec) ||
+         (rec.operationMode==='UPDATE' &&
+          props.getProperty(vaaTargetUpdateLeaseKey_(
+            rec.targetSpreadsheetId
+          )))){
+        throw vaaLedgerJournalError_('PREFLIGHT_RECEIPT_MISMATCH');
+      }
+      const verified=vaaLedgerDopReceiptMatches_(
+        rec,id,rec.operationMode,
+        rec.operationMode==='UPDATE'?rec.targetSpreadsheetId:'',
+        rec.operationMode==='UPDATE'?rec.updateStrategy:'',
+        rec.operationMode==='UPDATE'?rec.updatePayloadDigest:'',
+        API_CONFIG.SHEET_OUTPUT_FOLDER_ID
+      );
+      if(!verified){
+        throw vaaLedgerJournalError_('PREFLIGHT_TARGET_UNVERIFIED');
+      }
+      out.eligibleForFutureRetirement++;
+    }
+    stage='SOURCE_STABILITY';
+    const after=props.getProperties();
+    const keys=Object.keys(before).sort();
+    const next=Object.keys(after).sort();
+    out.sourceStable=keys.length===next.length &&
+      keys.every(function(key,i){
+        return key===next[i] && before[key]===after[key];
+      });
+    if(!out.sourceStable){
+      throw vaaLedgerJournalError_('PREFLIGHT_SOURCE_CHANGED');
+    }
+    out.pass=out.journalReady>0;
+    out.errorStage=out.pass?'NONE':'NO_MODERN_READY';
+    out.errorCode=out.pass?'NONE':'PREFLIGHT_NO_READY';
+  }catch(err){
+    out.pass=false;out.errorStage=stage;
+    // Never echo Error.message or values potentially derived from IDs.
+    const allowed=[
+      'PREFLIGHT_MODE_NOT_SAFE','PREFLIGHT_JOURNAL_SCAN_BOUNDS',
+      'PREFLIGHT_JOURNAL_UNEXPECTED','PREFLIGHT_JOURNAL_DUPLICATE',
+      'PREFLIGHT_JOURNAL_UNVERIFIED','PREFLIGHT_V1_COLLISION',
+      'PREFLIGHT_RECEIPT_MISMATCH','PREFLIGHT_TARGET_UNVERIFIED',
+      'PREFLIGHT_SOURCE_CHANGED','LEDGER_RECEIPT_INVALID',
+      'JOURNAL_UNAVAILABLE','JOURNAL_CHAIN_UNVERIFIED'
+    ];
+    const code=String(err&&err.code||'');
+    out.errorCode=allowed.indexOf(code)>=0?code:'UNCLASSIFIED';
+  }
+  console.log('VAA_PROD_READY_RETIRE_PREFLIGHT '+JSON.stringify(out));
+  return out;
+}
