@@ -4,11 +4,19 @@ Last updated: 2026-11-20
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Production deployment v62, ledger connections registered (2026-11-20)
+
+- GitHub Actions `AUDIT` run 44671755009 confirmed 19 remote GAS scripts, 26 GitHub scripts, 2 changed, 7 new, 0 unexpected remote scripts. `SYNC` run [44683105124](https://github.com/tsicb/valid-app/actions/runs/44683105124) successfully pushed 27 files (26 scripts + manifest) to the configured Apps Script project, at source commit `b07176a`.
+- Operator subsequently executed a one-time safe connection setup script. Confirmed log: `PROD_LEDGER_CONNECTION_SETUP`, `propertiesVerified:4`, `modesOff:true`, `ledgerAccessVerified:true`, `productionActivated:false`, `requestHistoryModified:false`, `pass:true`. The four connection properties reference the new private main ledger, independent backup and managed root/output folders. Temporary editor file `99_Ledger_Setup_Temporary.gs` was then deleted.
+- Operator updated the existing versioned Web App deployment to **version 62 (2026-11-20 16:11 JST)** and confirmed its URL was unchanged. The externally accessible GET response has **not yet been independently confirmed**. Runtime functions behind the Web App have not yet been end-to-end exercised with a new synthetic request.
+- **V2 production gate is still OFF**. PROD fence has not been armed. Legacy migration and READY retirement are OFF. No historical REQ_ archival or retirement performed. Next: read-only pre-activation verification, then a separately reviewed cutover; never turn the mode OFF after production fence activation. 
+- The historical "not synced"/"not deployed" statements below apply to earlier implementation snapshots only.
+
 ## Production ledger provisioning and safe GAS source audit (2026-11-20)
 
 - Two new private Google Sheets files were created in the real managed **root** folder: V2 journal/READY main ledger and separate READY backup. Google Drive readback confirms single direct root parent, unshared owner-only permissions and exact header-only tabs (main `receipts` / `journal_v2`, backup `receipts`). No request history copied.
 - Upgraded the existing manual GAS sync workflow with `confirm=AUDIT`: source syntax and SHA manifest checks, `clasp pull` only, GitHub versus GAS filename and normalized SHA comparison, no push or deployment. `SYNC` now refuses any unrecognized live GAS scripts that would otherwise be deleted. See [the production read-only GAS audit runbook](PROD_GAS_CUTOVER_READ_ONLY_AUDIT.md).
-- Live GAS sync, production mode enablement, Web App redeploy, Script Properties updates and migration/retirement remain **not performed** pending an audited deployment boundary.
+- **Later operational update:** the source has now been synced, connection Script Properties are set, and Web App v62 deployed as recorded above. V2 activation, history copy/retirement and a live GET verification remain outstanding.
 
 ## Production V2 request-journal integration (2026-11-20, PR #48; source only, OFF)
 
