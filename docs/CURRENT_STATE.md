@@ -4,6 +4,12 @@ Last updated: 2026-11-20
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Legacy READY post-SYNC audit still blocked; exact-code diagnosis pending (2026-11-20)
+
+- The operator confirmed `SYNC` of PR #50 and re-ran the editor-only `vaaLedgerProdLegacyAuditReadOnly`. The result was `pass:false`, `errorStage:REVIEW`, `quarantinedLegacyReady:0`, `sourceStable:false`, `propertyWrites:0`, `archiveWrites:0`. Because the audit only assigns counters and sourceStable after the entire enumeration/review succeeds, zeros and false in this failure response are **defaults**, not conclusive live totals or evidence of mutation.
+- The original 145-property shape inventory remains the last valid count-only assessment: 102 strict-valid READY, 39 historical UPDATE READY missing replay proof, 4 nonREADY. The quarantine implementation passed code tests, but this production audit has not yet proven it can finish on the actual history set.
+- Do **not** set migration COPY/RETIRE flags, change sticky V2 PROD gate, alter archived receipts or retry source data. Next execute a temporary read-only `vaaLegacyReviewErrorCodeReadOnly` in the GAS editor. This directly invokes the currently synced enumeration and review routines and captures only allowlisted error category and failing phase, without printing receipt values, IDs or errors. Resolve the specific fail-closed condition before a production COPY authorization.
+
 ## Legacy READY shape inventory and protected-copy fix (2026-11-20; PR #50 merged)
 
 - Operator's complete read-only inventory reported `requestPropertiesSeen:145`, `validReady:102`, `invalidReady:39`, `nonReady:4`, `invalidJson:0`, and `sourceStable:true` with zero writes. All 39 invalid READY were historical UPDATE receipts simultaneously missing `updatePayloadDigest` and an allowed `updateStrategy`; the other validation failure counters were zero. Do not reconstruct/guess replay identity from old payloads.
