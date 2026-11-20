@@ -51,6 +51,14 @@
 4. 新規REQ_の自動退避を有効化する場合は、その後の検証結果をもって別途承認する。REPLAYゲートをOFFに戻してはならない。
 5. 旧REQ_の容量削減には、**別途**バックアップ、V1への一括コピー・検証、既存のREQなし再送ゲートの照合、そして承認付きの整理が必要。今回のPRでは旧REQを削除しない。
 
+## 新規V2 READY履歴の自動整理：有効化前の読み取り専用監査（2026-11-20）
+
+現行の `24_Request_Ledger_V2_Production_Gate.gs` には、本番V2で新たに受け付けた処理に限り、台帳のREADY rev2を検証して `REQ_` を削除する独立フラグ `VAA_PROD_READY_RETIRE_MODE` が既にある。新しいフラグや削除ルートを増やすのではなく、まず **`vaaLedgerProdReadyRetirePreflightReadOnly`** を手動実行し、本番台帳の安全性を監査する。
+
+監査はGASエディタ専用・読み取り専用で、Script Propertiesの変更、台帳への追記、履歴削除、モードON、Webアプリの再デプロイは行わない。指定範囲はV2ジャーナルの最大1000イベントとし、大きな台帳を全読み込みしないよう上限超過時には停止する。V2の完了した `READY rev2` について、ジャーナル連鎖、元REQとのJSON完全一致（残存時）、更新digest/strategy、対象管理フォルダ、更新リース、V1との衝突を確認し、件数だけ出力する。RESERVED/ERRORが残る場合も停止扱いとする。
+
+`VAA_PROD_READY_RETIRE_PREFLIGHT` ログの `pass:true` は「本番切替の承認」ではない。改めて安全な本番CREATE/UPDATEと再送防止、削除後の二重実行防止、影響時間を検証してから、独立した明示的な有効化承認が必要。`VAA_PROD_LEDGER_FENCE=ACTIVE_V1`、`VAA_REQUEST_JOURNAL_MODE=PROD_RESERVATION_V2`、`VAA_JOURNAL_DOP_MODE=PROD_V2_GATED` は変更しない。旧履歴移管モードはOFFのまま。
+
 ## 旧READY履歴の一括移管と容量解放（別承認、初期OFF）
 
 本PRは `25_Request_Ledger_V2_Legacy_Batch_Migration.gs` も追加する。これにより、旧READYを1件ずつの専用QAで処理する方式を終了し、管理者がまとめて移管・監査できる。ただし本番書き込みは本PRでは実行しない。

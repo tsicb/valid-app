@@ -282,7 +282,11 @@ test("doPost routes PROD first while preserving existing TEST bridge",()=>{
 });
 test("never log raw receipts or secret values in PROD bridge",()=>{
   new vm.Script(source);
-  assert.doesNotMatch(source,/console\.(?:log|error|warn)\s*\(/);
+  // The separate, manually invoked preflight logs aggregate counters only.
+  // Keep the original no-log invariant scoped to hot PROD request handling.
+  const hotPath=source.slice(0,
+    source.indexOf("function vaaLedgerProdReadyRetirePreflightReadOnly"));
+  assert.doesNotMatch(hotPath,/console\.(?:log|error|warn)\s*\(/);
   assert.doesNotMatch(source,/\bdoPost\s*\(/);
   assert.doesNotMatch(source,/UrlFetchApp/);
 });

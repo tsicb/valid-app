@@ -4,6 +4,14 @@ Last updated: 2026-11-20
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## New V2 READY source-retirement preflight (2026-11-20; GitHub preparation only)
+
+- Objective: stop accumulating freshly finalized `REQ_` data in Script Properties without changing the `report.html` read route, the production V2 admission protocol, or old legacy records. The actual retirement implementation is **already** present behind `VAA_PROD_READY_RETIRE_MODE=RETIRE_VERIFIED_NEW_READY_V1`, but this mode remains OFF and was not activated in this change.
+- Add manual-only `vaaLedgerProdReadyRetirePreflightReadOnly` to `24_Request_Ledger_V2_Production_Gate.gs`. Requires V2 PROD sticky gate active, NEW READY retirement mode OFF, historical migration mode OFF, PRIVATE ledger scope valid, valid journal header and <=1000 journal events. Verifies each V2 READY rev2 event via chain lookup, receipt validation, V1 collision exclusion, source REQ exact JSON match, lease absence and Drive managed-folder checks. Outputs only aggregate counts and bounded error categories; no request IDs or receipt payloads.
+- `activationAuthorized:false`, `propertyWrites:0`, `journalWrites:0` and `propertyDeletes:0` are invariant: `pass:true` means only *read-only audit conditions passed*, NOT permission to enable the existing deletion flag.
+- Legacy history 145 records remains out of scope. The existing source-sync gate (AUDIT before SYNC) still applies. After controlled synchronization, run the read-only preflight while retirement and migration remain OFF. Then separately plan an isolated live CREATE/UPDATE test, benchmark timing and inspect replay behavior before any production retirement mode activation.
+- **Never flip** the activated V2 production sticky gate back to OFF. The new preflight does not alter `doPost`, viewer responses or the live Web App deployment unless separately deployed.
+
 ## Production target survey completed; protected-target migration change (2026-11-20; PR #52 merged)
 
 - The operator's standalone read-only `VAA_PROD_LEGACY_TARGET_INVENTORY_V2` returned `pass:true`, `surveyCompleted:true`, `sourceStable:true`, `requestPropertiesSeen:145`, `validReadyCandidates:102`, `quarantinedLegacyReady:39`, `nonReady:4`, `modernJournalExcluded:1`, `eligibleAfterJournal:101`, `targetsVerified:45`, `targetCannotOpen:46`, `targetTrashed:10`, `targetWrongMime:0`, `targetOutsideManagedOutput:0`, `targetOtherCheckError:0`, `unexpectedInvalidReady:0`, `quarantinedJournalCollision:0`, and `propertyWrites:0`, `archiveWrites:0`. 46 cannot-open targets may be deleted, permission-changed or otherwise unavailable; the audit cannot distinguish those reasons.
