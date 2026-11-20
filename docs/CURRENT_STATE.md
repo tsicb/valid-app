@@ -4,13 +4,13 @@ Last updated: 2026-11-20
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
-## Production legacy ENUMERATE diagnosis and quarantine predicate refinement (2026-11-20; source PR in review)
+## Production legacy ENUMERATE diagnosis and quarantine predicate refinement (2026-11-20; PR #51 merged, pending live SYNC)
 
 - Follow-up editor-only diagnostic output: `VAA_PROD_LEGACY_REVIEW_PROBE` reported `requestPropertiesSeen:145`, `errorStage:ENUMERATE`, `errorCode:LEDGER_RECEIPT_INVALID`, `sourceStable:true`, `propertyWrites:0`, `archiveWrites:0`, `pass:false`. The failure is **before target/ledger review**, so no historic archive COPY/RETIRE was authorized.
 - Code review found that the newly added quarantine predicate required a 20+ character canonical Google spreadsheet ID, **more restrictive than** `vaaLedgerReadyValidateRaw_` which merely tests for a nonempty spreadsheet ID and an exact UPDATE target match. This mismatch can reject old UPDATE receipts intended to be protected. The live root cause is still an inference, not independently proven from secret records.
 - Follow-up code change removes the extra canonical-ID constraint **only from the NON-REPLAYABLE quarantine classification**, preserving exact original requestId, READY status/stage, UPDATE mode and equal nonempty target/spreadsheet, and requiring both absent digest and invalid strategy. Quarantined REQ values are never archived, replayed or deleted by this path. Existing strict V1 READY validator and V2 doPost admission are unchanged.
 - Editor-only audit now reports a static, allowlisted `errorCode` and distinguishes `ENUMERATE` from `REVIEW`; unknown messages are rendered as `UNCLASSIFIED` so request IDs, source records and private Drive values are not logged. Test fixtures cover short/legacy target representations, invalid missing target, fail-closed handling and redaction.
-- **Deployment boundary:** GitHub branch changes do not change the already activated v62 Web App or the live GAS script until a separate AUDIT/SYNC. Migration flag remains OFF, and all 145 historical REQ_ properties remain untouched.
+- **GitHub verified:** [PR #51](https://github.com/tsicb/valid-app/pull/51) merged to `main` at `867fea7a1aa1f68c9c3e15be09c26c4c3c7dc9e4`, after 487 Node regression tests and 4 Python tests passed, plus GAS syntax and checksum validation. **Not yet live:** the modified editor-only migration source has not been synchronized to the active GAS project. The deployed Web App v62 and V2 sticky production mode are unchanged. Migration flag remains OFF; historic REQ_ and archives remain untouched. Next: remove any temporary `99_` diagnostic editor file, run existing AUDIT action and verify only `25_Request_Ledger_V2_Legacy_Batch_Migration.gs` differs, then controlled SYNC and read-only legacy audit. No COPY/RETIRE is approved.
 
 ## Legacy READY post-SYNC audit still blocked; exact-code diagnosis pending (2026-11-20)
 
