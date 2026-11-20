@@ -286,7 +286,7 @@ test("never log raw receipts or secret values in PROD bridge",()=>{
   // Keep the original no-log invariant scoped to hot PROD request handling.
   const hotPath=source.slice(0,
     source.indexOf("function vaaLedgerProdReadyRetirePreflightReadOnly"));
-  assert.doesNotMatch(hotPath,/console\\.(?:log|error|warn)\\s*\\(/);
+  assert.doesNotMatch(hotPath,/console\.(?:log|error|warn)\s*\(/);
   assert.doesNotMatch(source,/\bdoPost\s*\(/);
   assert.doesNotMatch(source,/UrlFetchApp/);
 });
