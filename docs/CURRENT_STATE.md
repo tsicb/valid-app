@@ -4,6 +4,13 @@ Last updated: 2026-11-20
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Legacy dual-archive audit now stops at target verification (2026-11-20)
+
+- After the operator's PR #51 controlled GAS source synchronization, their next editor-only `vaaLedgerProdLegacyAuditReadOnly` returned `pass:false`, `errorStage:REVIEW`, `errorCode:TARGET_INVALID`, `propertyWrites:0`, `archiveWrites:0`, with all report counters at their initialized defaults. This strongly indicates the earlier `ENUMERATE` receipt-format blocker has been passed; the current failure is during per-target Drive verification.
+- `validateUpdateTargetDriveFile_` emits `TARGET_INVALID` when Drive cannot open the target spreadsheet or the file is not Google Sheets. It **cannot** distinguish deleted target, removed permissions, transient Drive fault or wrong MIME from this code alone. No target ID or personal data should be printed in logs. Never infer that all target files are missing from a single stopped scan.
+- Prepare one temporary editor-only `vaaLegacyTargetInventoryReadOnly` which calls existing ledger scope, source validation, and V2 journal lookups, then surveys **all** strict-valid historical READY targets. Count cannot-open, wrong MIME, trashed, outside managed tree, other check errors and verified cases; preserve the 39 non-replayable legacy UPDATE quarantine and non-READY records. No Script Property or Sheet writes, no COPY/RETIRE authorization.
+- Existing migration code remains unchanged and migration mode remains OFF. Preserve activated V2 sticky gate. Inspect total per-status counts and source stability before deciding whether missing historical targets require a permanent quarantine mechanism.
+
 ## Production legacy ENUMERATE diagnosis and quarantine predicate refinement (2026-11-20; PR #51 merged, pending live SYNC)
 
 - Follow-up editor-only diagnostic output: `VAA_PROD_LEGACY_REVIEW_PROBE` reported `requestPropertiesSeen:145`, `errorStage:ENUMERATE`, `errorCode:LEDGER_RECEIPT_INVALID`, `sourceStable:true`, `propertyWrites:0`, `archiveWrites:0`, `pass:false`. The failure is **before target/ledger review**, so no historic archive COPY/RETIRE was authorized.
