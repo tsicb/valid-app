@@ -1,7 +1,8 @@
 "use strict";
 const {test}=require("node:test");
 const assert=require("node:assert/strict");
-const {classify,createSummary}=require("../scripts/diagnose-central-api-drift.cjs");
+const {classify,createSummary,fingerprintHistoricalSource}=
+  require("../scripts/diagnose-central-api-drift.cjs");
 test("identical and CRLF are equal after EOL normalization",()=>{
   assert.equal(classify("a\nb\n","a\r\nb\r\n").category,
     "IDENTICAL_AFTER_EOL_NORMALIZATION");
@@ -34,4 +35,22 @@ test("no source fragments are included for unrelated logic change",()=>{
                        "function x","return"]){
     assert.equal(report.includes(secret),false);
   }
+});
+
+test("same 337 lines and 13190 characters are never sufficient proof",()=>{
+  const old="A".repeat(13189)+"\n";
+  const fake="B"+old.slice(1);
+  assert.equal(old.split("\n").length,2);
+  assert.equal(old.length,fake.length);
+  assert.equal(fingerprintHistoricalSource(fake,old),
+    "DOES_NOT_MATCH_KNOWN_2026_11_19_REVISION");
+});
+test("pinned Git historic snapshot is exact after newline normalization",()=>{
+  const old="function x(){return true;}\n";
+  assert.equal(fingerprintHistoricalSource(old.replace(/\n/g,"\r\n"),old),
+    "MATCHES_2026_11_19_GITHUB_REVISION");
+  const report=createSummary({...classify(old,old),
+    historicalVersion:fingerprintHistoricalSource(old,old)});
+  assert.equal(report.includes("MATCHES_2026_11_19_GITHUB_REVISION"),true);
+  assert.equal(report.includes("function x"),false);
 });
