@@ -4,6 +4,12 @@ Last updated: 2026-11-20
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Production ledger provisioning and safe GAS source audit (2026-11-20)
+
+- Two new private Google Sheets files were created in the real managed **root** folder: V2 journal/READY main ledger and separate READY backup. Google Drive readback confirms single direct root parent, unshared owner-only permissions and exact header-only tabs (main `receipts` / `journal_v2`, backup `receipts`). No request history copied.
+- Upgraded the existing manual GAS sync workflow with `confirm=AUDIT`: source syntax and SHA manifest checks, `clasp pull` only, GitHub versus GAS filename and normalized SHA comparison, no push or deployment. `SYNC` now refuses any unrecognized live GAS scripts that would otherwise be deleted. See [the production read-only GAS audit runbook](PROD_GAS_CUTOVER_READ_ONLY_AUDIT.md).
+- Live GAS sync, production mode enablement, Web App redeploy, Script Properties updates and migration/retirement remain **not performed** pending an audited deployment boundary.
+
 ## Production V2 request-journal integration (2026-11-20, PR #48; source only, OFF)
 
 - Added `central-api/24_Request_Ledger_V2_Production_Gate.gs` and integrated its gated admission/READY finalization into `doPost`. Production mode is **dormant** by default. Existing TEST journal and legacy request behavior remain available when the PROD gate is not armed.
