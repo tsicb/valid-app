@@ -4,6 +4,13 @@ Last updated: 2026-11-20
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Legacy READY shape inventory and protected-copy fix (2026-11-20; branch only)
+
+- Operator's complete read-only inventory reported `requestPropertiesSeen:145`, `validReady:102`, `invalidReady:39`, `nonReady:4`, `invalidJson:0`, and `sourceStable:true` with zero writes. All 39 invalid READY were historical UPDATE receipts simultaneously missing `updatePayloadDigest` and an allowed `updateStrategy`; the other validation failure counters were zero. Do not reconstruct/guess replay identity from old payloads.
+- `25_Request_Ledger_V2_Legacy_Batch_Migration.gs` has a narrowly scoped **GitHub-only** fix: classify those provably legacy UPDATE receipts as quarantined, leave original REQ_ untouched, reject any new/unknown malformed READY, and audit/copy only strictly valid READY receipts (excluding fresh V2 journal READY). New `quarantinedLegacyReady` aggregate counter; RETIRE is blocked while any quarantined READY exists, even after dual backups. COPY continues to preserve every original REQ_.
+- 102 strict-valid READY **includes** the first modern V2 UPDATE; likely up to 101 legacy-ready candidates pending journal and target checks. The exact count must come from the next read-only audit, not inferred as guaranteed.
+- **Not yet live**: branch changes, test updates and docs are pending CI/review, and have not been synced/deployed to production GAS. Legacy migration mode remains OFF. Old REQ_ COPY/RETIRE remains unperformed.
+
 ## Legacy migration read-only diagnostic: historic receipt format mismatch (2026-11-20)
 
 - Operator ran `vaaLegacyAuditFailureDiagnosticReadOnly` on live GAS. Returned `pass:false`, `errorStage:VALIDATE_RECEIPT`, `errorCode:LEDGER_RECEIPT_INVALID`, `requestPropertiesSeen:145`, `requestsInspected:2`, `readyInspected:2`, `sourceStable:true`, `propertyWrites:0`, `archiveWrites:0`. The second inspected READY receipt did not satisfy the current strict V1 receipt format; it does **not** mean all 145 properties are invalid.

@@ -31,6 +31,15 @@ function fixture(opt={}){
   };
   if(opt.invalidReceipt)properties["REQ_"+ID]="BAD_JSON";
   if(opt.nonready)properties["REQ_"+ID]=JSON.stringify({...original,status:"ERROR"});
+  const LEGACY_ID="LEGACY_UPDATE_WITHOUT_DIGEST_OR_STRATEGY";
+  if(opt.legacyUpdateWithoutMetadata || opt.legacyUpdateBadTarget){
+    properties["REQ_"+LEGACY_ID]=JSON.stringify({
+      requestId:LEGACY_ID,operationMode:"UPDATE",
+      status:"READY",stage:"READY",spreadsheetId:TARGET,
+      targetSpreadsheetId:opt.legacyUpdateBadTarget?"OTHER_TARGET":TARGET,
+      updateStrategy:"",updatePayloadDigest:""
+    });
+  }
   const a={archive:new Map(opt.alreadyPrimary?[[ID,raw]]:[])};
   const b={archive:new Map(opt.alreadyBackup?[[ID,raw]]:[])};
   if(opt.conflictBackup)b.archive.set(ID,"DIFFERENT"+SECRET);
@@ -88,7 +97,11 @@ function fixture(opt={}){
     vaaLedgerReadyValidateRaw_:(id,text)=>{
       const x=JSON.parse(text);
       if(x.requestId!==id||x.stage!=="READY"||x.status!=="READY"||
-        !x.spreadsheetId)throw Error(SECRET);
+        !x.spreadsheetId || (x.operationMode!=="CREATE"&&x.operationMode!=="UPDATE") ||
+        (x.operationMode==="UPDATE" && (
+          !x.updatePayloadDigest || !["APPEND","REPLACE"].includes(x.updateStrategy) ||
+          !x.targetSpreadsheetId || x.targetSpreadsheetId!==x.spreadsheetId
+        )))throw Error(SECRET);
       return x;
     },
     vaaTargetUpdateLeaseKey_:id=>"VAA_TARGET_UPDATE_"+id,
@@ -115,6 +128,10 @@ function fixture(opt={}){
       return {state:"READY",record:original};
     },
     vaaLedgerReadyError_:code=>Object.assign(new Error(code),{code}),
+    vaaLedgerReadyRequestId_:id=>{
+      if(!id||id.length>120)throw Error("BAD_ID");
+      return id;
+    },
     getRequestPropertyKey_:id=>"REQ_"+id
   };
   const ctx=vm.createContext(mock);
@@ -211,6 +228,54 @@ test("invalid source, journal collision, source/backup conflict block all writes
     assert.equal(f.calls.primaryWrites,0,JSON.stringify(options));
     assert.equal(f.calls.deletes,0,JSON.stringify(options));
   }
+});
+test("known legacy UPDATE missing replay proof is quarantined without failing safe copy",()=>{
+  const f=fixture({mode:"COPY_DUAL_ARCHIVE_READY_V1",legacyUpdateWithoutMetadata:true});
+  const before=JSON.stringify(f.properties);
+  const audit=f.audit();
+  assert.equal(audit.pass,true,JSON.stringify(audit));
+  assert.equal(audit.quarantinedLegacyReady,1);
+  assert.equal(audit.ready,1);
+  assert.equal(audit.needPrimaryCopy,1);
+  assert.equal(audit.needBackupCopy,1);
+  assert.equal(audit.propertyWrites,0);
+  assert.equal(audit.archiveWrites,0);
+  const done=f.copy();
+  assert.equal(done.pass,true,JSON.stringify(done));
+  assert.equal(done.copied,1);
+  assert.equal(done.quarantinedLegacyReady,1);
+  assert.equal(f.a.archive.size,1);
+  assert.equal(f.b.archive.size,1);
+  assert.equal(JSON.stringify(f.properties),before);
+  assert.equal(f.calls.deletes,0);
+  assert.equal(f.calls.backupWrites,1);
+  assert.equal(f.calls.primaryWrites,1);
+  f.setMode("RETIRE_DUAL_VERIFIED_READY_V1");
+  const denied=f.retire();
+  assert.equal(denied.pass,false,JSON.stringify(denied));
+  assert.equal(denied.errorStage,"INVENTORY");
+  assert.equal(f.calls.deletes,0);
+});
+test("quarantine does not suppress unrelated invalid READY or journal collision",()=>{
+  for(const options of [
+    {legacyUpdateBadTarget:true},{legacyUpdateWithoutMetadata:true,journalCollision:true}
+  ]){
+    const f=fixture({...options,mode:"COPY_DUAL_ARCHIVE_READY_V1"});
+    assert.equal(f.audit().pass,false,JSON.stringify(options));
+    assert.equal(f.copy().pass,false,JSON.stringify(options));
+    assert.equal(f.calls.primaryWrites,0);
+    assert.equal(f.calls.backupWrites,0);
+    assert.equal(f.calls.deletes,0);
+  }
+});
+test("quarantine diagnostic totals do not log source request IDs or records",()=>{
+  const f=fixture({legacyUpdateWithoutMetadata:true});
+  const a=f.audit();
+  assert.equal(a.quarantinedLegacyReady,1);
+  const logs=f.calls.logs.join("\n");
+  assert.equal(logs.includes("LEGACY_UPDATE_WITHOUT_DIGEST_OR_STRATEGY"),false);
+  assert.equal(logs.includes(TARGET),false);
+  assert.equal(logs.includes(SECRET),false);
 });
 test("non-READY historical error is excluded from copy and retirement",()=>{
   const f=fixture({mode:"COPY_DUAL_ARCHIVE_READY_V1",nonready:true});

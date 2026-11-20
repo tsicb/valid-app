@@ -65,7 +65,7 @@ function vaaLedgerProdLegacyBackupSheet_(props){
 function vaaLedgerProdLegacyEntries_(props,snapshot){
   const data=snapshot||props.getProperties();
   const prefix=API_CONFIG.REQUEST_PROPERTY_PREFIX;
-  const result={ready:[],nonReady:0,modern:0};
+  const result={ready:[],nonReady:0,modern:0,quarantined:[]};
   Object.keys(data).sort().forEach(function(key){
     if(key.indexOf(prefix)!==0)return;
     const id=key.slice(prefix.length);
@@ -81,7 +81,28 @@ function vaaLedgerProdLegacyEntries_(props,snapshot){
       result.nonReady++;
       return;
     }
-    vaaLedgerReadyValidateRaw_(id,data[key]);
+    try {
+      vaaLedgerReadyValidateRaw_(id,data[key]);
+    } catch (err) {
+      // Historic UPDATE READY receipts may predate strategy/digest tracking.
+      // They cannot safely replay from V1: protect the original REQ_ and
+      // quarantine only this precisely known missing-metadata shape.
+      // Any other invalid READY receipt still HALTs the entire batch.
+      const legacyNoReplayProof=
+        record && !Array.isArray(record) &&
+        record.requestId===id && record.status==='READY' &&
+        record.stage==='READY' && record.operationMode==='UPDATE' &&
+        typeof record.spreadsheetId==='string' &&
+        /^[A-Za-z0-9_-]{20,}$/.test(record.spreadsheetId) &&
+        record.targetSpreadsheetId===record.spreadsheetId &&
+        !String(record.updatePayloadDigest||'').trim() &&
+        record.updateStrategy!=='APPEND' &&
+        record.updateStrategy!=='REPLACE';
+      if(!legacyNoReplayProof)throw err;
+      vaaLedgerReadyRequestId_(id);
+      result.quarantined.push({id:id});
+      return;
+    }
     if(record.leaseUntil){
       const end=Date.parse(record.leaseUntil);
       if(!Number.isFinite(end)||end>Date.now()){
@@ -100,11 +121,21 @@ function vaaLedgerProdLegacyEntries_(props,snapshot){
 function vaaLedgerProdLegacyReview_(props,entries,v1,backup,v2){
   const summary={
     legacyReady:0,nonReady:entries.nonReady,modernExcluded:entries.modern,
+    quarantinedLegacyReady:0,
     verifiedBoth:0,needPrimaryCopy:0,needBackupCopy:0,
     conflicting:0,modernJournalExcluded:0,targetsVerified:0
   };
   const toCopy=[];
   const toRetire=[];
+  // Quarantined history is not COPY/RETIRE eligible. Checking V2 absence
+  // prevents hiding a damaged modern READY journal behind legacy shape.
+  entries.quarantined.forEach(function(item){
+    const state=vaaLedgerJournalLookupFromSheet_(v2,item.id);
+    if(state.state!=='ABSENT'){
+      throw vaaLedgerReadyError_('LEGACY_QUARANTINE_JOURNAL_COLLISION');
+    }
+    summary.quarantinedLegacyReady++;
+  });
   entries.ready.forEach(function(item){
     const journal=vaaLedgerJournalLookupFromSheet_(v2,item.id);
     if(journal.state==='READY' && journal.revision===2){
@@ -153,6 +184,7 @@ function vaaLedgerProdLegacyAuditReadOnly(){
     phase:'PROD_LEGACY_DUAL_ARCHIVE_AUDIT_READ_ONLY',
     strictReadOnly:true,sourceStable:false,
     ready:0,nonReady:0,modernExcluded:0,
+    quarantinedLegacyReady:0,
     verifiedBoth:0,needPrimaryCopy:0,needBackupCopy:0,
     modernJournalExcluded:0,targetsVerified:0,
     copyAuthorized:false,retireAuthorized:false,
@@ -175,6 +207,7 @@ function vaaLedgerProdLegacyAuditReadOnly(){
     Object.assign(out,{
       ready:reviewed.legacyReady,nonReady:reviewed.nonReady,
       modernExcluded:reviewed.modernExcluded,
+      quarantinedLegacyReady:reviewed.quarantinedLegacyReady,
       verifiedBoth:reviewed.verifiedBoth,
       needPrimaryCopy:reviewed.needPrimaryCopy,
       needBackupCopy:reviewed.needBackupCopy,
@@ -213,6 +246,7 @@ function vaaLedgerProdLegacyMutateBatch_(action){
       'PROD_LEGACY_RETIRE_BATCH',
     action:action,scriptLockHeld:false,scopeVerified:false,
     beforeReadyCount:0,alreadyDualVerified:0,
+    quarantinedLegacyReady:0,
     copied:0,retired:0,remainingNeedCopy:0,
     sourceStableAfter:false,unknownCompletion:false,
     automaticRetryAuthorized:false,cleanupAuthorized:false,
@@ -244,7 +278,13 @@ function vaaLedgerProdLegacyMutateBatch_(action){
       props,entries,v1,backupInfo.sheet,journal
     );
     out.beforeReadyCount=review.summary.legacyReady;
+    out.quarantinedLegacyReady=review.summary.quarantinedLegacyReady;
     out.alreadyDualVerified=review.summary.verifiedBoth;
+    // No historic source deletion while ANY older UPDATE lacks replay
+    // identity proof. A future separately reviewed policy is required.
+    if(action==='RETIRE' && entries.quarantined.length>0){
+      throw vaaLedgerReadyError_('LEGACY_QUARANTINED_READY_PROTECTED');
+    }
     out.remainingNeedCopy=review.toCopy.length;
     if(action==='RETIRE' && review.toCopy.length>0){
       throw vaaLedgerReadyError_('LEGACY_DUAL_ARCHIVE_INCOMPLETE');
