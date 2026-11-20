@@ -4,6 +4,13 @@ Last updated: 2026-11-20
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Temporary target survey stopped during enumeration; independent count-only replacement (2026-11-20)
+
+- Operator ran the temporary `vaaLegacyTargetInventoryReadOnly`. It returned `errorStage:ENUMERATE`, `errorCode:UNCLASSIFIED`, `sourceStable:true`, `validReadyCandidates:null`, `quarantinedLegacyReady:null`, `propertyWrites:0`, `archiveWrites:0`, `pass:false`. This result cannot classify target health because the survey stopped before reaching the target checks.
+- Unlike the last production standard audit (which reached `REVIEW / TARGET_INVALID`), the temporary helper called `vaaLedgerProdLegacyEntries_` and aborted at an unclassified error. Cause is not yet proven; do not label targets missing or claim 39 histories were excluded based on this result.
+- Prepared a **standalone editor-only count-only helper** `vaaLegacyTargetInventoryV2ReadOnly` that enumerates raw `REQ_` snapshot entries with per-entry guarded evaluation and continues examining safe records even when other records are invalid. It checks V2 journal, quarantined UPDATE identity, active leases, and individual target access/type/trash/location, and emits aggregate counts without IDs, source values or dynamic error text. Local mock verification covered a synthetic 145-REQ case (102 strict-valid, 39 protected, 4 non-READY), five target status categories, unknown record failures and snapshot immutability. No live result yet.
+- No change to `central-api/*.gs`, Web App v62, sticky V2 production properties, private Sheets or historical request receipts is authorized. Migration mode stays OFF and COPY/RETIRE remains prohibited. A successful count-only survey is **not** migration approval.
+
 ## Legacy dual-archive audit now stops at target verification (2026-11-20)
 
 - After the operator's PR #51 controlled GAS source synchronization, their next editor-only `vaaLedgerProdLegacyAuditReadOnly` returned `pass:false`, `errorStage:REVIEW`, `errorCode:TARGET_INVALID`, `propertyWrites:0`, `archiveWrites:0`, with all report counters at their initialized defaults. This strongly indicates the earlier `ENUMERATE` receipt-format blocker has been passed; the current failure is during per-target Drive verification.
