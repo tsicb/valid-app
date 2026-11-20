@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type SYNC to overwrite the GAS project source with GitHub central-api/*.gs'
+        description: 'Type AUDIT for read-only diff or SYNC to update GAS after successful audit'
         required: true
         type: string
 
@@ -24,14 +24,14 @@ jobs:
       CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
 
     steps:
-      - name: Require explicit confirmation
+      - name: Require explicit audit or sync confirmation
         shell: bash
         run: |
           set -euo pipefail
-          if [ "${{ inputs.confirm }}" != "SYNC" ]; then
-            echo "Confirmation must be exactly: SYNC" >&2
-            exit 1
-          fi
+          case "${{ inputs.confirm }}" in
+            AUDIT|SYNC) ;;
+            *) echo "Confirmation must be exactly AUDIT or SYNC" >&2; exit 1 ;;
+          esac
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -127,7 +127,87 @@ jobs:
             exit 1
           fi
 
+      # Read-only audit. Script source and private values remain on the runner.
+      # The summary lists filenames/counts only, never source text or secrets.
+      - name: Audit remote GAS script names and source drift (NO PUSH)
+        id: gas_audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const crypto = require('crypto');
+          const git = 'central-api';
+          const live = '.gas-stage';
+          const scripts = dir => fs.readdirSync(dir).filter(name => /\.(gs|js)$/.test(name));
+          const localNames = scripts(git).filter(name => name.endsWith('.gs'));
+          const liveNames = scripts(live);
+          const byBase = names => {
+            const map = new Map();
+            for (const name of names) {
+              const base = name.replace(/\.(gs|js)$/, '');
+              if (map.has(base)) throw Error('Duplicate GAS script basename in project');
+              map.set(base, name);
+            }
+            return map;
+          };
+          const expected = byBase(localNames);
+          const actual = byBase(liveNames);
+          const normalize = name => fs.readFileSync(name, 'utf8').replace(/\r\n?/g, '\n');
+          const digest = text => crypto.createHash('sha256').update(text, 'utf8').digest('hex');
+          const extra = [...actual.keys()].filter(name => !expected.has(name)).sort();
+          const add = [...expected.keys()].filter(name => !actual.has(name)).sort();
+          const change = [...expected.keys()].filter(name => actual.has(name) &&
+            digest(normalize(path.join(git, expected.get(name)))) !==
+            digest(normalize(path.join(live, actual.get(name))))).sort();
+          const same = expected.size - add.length - change.length;
+          const lines = [
+            '## Central API source AUDIT (read only)',
+            '',
+            '- Requested action: ' + process.env.CONFIRM_MODE,
+            '- Remote GAS scripts: ' + actual.size,
+            '- GitHub server scripts: ' + expected.size,
+            '- Source changed: ' + change.length,
+            '- New GitHub scripts: ' + add.length,
+            '- Identical: ' + same,
+            '- Extra remote scripts that SYNC would overwrite/remove: ' + extra.length,
+            '',
+            '### Changed files',
+            change.length ? change.map(x=>'- ' + x + '.gs').join('\n') : '- None',
+            '',
+            '### New GitHub files',
+            add.length ? add.map(x=>'- ' + x + '.gs').join('\n') : '- None',
+            '',
+            '### Unexpected remote scripts (SYNC BLOCKED until reconciled)',
+            extra.length ? extra.map(x=>'- ' + actual.get(x)).join('\n') : '- None',
+            '',
+            'This audit does not read Script Properties, write GAS, deploy a Web App,',
+            'create sheets, or change requestId history.'
+          ];
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,
+            'extra_count=' + extra.length + '\n');
+          process.stdout.write(
+            'GAS AUDIT: remote=' + actual.size +
+            ' expected=' + expected.size + ' changed=' + change.length +
+            ' new=' + add.length + ' unexpected=' + extra.length + '\n');
+          NODE
+        env:
+          CONFIRM_MODE: ${{ inputs.confirm }}
+
+      - name: Block SYNC if live GAS has unexpected scripts
+        if: ${{ inputs.confirm == 'SYNC' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.gas_audit.outputs.extra_count }}" != "0" ]; then
+            echo "SYNC blocked: unexpected remote GAS source files would be deleted. Run AUDIT and reconcile first." >&2
+            exit 1
+          fi
+
       - name: Replace only server-side GAS source in staging
+        if: ${{ inputs.confirm == 'SYNC' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -141,19 +221,21 @@ jobs:
           find .gas-stage -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort
 
       - name: Show clasp push status
+        if: ${{ inputs.confirm == 'SYNC' }}
         shell: bash
         run: |
           set -euo pipefail
           clasp status
 
       - name: Push GitHub Central API source to GAS
+        if: ${{ inputs.confirm == 'SYNC' }}
         shell: bash
         run: |
           set -euo pipefail
           clasp push --force
 
       - name: Sync summary
-        if: success()
+        if: ${{ success() && inputs.confirm == 'SYNC' }}
         shell: bash
         run: |
           {
