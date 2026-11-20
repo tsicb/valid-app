@@ -4,6 +4,14 @@ Last updated: 2026-11-20
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Production legacy ENUMERATE diagnosis and quarantine predicate refinement (2026-11-20; source PR in review)
+
+- Follow-up editor-only diagnostic output: `VAA_PROD_LEGACY_REVIEW_PROBE` reported `requestPropertiesSeen:145`, `errorStage:ENUMERATE`, `errorCode:LEDGER_RECEIPT_INVALID`, `sourceStable:true`, `propertyWrites:0`, `archiveWrites:0`, `pass:false`. The failure is **before target/ledger review**, so no historic archive COPY/RETIRE was authorized.
+- Code review found that the newly added quarantine predicate required a 20+ character canonical Google spreadsheet ID, **more restrictive than** `vaaLedgerReadyValidateRaw_` which merely tests for a nonempty spreadsheet ID and an exact UPDATE target match. This mismatch can reject old UPDATE receipts intended to be protected. The live root cause is still an inference, not independently proven from secret records.
+- Follow-up code change removes the extra canonical-ID constraint **only from the NON-REPLAYABLE quarantine classification**, preserving exact original requestId, READY status/stage, UPDATE mode and equal nonempty target/spreadsheet, and requiring both absent digest and invalid strategy. Quarantined REQ values are never archived, replayed or deleted by this path. Existing strict V1 READY validator and V2 doPost admission are unchanged.
+- Editor-only audit now reports a static, allowlisted `errorCode` and distinguishes `ENUMERATE` from `REVIEW`; unknown messages are rendered as `UNCLASSIFIED` so request IDs, source records and private Drive values are not logged. Test fixtures cover short/legacy target representations, invalid missing target, fail-closed handling and redaction.
+- **Deployment boundary:** GitHub branch changes do not change the already activated v62 Web App or the live GAS script until a separate AUDIT/SYNC. Migration flag remains OFF, and all 145 historical REQ_ properties remain untouched.
+
 ## Legacy READY post-SYNC audit still blocked; exact-code diagnosis pending (2026-11-20)
 
 - The operator confirmed `SYNC` of PR #50 and re-ran the editor-only `vaaLedgerProdLegacyAuditReadOnly`. The result was `pass:false`, `errorStage:REVIEW`, `quarantinedLegacyReady:0`, `sourceStable:false`, `propertyWrites:0`, `archiveWrites:0`. Because the audit only assigns counters and sourceStable after the entire enumeration/review succeeds, zeros and false in this failure response are **defaults**, not conclusive live totals or evidence of mutation.
