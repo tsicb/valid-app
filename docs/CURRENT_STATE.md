@@ -4,6 +4,13 @@ Last updated: 2026-11-20
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Production V2 gate activated — awaiting first real CREATE/UPDATE (2026-11-20)
+
+- Operator ran the one-time production V2 cutover after the read-only preflight. Their recorded GAS result: `VAA_PROD_V2_ACTIVATION {"phase":"PROD_V2_ACTIVATION","pass":true,"productionActivated":true,"readyRetirementEnabled":false,"legacyMigrationEnabled":false,"requestHistoryModified":false,"expectedMode":"PROD_V2_GATED","checkedFiles":2,"checkedTabs":3,"capacityAllowed":true,"modesOff":true,"historyTouched":false}`. The `modesOff` field describes the **pre-activation** check, not post-cutover state.
+- Gate is now activated and **sticky**. Do not disable or delete `VAA_JOURNAL_DOP_MODE=PROD_V2_GATED`, `VAA_REQUEST_JOURNAL_MODE=PROD_RESERVATION_V2`, or `VAA_PROD_LEDGER_FENCE=ACTIVE_V1` as an attempted rollback. Restoring legacy admission would risk duplicate CREATE/UPDATE for already-reserved IDs. Contact the operator and inspect the ledger in-place if a request HALTs; do not auto-retry a RESERVED/ERROR ID.
+- At follow-up, connected Google Sheets readback found exactly one header row and no data rows in main `journal_v2`, main `receipts`, and backup `receipts`. The cutover itself did **not** produce a V2 request reservation, and end-to-end production CREATE/UPDATE under the new gate has **not yet been verified**.
+- Next safe milestone: one controlled normal CREATE/UPDATE through the existing UI (with non-sensitive test data where appropriate), then independent **read-only** verification that the same new request has journal rev1 RESERVED and rev2 READY, REQ READY is still preserved, no duplicate managed sheet was created and the normal result is displayed. Do not blindly retry a failed or ambiguous request ID. No historic REQ_ deletion or legacy migration is authorized by this check. Temporary local editor helper can be removed once its result has been retained; no GAS re-deploy is required to remove it from HEAD.
+
 ## Production deployment v62, ledger connections registered (2026-11-20)
 
 - GitHub Actions `AUDIT` run 44671755009 confirmed 19 remote GAS scripts, 26 GitHub scripts, 2 changed, 7 new, 0 unexpected remote scripts. `SYNC` run [44683105124](https://github.com/tsicb/valid-app/actions/runs/44683105124) successfully pushed 27 files (26 scripts + manifest) to the configured Apps Script project, at source commit `b07176a`.
