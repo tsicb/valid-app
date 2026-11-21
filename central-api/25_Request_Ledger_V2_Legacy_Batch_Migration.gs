@@ -593,3 +593,252 @@ function vaaLedgerProdLegacyModeOffOnce(){
   console.log('VAA_PROD_LEGACY_MODE_OFF '+JSON.stringify(out));
   return out;
 }
+
+
+/**
+ * Operator-only read-only triage of residual legacy request receipts.
+ * Runs once; never copies, deletes, migrates, or authorizes cleanup.
+ * No request IDs, spreadsheet IDs, URLs, client names or raw JSON in logs.
+ */
+function vaaLedgerResidualFolderSnapshot_(){
+  const root=DriveApp.getFolderById(API_CONFIG.SHEET_OUTPUT_FOLDER_ID);
+  if(typeof root.isTrashed==='function' && root.isTrashed()){
+    throw Error('TRIAGE_ROOT_TRASHED');
+  }
+  const folderCap=500, fileCap=10000;
+  const folders=[root], ids={}, seenFolders={};
+  seenFolders[root.getId()]=true;
+  const children=root.getFolders();
+  while(children.hasNext()){
+    if(folders.length>=folderCap)throw Error('TRIAGE_FOLDER_LIMIT');
+    const child=children.next();
+    if(typeof child.isTrashed==='function'&&child.isTrashed())continue;
+    const id=child.getId();
+    if(seenFolders[id])throw Error('TRIAGE_FOLDER_DUPLICATE');
+    seenFolders[id]=true;
+    folders.push(child);
+  }
+  let checked=0;
+  for(let i=0;i<folders.length;i++){
+    const files=folders[i].getFilesByType(MimeType.GOOGLE_SHEETS);
+    while(files.hasNext()){
+      if(checked>=fileCap)throw Error('TRIAGE_FILE_LIMIT');
+      const file=files.next();
+      checked++;
+      if(typeof file.isTrashed==='function'&&file.isTrashed())continue;
+      ids[file.getId()]=true;
+    }
+  }
+  return {ids:ids,folderCount:folders.length,fileCount:checked,
+    uniqueSheetCount:Object.keys(ids).length,inventoryComplete:true};
+}
+
+/** Existing Registry/Viewer mappings are conservative references, not proof
+ * that the spreadsheet is currently managed. Any malformed reference source
+ * prevents classification as unlinked.
+ */
+function vaaLedgerResidualReferences_(snapshot){
+  const ids={}, stat={registry:0,viewer:0,malformed:0};
+  Object.keys(snapshot).forEach(function(key){
+    const registry=key.indexOf(API_CONFIG.REPORT_REGISTRY_PREFIX)===0;
+    const viewer=key.indexOf('VIEWER_')===0;
+    if(!registry&&!viewer)return;
+    if(registry){
+      stat.registry++;
+      const suffix=key.slice(API_CONFIG.REPORT_REGISTRY_PREFIX.length);
+      if(suffix)ids[suffix]=true;
+    }else stat.viewer++;
+    try{
+      const rec=JSON.parse(snapshot[key]);
+      if(!rec||typeof rec!=='object'||Array.isArray(rec)||
+         !String(rec.spreadsheetId||'').trim()){
+        stat.malformed++;
+        return;
+      }
+      ids[String(rec.spreadsheetId).trim()]=true;
+      if(registry &&
+         key.slice(API_CONFIG.REPORT_REGISTRY_PREFIX.length)!==
+           String(rec.spreadsheetId).trim())stat.malformed++;
+    }catch(_){stat.malformed++;}
+  });
+  return {ids:ids,registryCount:stat.registry,
+    viewerCount:stat.viewer,malformedCount:stat.malformed,
+    referencesComplete:stat.malformed===0};
+}
+
+/**
+ * Source classification deliberately reuses the existing strict legacy
+ * receipt validator. No V1/backup archive writes or Drive target validation.
+ */
+function vaaLedgerResidualSources_(props,snapshot){
+  const entries=vaaLedgerProdLegacyEntries_(props,snapshot);
+  const journal=vaaLedgerJournalOpenReadOnly_(props).sheet;
+  const rows=[], keyPrefix=API_CONFIG.REQUEST_PROPERTY_PREFIX;
+  entries.quarantined.forEach(function(item){
+    const state=vaaLedgerJournalLookupFromSheet_(journal,item.id);
+    if(state.state!=='ABSENT')throw Error('TRIAGE_JOURNAL_COLLISION');
+    const raw=snapshot[keyPrefix+item.id];
+    const record=JSON.parse(raw);
+    rows.push({type:'OLD_UPDATE_NO_PROOF',
+      id:item.id,record:record,raw:raw});
+  });
+  let modern=entries.modern;
+  entries.ready.forEach(function(item){
+    const state=vaaLedgerJournalLookupFromSheet_(journal,item.id);
+    if(state.state==='READY'&&state.revision===2){
+      modern++;
+      return;
+    }
+    if(state.state!=='ABSENT')throw Error('TRIAGE_JOURNAL_COLLISION');
+    rows.push({type:'OLD_READY_TARGET',
+      id:item.id,record:item.record,raw:item.raw});
+  });
+  Object.keys(snapshot).sort().forEach(function(key){
+    if(key.indexOf(keyPrefix)!==0)return;
+    const id=key.slice(keyPrefix.length);
+    if(/^QA_JOURNAL_E2E_(CREATE|UPDATE)_/.test(id))return;
+    const raw=snapshot[key],rec=JSON.parse(raw);
+    if(!rec||rec.status==='READY')return;
+    rows.push({type:'NON_READY',id:id,record:rec,raw:raw});
+  });
+  if(rows.length!==entries.quarantined.length+entries.nonReady+
+      entries.ready.length-(modern-entries.modern)){
+    throw Error('TRIAGE_SOURCE_COUNT_MISMATCH');
+  }
+  return {rows:rows,modernExcluded:modern,
+    oldUpdateNoProof:entries.quarantined.length,
+    nonReady:entries.nonReady};
+}
+
+function vaaLedgerResidualEmptyCount_(){
+  return {count:0,estimatedBytes:0};
+}
+
+/** No destructive permission is conveyed by ANY triage classification. */
+function vaaLedgerProdResidualReqTriageReadOnly(){
+  const categories=[
+    'CURRENT_MANAGED','OUTSIDE_WITH_LINK','OUTSIDE_NO_LINK',
+    'TRASHED','ERROR_REVIEW','UNKNOWN'
+  ];
+  const kinds=['OLD_UPDATE_NO_PROOF','OLD_READY_TARGET','NON_READY'];
+  const buckets={},bySource={};
+  categories.forEach(function(k){buckets[k]=vaaLedgerResidualEmptyCount_();});
+  kinds.forEach(function(k){bySource[k]=vaaLedgerResidualEmptyCount_();});
+  const out={
+    phase:'PROD_RESIDUAL_REQ_TRIAGE_READ_ONLY',
+    strictReadOnly:true,inventoryComplete:false,
+    referencesComplete:false,sourceStable:false,
+    folderCount:0,filesEnumerated:0,uniqueManagedSheets:0,
+    registryReferences:0,viewerReferences:0,malformedReferences:0,
+    residualReqCount:0,modernExcluded:0,
+    oldUpdateNoProof:0,nonReady:0,
+    uniqueTargetCount:0,missingTargetCount:0,
+    driveCannotOpen:0,driveTrashed:0,
+    linkedOutsideCount:0,
+    categories:categories.map(function(k){
+      return {category:k,count:0,estimatedBytes:0};
+    }),
+    sourceKinds:kinds.map(function(k){
+      return {category:k,count:0,estimatedBytes:0};
+    }),
+    propertyWrites:0,propertyDeletes:0,
+    archiveWrites:0,requestPosts:0,
+    cleanupAuthorized:false,pass:false,
+    errorStage:'NONE',errorCode:'NONE'
+  };
+  let stage='SOURCE';
+  try{
+    const props=PropertiesService.getScriptProperties();
+    const before=props.getProperties();
+    const source=vaaLedgerResidualSources_(props,before);
+    const refs=vaaLedgerResidualReferences_(before);
+    stage='FOLDER_INVENTORY';
+    const folders=vaaLedgerResidualFolderSnapshot_();
+    out.inventoryComplete=folders.inventoryComplete;
+    out.folderCount=folders.folderCount;
+    out.filesEnumerated=folders.fileCount;
+    out.uniqueManagedSheets=folders.uniqueSheetCount;
+    out.referencesComplete=refs.referencesComplete;
+    out.registryReferences=refs.registryCount;
+    out.viewerReferences=refs.viewerCount;
+    out.malformedReferences=refs.malformedCount;
+    stage='CLASSIFY';
+    const seenTargets={},driveStates={};
+    source.rows.forEach(function(item){
+      const rec=item.record||{};
+      const target=String(rec.spreadsheetId||'').trim();
+      const bytes=vaaUtf8ByteLength_(API_CONFIG.REQUEST_PROPERTY_PREFIX+
+        item.id)+vaaUtf8ByteLength_(item.raw);
+      let disposition='UNKNOWN';
+      bySource[item.type].count++;
+      bySource[item.type].estimatedBytes+=bytes;
+      if(target)seenTargets[target]=true;
+      else out.missingTargetCount++;
+      if(item.type==='NON_READY'){
+        disposition='ERROR_REVIEW';
+      }else if(target && folders.ids[target]){
+        disposition='CURRENT_MANAGED';
+      }else if(target){
+        if(!Object.prototype.hasOwnProperty.call(driveStates,target)){
+          let status='CANNOT_OPEN';
+          try{
+            const file=DriveApp.getFileById(target);
+            if(typeof file.isTrashed==='function'&&file.isTrashed()){
+              status='TRASHED';
+            }else if(fileIsInManagedOutputTree_(
+              file,API_CONFIG.SHEET_OUTPUT_FOLDER_ID)){
+              // Complete folder inventory must agree with Drive parents.
+              throw Error('TRIAGE_ROSTER_MISMATCH');
+            }else status='OUTSIDE';
+          }catch(err){
+            if(err&&err.message==='TRIAGE_ROSTER_MISMATCH')throw err;
+            status='CANNOT_OPEN';
+          }
+          driveStates[target]=status;
+        }
+        if(driveStates[target]==='CANNOT_OPEN')out.driveCannotOpen++;
+        if(driveStates[target]==='TRASHED')out.driveTrashed++;
+        if(driveStates[target]==='TRASHED'){
+          disposition='TRASHED';
+        }else if(refs.ids[target]){
+          disposition='OUTSIDE_WITH_LINK';
+          out.linkedOutsideCount++;
+        }else if(refs.referencesComplete){
+          disposition='OUTSIDE_NO_LINK';
+        }else disposition='UNKNOWN';
+      }
+      buckets[disposition].count++;
+      buckets[disposition].estimatedBytes+=bytes;
+      out.residualReqCount++;
+    });
+    out.uniqueTargetCount=Object.keys(seenTargets).length;
+    out.modernExcluded=source.modernExcluded;
+    out.oldUpdateNoProof=source.oldUpdateNoProof;
+    out.nonReady=source.nonReady;
+    out.categories=categories.map(function(k){
+      return {category:k,count:buckets[k].count,
+        estimatedBytes:buckets[k].estimatedBytes};
+    });
+    out.sourceKinds=kinds.map(function(k){
+      return {category:k,count:bySource[k].count,
+        estimatedBytes:bySource[k].estimatedBytes};
+    });
+    stage='SOURCE_STABILITY';
+    out.sourceStable=vaaLedgerProdLegacySnapshotsEqual_(
+      before,props.getProperties());
+    if(!out.sourceStable)throw Error('TRIAGE_SOURCE_CHANGED');
+    out.pass=true;
+  }catch(_){
+    out.pass=false;
+    out.errorStage=stage;
+    out.errorCode=stage==='FOLDER_INVENTORY'?
+      'TRIAGE_FOLDER_INVENTORY_FAILED':
+      stage==='SOURCE_STABILITY'?'TRIAGE_SOURCE_CHANGED':
+      stage==='SOURCE'?'TRIAGE_SOURCE_UNVERIFIED':
+      'TRIAGE_CLASSIFICATION_UNVERIFIED';
+    // Never publish a partial classification as if it were complete.
+    if(!out.pass)out.cleanupAuthorized=false;
+  }
+  console.log('VAA_RESIDUAL_REQ_TRIAGE '+JSON.stringify(out));
+  return out;
+}
