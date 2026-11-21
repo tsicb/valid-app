@@ -4,6 +4,13 @@ Last updated: 2026-11-21
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Version 63 deployed; pending non-mutating post-release checks (2026-11-21)
+
+- Operator reports the **only** active Web App deployment now references **version 63**, dated **2026-11-21 10:25 JST**. This follows the clean read-only source AUDIT (26/26 identical). The deployed version number is operator-verified; unchanged /exec URL and runtime GET response have **not yet been independently confirmed**. This is not yet a live CREATE or REQ-retirement validation.
+- Next two bounded, **non-mutating** checks only: (1) open the already-used production `/exec` with HTTP GET and confirm `ok:true`, expected service name and `schemaVersion:"3.0"` (do not share the full response, since `doGet` includes folder IDs); (2) run the existing editor-only `vaaLedgerProdRetireCanaryPreflightReadOnly` and require `pass:true`, `prodV2Enabled:true`, `globalRetireOff:true`, `legacyMigrationOff:true`, `canaryConfigValid:true`, `canaryUnused:true`, `sourceStable:true`, zero writes/deletes, `activationAuthorized:false`. This editor-only function does not attest the deployed binary; the operator-confirmed deployment version and GET complement it.
+- Continue to leave `VAA_PROD_READY_RETIRE_MODE` and `VAA_PROD_LEGACY_MIGRATION_MODE` unset/OFF; preserve sticky V2. No more source AUDIT/SYNC or repeated isolated TEST gate absent a new anomaly. No POST, real CREATE, REQ deletion or migration is authorized by this release confirmation.
+- If checks pass, prepare one synthetic CREATE payload, exactly scoped canary mode, post-run journal/REQ read-only inspection and no-duplicate replay under a separate, explicit one-request authorization. Any uncertain output means inspect, **not** resend. The prior version 62 is a rollback candidate only with retirement OFF.
+
 ## Next release: minimum-step update of existing Web App, retirement OFF (2026-11-21)
 
 - Operator-approved direction: prioritize ending Script Properties REQ growth promptly, without repeating already passed QA or increasing the number of mandatory check workflows. New source is already identical in GitHub and the production GAS editor (26/26, changed 0); saved active /exec version 62 is the only outdated code. Existing isolated synthetic tests cover one-request canary and fail-closed behavior, but a real production one-request canary has not yet run.
