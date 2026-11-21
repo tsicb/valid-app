@@ -7,6 +7,9 @@
  * RETIRE is independently gated and only removes READY REQ_ after BOTH
  * copies match the exact source JSON, with journal replay verified.
  *
+ * Protected historic UPDATEs and missing/trashed targets are preserved,
+ * but no longer block the independent, verified set of READY receipts.
+ *
  * Every run obtains ScriptLock and caps itself at 10 histories. A failed
  * write response is UNKNOWN: inspect the read-only summary before any
  * manually approved further run. No automatic retry, no triggers, no
@@ -314,8 +317,9 @@ function vaaLedgerProdLegacyAuditReadOnly(){
 function vaaLedgerProdLegacyCopyBatchOnce(){
   return vaaLedgerProdLegacyMutateBatch_('COPY');
 }
-/** Under lock, retire up to ten legacy REQ_ only if ALL remaining READY
- * sources are verified in BOTH independent private archive files.
+/** Under lock, retire up to ten independently dual-verified eligible
+ * historic READY REQ_ records; protected and non-READY sources are NEVER
+ * selected. Every eligible (non-protected) READY must be dual archived.
  */
 function vaaLedgerProdLegacyRetireBatchOnce(){
   return vaaLedgerProdLegacyMutateBatch_('RETIRE');
@@ -368,14 +372,12 @@ function vaaLedgerProdLegacyMutateBatch_(action){
     out.targetTrashed=review.summary.targetTrashed;
     out.targetOutsideManagedOutput=review.summary.targetOutsideManagedOutput;
     out.alreadyDualVerified=review.summary.verifiedBoth;
-    // Deleting any historic REQ is globally barred while a protected
-    // legacy UPDATE OR an unverifiable target exists. COPY remains
-    // independently gated, and always preserves every original REQ_.
-    if(action==='RETIRE' &&
-       (entries.quarantined.length>0 ||
-        review.summary.quarantinedTargetReady>0)){
-      throw vaaLedgerReadyError_('LEGACY_QUARANTINED_READY_PROTECTED');
-    }
+    // Protected old UPDATEs and missing/trashed/out-of-tree targets
+    // must never be COPY/RETIRE candidates. Do not globally block
+    // independently verified dual-archived READY receipts because of
+    // unrelated protected records: keep the latter's REQ_ intact.
+    // Only review.toRetire, independently proven by BOTH exact archives
+    // and a verified live target, may be selected below.
     out.remainingNeedCopy=review.toCopy.length;
     if(action==='RETIRE' && review.toCopy.length>0){
       throw vaaLedgerReadyError_('LEGACY_DUAL_ARCHIVE_INCOMPLETE');
