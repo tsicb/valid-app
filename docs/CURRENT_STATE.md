@@ -4,6 +4,13 @@ Last updated: 2026-11-21
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Production legacy RETIRE mode OFF PASS; final read-only audit pending (2026-11-22)
+
+- After all five approved historic READY RETIRE batches passed (10+10+10+10+1 = 41 source REQ keys deleted, with per-ID V1 READY replay success), operator ran `vaaLedgerProdLegacyModeOffOnce`. Production log `VAA_PROD_LEGACY_MODE_OFF`: `phase:PROD_LEGACY_MODE_OFF`, `off:true`, `propertyWrites:1`, `propertyDeletes:0`, `archiveWrites:0`, `requestPosts:0`, `pass:true`, `errorCode:NONE`.
+- Historical `VAA_PROD_LEGACY_MIGRATION_MODE` now OFF and no historical REQ deletions occurred during OFF. The independent global V2 verified new READY automatic REQ retirement setting was not changed by this helper.
+- **Next one operator step:** execute `vaaLedgerProdLegacyAuditReadOnly` once after mode OFF. Check `strictReadOnly:true`, `sourceStable:true`, `ready:0`, `verifiedBoth:0`, `needPrimaryCopy:0`, `needBackupCopy:0`, `propertyWrites:0`, `archiveWrites:0`, `pass:true`, `errorCode:NONE`, if inventory unchanged. The `ready` and `verifiedBoth` audit counters refer to *live eligible REQ keys*, and should be zero after successful RETIRE; they are not post-RETIRE archived row counts. Check protected 39 old UPDATE READY, 60 missing/trashed-target READY, four ERROR, and one existing V2 READY remain out of scope.
+- After verifying post-RETIRE audit, request `vaaAuditScriptPropertyCapacityReadOnly` and compare estimated usage with pre-migration 417151/512000 bytes (81.5%). No further COPY/RETIRE, source SYNC, or Web App deployment is requested.
+
 ## Production legacy RETIRE batch 5/final PASS: 41/41 retired; mode OFF and independent audit pending (2026-11-22)
 
 - Operator executed **fifth/final** approved production `vaaLedgerProdLegacyRetireBatchOnce`. `VAA_PROD_LEGACY_BATCH`: `phase:PROD_LEGACY_RETIRE_BATCH`, `action:RETIRE`, `scriptLockHeld:true`, `scopeVerified:true`, `beforeReadyCount:1`, `alreadyDualVerified:1`, `quarantinedLegacyReady:39`, `quarantinedTargetReady:60` (`targetCannotOpen:46`, `targetWrongMime:0`, `targetTrashed:14`, `targetOutsideManagedOutput:0`), `copied:0`, `retired:1`, `remainingNeedCopy:0`, `sourceStableAfter:true`, `unknownCompletion:false`, `automaticRetryAuthorized:false`, `cleanupAuthorized:false`, `pass:true`, `errorStage:NONE`.
