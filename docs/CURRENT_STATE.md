@@ -4,6 +4,13 @@ Last updated: 2026-11-21
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Legacy dual-archive COPY second batch PASS; 20/41 dual verified, 21 pending (2026-11-21)
+
+- Operator executed the **second** `vaaLedgerProdLegacyCopyBatchOnce` with `VAA_PROD_LEGACY_MIGRATION_MODE=COPY_DUAL_ARCHIVE_READY_V1` armed. Log: `VAA_PROD_LEGACY_BATCH` `phase:PROD_LEGACY_COPY_BATCH`, `action:COPY`, `scriptLockHeld:true`, `scopeVerified:true`, `beforeReadyCount:41`, `alreadyDualVerified:10`, `quarantinedLegacyReady:39`, `quarantinedTargetReady:60`, `targetCannotOpen:46`, `targetTrashed:14`, `copied:10`, `retired:0`, `remainingNeedCopy:31`, `sourceStableAfter:true`, `unknownCompletion:false`, `automaticRetryAuthorized:false`, `cleanupAuthorized:false`, `pass:true`, `errorStage:NONE`.
+- The second invocation recognized 10 independently dual-verified records from batch 1 and successfully copied 10 additional eligible old READY receipts with immediate exact readback verification. **Cumulative: 20 of 41 copied, 21 candidates remain** if inventory is unchanged. The `remainingNeedCopy:31` log value is the pre-batch count.
+- No historic `REQ_` deleted (`retired:0`). 39 protected legacy UPDATE, 60 unavailable/trashed-target records, four non-READY and one V2 history remain excluded. No evidence of errors, source drift or unknown completion.
+- **Next one operator action**: invoke `vaaLedgerProdLegacyCopyBatchOnce` once for batch 3, expect pre-batch `alreadyDualVerified:20`, `remainingNeedCopy:21`, `copied:10`, `retired:0`, `sourceStableAfter:true`, `unknownCompletion:false`, `pass:true`. Review the full log before batch 4. If failed or unknown, stop; do not blindly repeat. Do not execute RETIRE or switch legacy mode yet. No additional SYNC or Web App deployment required.
+
 ## Legacy dual-archive COPY first batch PASS; 10 dual verified, 31 candidates pending (2026-11-21 22:41 JST)
 
 - Operator executed **one** approved production `vaaLedgerProdLegacyCopyBatchOnce` after the 21:28 JST COPY mode ARM. `VAA_PROD_LEGACY_BATCH`: `phase:PROD_LEGACY_COPY_BATCH`, `action:COPY`, `scriptLockHeld:true`, `scopeVerified:true`, `beforeReadyCount:41`, `alreadyDualVerified:0`, `quarantinedLegacyReady:39`, `quarantinedTargetReady:60` (`targetCannotOpen:46`, `targetTrashed:14`), `copied:10`, `retired:0`, `remainingNeedCopy:41`, `sourceStableAfter:true`, `unknownCompletion:false`, `automaticRetryAuthorized:false`, `cleanupAuthorized:false`, `pass:true`, `errorStage:NONE`.
