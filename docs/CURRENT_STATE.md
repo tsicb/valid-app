@@ -4,6 +4,14 @@ Last updated: 2026-11-21
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Canonical GAS editor source AUDIT exact; isolated TEST inventory next (2026-11-21)
+
+- Operator ran manual `Central API sync to GAS` with `confirm=AUDIT` **after** the immutable v62 audit. Summary: 26 remote scripts, 26 canonical GitHub scripts, changed 0, new 0, identical 26, unexpected 0. This is a successful **read-only** current editor source equality audit. It does not change the deployed saved version 62, Script Properties or any request history.
+- The next action is **not another production SYNC**. The separate isolated TEST GAS and TEST Drive root/output were previously established for the synthetic V2 CREATE/UPDATE QA path, but the current TEST editor source/extra QA helpers must be inventoried before attempting any `clasp push --force`. The older TEST project may have fewer files or local QA-only scripts.
+- Added manual read-only [Isolated GAS editor source inventory](https://github.com/tsicb/valid-app/actions/workflows/isolated-gas-editor-audit.yml) to identify the TEST project source gap without overwriting QA scripts. For privacy, it reads `VAA_TEST_GAS_SCRIPT_ID` from an Actions repository secret; the operator should set that secret privately to the already-created standalone TEST Apps Script Script ID (NEVER the production ID). Then run on `main` with `confirm=TEST_AUDIT`. It verifies test Script ID differs from `GAS_SCRIPT_ID`, reads TEST source with `clasp pull`, compares non-config scripts to current GitHub, checks that configured TEST root and output IDs differ from canonical production IDs, and writes **aggregate counts and booleans only** to the run Summary.
+- This source inventory is not proof of Drive ACL isolation, safe Script Properties, valid TEST ledger or execution safety. Results must be reviewed before deciding whether to sync the separate TEST project and before any synthetic live POST.
+- Keep production /exec on version 62, `VAA_PROD_READY_RETIRE_MODE` OFF, `VAA_PROD_LEGACY_MIGRATION_MODE` OFF, V2 sticky gate ON. Do not create/deploy a new production version or activate canary.
+
 ## Saved Web App version 62 audit confirmed (2026-11-21)
 
 - Operator ran [the strictly read-only version 62 workflow](https://github.com/tsicb/valid-app/actions/workflows/central-api-deployed-version62-audit.yml) with `AUDIT_V62`. Summary: `BEFORE_EXACT_CANARY_SOURCE`, 26 saved scripts / 26 current GitHub scripts; V2 production gateway present `true`, doPost invokes the gateway `true`, exact one-request retirement canary `false`, legacy migration audit `true`, GitHub code equality `false`; missing/extra/changed scripts `0/0/2`.
