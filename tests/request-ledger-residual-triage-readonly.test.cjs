@@ -99,7 +99,7 @@ function fixture(opt={}){
     let call=0;
     props.getProperties=()=>{
       call++;
-      if(call>=2)snapshot.UNRELATED="CHANGED";
+      if(call>=2)snapshot.UNRELATED="VERY_SECRET_MUTATION_456";
       return {...snapshot};
     };
   }
@@ -191,7 +191,7 @@ test("source property drift fails closed and reports no secret content",()=>{
   assert.equal(r.errorCode,"TRIAGE_SOURCE_CHANGED");
   assert.equal(r.cleanupAuthorized,false);
   assert.equal(c.writes+c.deletes,0);
-  assert.equal(c.log[0].includes("CHANGED"),false);
+  assert.equal(c.log[0].includes("VERY_SECRET_MUTATION_456"),false);
 });
 test("Drive inventory / parents disagreement fails closed",()=>{
   const {result:r,counters:c}=fixture({rosterMismatch:true});
