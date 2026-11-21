@@ -132,7 +132,10 @@ function fixture(options={}){
       !!props.getProperty("REQ_"+id)
     ),
     status:()=>ctx.vaaLedgerProdModeStatus_(props),
-    effects,props,data,record,raw
+    ctx,effects,props,data,record,raw,
+    proof:()=>ctx.vaaLedgerProdCanaryReplayProofReadOnly(),
+    enableAllNew:()=>ctx.vaaLedgerProdReadyRetireEnableAllNewOnce(),
+    disableAllNew:()=>ctx.vaaLedgerProdReadyRetireDisableAllNewOnce()
   };
 }
 test("both CANARY and normal retire start OFF; default never deletes",()=>{
@@ -353,4 +356,142 @@ test("operator-only OFF switches exact canary mode only; global retire cannot be
   assert.equal(blocked.errorCode,"CANARY_ADMIN_WRONG_MODE");
   assert.equal(other.effects.setCalls,0);
   assert.equal(other.data.VAA_PROD_READY_RETIRE_MODE,"RETIRE_VERIFIED_NEW_READY_V1");
+});
+
+test("post-canary exact-ID read-only proof validates READY without REQ and target",()=>{
+  const h=fixture({journalState:"READY"});
+  delete h.data["REQ_"+C_CREATE];
+  const before=JSON.stringify(h.data);
+  const out=h.proof();
+  assert.equal(out.pass,true,JSON.stringify(out));
+  assert.equal(out.replayEligible,true);
+  assert.equal(out.canaryReady,true);
+  assert.equal(out.canaryReqAbsent,true);
+  assert.equal(out.v1Absent,true);
+  assert.equal(out.targetVerified,true);
+  assert.equal(out.sourceStable,true);
+  assert.equal(out.actualPostInvoked,false);
+  assert.equal(out.replayPerformed,false);
+  assert.equal(h.effects.reserves,0);
+  assert.equal(h.effects.setCalls,0);
+  assert.equal(h.effects.deleteCalls,0);
+  assert.equal(before,JSON.stringify(h.data));
+  assert.equal(h.decide().state,"READY");
+  assert.equal(h.effects.reserves,0);
+  for(const secret of [C_CREATE,TARGET,LEDGER,ROOT,SECRET]){
+    assert.equal((JSON.stringify(out)+" "+h.effects.logs.join(" ")).includes(secret),false);
+  }
+});
+
+test("replay proof HALTs on missing or conflicting canary and never reserves",()=>{
+  const variants=[
+    {journalState:"ABSENT"},
+    {journalState:"RESERVED"},
+    {journalState:"READY",badTarget:true},
+    {journalState:"READY",v1Collision:true},
+    {journalState:"READY",legacyMode:"LEGACY_MIGRATION_ON"},
+    {journalState:"READY",configuredOperation:"UPDATE"},
+    {journalState:"READY",v2Off:true},
+    {journalState:"READY",retireMode:"CANARY_ONE_NEW_READY_V1"}
+  ];
+  for(const opt of variants){
+    const h=fixture(opt);
+    delete h.data["REQ_"+C_CREATE];
+    const out=h.proof();
+    assert.equal(out.pass,false,JSON.stringify(opt));
+    assert.equal(out.replayEligible,false,JSON.stringify(opt));
+    assert.equal(h.effects.reserves,0);
+    assert.equal(h.effects.setCalls,0);
+    assert.equal(h.effects.deleteCalls,0);
+  }
+  const withReq=fixture({journalState:"READY"});
+  const out=withReq.proof();
+  assert.equal(out.pass,false);
+  assert.equal(out.canaryReqAbsent,false);
+});
+
+test("global new-READY enable verifies exact replay proof and aggregate before one-key write",()=>{
+  const h=fixture({journalState:"READY"});
+  delete h.data["REQ_"+C_CREATE];
+  let aggregateReads=0;
+  h.ctx.vaaLedgerProdReadyRetirePreflightReadOnly=()=>{
+    aggregateReads++;
+    return {
+      pass:true,journalPending:0,modernReadyWithoutReq:1,
+      sourceStable:true,prodV2Enabled:true,retireModeOff:true,
+      legacyMigrationOff:true
+    };
+  };
+  const before={...h.data};
+  const out=h.enableAllNew();
+  assert.equal(out.pass,true,JSON.stringify(out));
+  assert.equal(out.enabled,true);
+  assert.equal(out.replayProofPassed,true);
+  assert.equal(out.aggregatePassed,true);
+  assert.equal(out.propertyWrites,1);
+  assert.equal(out.propertyDeletes,0);
+  assert.equal(out.existingReqDeleted,false);
+  assert.equal(h.effects.setCalls,1);
+  assert.equal(h.effects.deleteCalls,0);
+  assert.equal(h.effects.reserves,0);
+  assert.equal(aggregateReads,1);
+  assert.equal(h.data.VAA_PROD_READY_RETIRE_MODE,"RETIRE_VERIFIED_NEW_READY_V1");
+  for(const [key,val] of Object.entries(before)){
+    if(key!=="VAA_PROD_READY_RETIRE_MODE")assert.equal(h.data[key],val);
+  }
+  const second=h.enableAllNew();
+  assert.equal(second.pass,false);
+  assert.equal(second.errorCode,"GLOBAL_RETIRE_ALREADY_SET");
+  assert.equal(second.propertyWrites,0);
+  assert.equal(h.effects.setCalls,1);
+  assert.equal(h.data.VAA_PROD_READY_RETIRE_MODE,"RETIRE_VERIFIED_NEW_READY_V1");
+});
+
+test("global new-READY activation fails closed on absent canary or aggregate pending",()=>{
+  for(const opts of [
+    {journalState:"ABSENT"},
+    {journalState:"READY",badTarget:true},
+    {journalState:"READY",legacyMode:"UNEXPECTED"},
+    {journalState:"READY",retireMode:"CANARY_ONE_NEW_READY_V1"}
+  ]){
+    const h=fixture(opts);
+    delete h.data["REQ_"+C_CREATE];
+    h.ctx.vaaLedgerProdReadyRetirePreflightReadOnly=()=>({
+      pass:true,journalPending:0,modernReadyWithoutReq:1,
+      sourceStable:true,prodV2Enabled:true,retireModeOff:true,
+      legacyMigrationOff:true
+    });
+    assert.equal(h.enableAllNew().pass,false,JSON.stringify(opts));
+    assert.equal(h.effects.setCalls,0);
+    assert.equal(h.effects.deleteCalls,0);
+    assert.equal(h.effects.reserves,0);
+  }
+  const h=fixture({journalState:"READY"});
+  delete h.data["REQ_"+C_CREATE];
+  h.ctx.vaaLedgerProdReadyRetirePreflightReadOnly=()=>({
+    pass:false,journalPending:1,modernReadyWithoutReq:1,
+    sourceStable:true,prodV2Enabled:true,retireModeOff:true,
+    legacyMigrationOff:true
+  });
+  const out=h.enableAllNew();
+  assert.equal(out.pass,false);
+  assert.equal(out.errorCode,"GLOBAL_RETIRE_PREFLIGHT_FAILED");
+  assert.equal(h.effects.setCalls,0);
+});
+
+test("global new-READY disable only touches broad mode and never canary",()=>{
+  const h=fixture({retireMode:"RETIRE_VERIFIED_NEW_READY_V1"});
+  const out=h.disableAllNew();
+  assert.equal(out.pass,true);
+  assert.equal(out.off,true);
+  assert.equal(out.propertyWrites,1);
+  assert.equal(h.data.VAA_PROD_READY_RETIRE_MODE,"OFF");
+  assert.equal(h.effects.deleteCalls,0);
+  assert.equal(h.disableAllNew().propertyWrites,0);
+  const blocked=fixture({retireMode:"CANARY_ONE_NEW_READY_V1"});
+  const denied=blocked.disableAllNew();
+  assert.equal(denied.pass,false);
+  assert.equal(denied.errorCode,"GLOBAL_RETIRE_WRONG_MODE");
+  assert.equal(blocked.data.VAA_PROD_READY_RETIRE_MODE,"CANARY_ONE_NEW_READY_V1");
+  assert.equal(blocked.effects.setCalls,0);
 });
