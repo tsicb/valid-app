@@ -4,6 +4,15 @@ Last updated: 2026-11-21
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Legacy dual-archive COPY ARM PASSED; first batch not yet run (2026-11-21 21:28 JST)
+
+- Operator executed `vaaLedgerProdLegacyArmCopyModeOnce` in the production GAS editor at 21:28:07 JST, following explicit approval for historical READY COPY only (NOT RETIRE).
+- Embedded `VAA_PROD_LEGACY_AUDIT`: `strictReadOnly:true`, `sourceStable:true`, `ready:41`, `legacyReadySeen:101`, `nonReady:4`, `quarantinedLegacyReady:39`, `quarantinedTargetReady:60` (46 cannot open, 14 trashed), `verifiedBoth:0`, `needPrimaryCopy:41`, `needBackupCopy:41`, `modernJournalExcluded:1`, `targetsVerified:41`, `propertyWrites:0`, `archiveWrites:0`, `pass:true`, `errorStage:NONE`, `errorCode:NONE`.
+- `VAA_PROD_LEGACY_MODE_ARM`: `phase:PROD_LEGACY_BATCH_MODE_ARM`, `action:COPY`, `armed:true`, `readOnlyAuditPassed:true`, `eligibleCount:41`, `protectedCount:104`, `propertyWrites:1`, `propertyDeletes:0`, `archiveWrites:0`, `requestPosts:0`, `pass:true`, `errorCode:NONE`.
+- **Current legacy mode is armed**: `VAA_PROD_LEGACY_MIGRATION_MODE=COPY_DUAL_ARCHIVE_READY_V1`; ongoing new-V2 READY auto-retirement setting remains independent and ON. ARM wrote no archived READY rows or deleted any historical `REQ_`.
+- **Next one action only**: manually invoke `vaaLedgerProdLegacyCopyBatchOnce` once, max10 eligible old READY records. Expected `VAA_PROD_LEGACY_BATCH`: `action:COPY`, `pass:true`, `copied:10` if inventory stable, `retired:0`, `sourceStableAfter:true`, `unknownCompletion:false`. The `remainingNeedCopy` field is the **pre-batch** inventory, so it may still show 41; do not interpret it as a post-batch remaining count. Do not invoke another batch before reviewing the result. On failed/unknown response, STOP and use `vaaLedgerProdLegacyAuditReadOnly` read-only before considering recovery; never blindly repeat.
+- Historical RETIRE mode and `vaaLedgerProdLegacyRetireBatchOnce` remain NOT authorized. Protected 104 receipts and the one existing V2 READY remain untouched. No further SYNC or Web App deployment is needed.
+
 ## Production legacy dual-archive COPY explicitly approved; ARM not yet executed (2026-11-21)
 
 - Operator explicitly approved **production COPY of the 41 eligible historical READY receipts into both the primary V1 archive and independently private backup sheet**, in the existing ScriptLock-protected batches of at most ten per invocation. This authorization does **not** cover RETIRE/delete of any historic `REQ_` property, synthetic POST/CREATE, journal migration, or deletion of the 39 protected legacy UPDATE, 60 inaccessible/trashed-target READY, four ERROR, or one V2 READY record.
