@@ -483,3 +483,105 @@ function vaaLedgerProdRetireCanaryPreflightReadOnly(){
   console.log('VAA_PROD_RETIRE_CANARY_PREFLIGHT '+JSON.stringify(out));
   return out;
 }
+
+/**
+ * Operator-only Script Properties control for the exact CREATE canary.
+ * Required because the Apps Script property UI is read-only beyond 50 entries.
+ * Run manually in the GAS editor; it never invokes doPost or modifies REQ_.
+ * No Web App redeploy is needed for this editor-only helper.
+ */
+function vaaLedgerProdRetireCanaryArmOnce() {
+  const out={
+    phase:'PROD_CANARY_ARM_ONCE',
+    enabled:false,propertyWrites:0,propertyDeletes:0,
+    actualPostInvoked:false,activationAuthorized:false,
+    errorCode:'NONE',pass:false
+  };
+  const lock=LockService.getScriptLock();
+  let held=false;
+  try{
+    lock.waitLock(20000);held=true;
+    const props=PropertiesService.getScriptProperties();
+    const before=String(props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)||'').trim();
+    if(before && before!=='OFF'){
+      throw vaaLedgerJournalError_('CANARY_ADMIN_NOT_OFF');
+    }
+    const pre=vaaLedgerProdRetireCanaryPreflightReadOnly();
+    const canary=vaaLedgerProdRetireCanary_(props);
+    if(!pre.pass || !canary || canary.operationMode!=='CREATE'){
+      throw vaaLedgerJournalError_('CANARY_ADMIN_PREFLIGHT_FAILED');
+    }
+    props.setProperty(
+      VAA_LEDGER_PROD_RETIRE_PROP_,VAA_LEDGER_PROD_RETIRE_CANARY_ON_
+    );
+    out.propertyWrites++;
+    if(props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)!==
+       VAA_LEDGER_PROD_RETIRE_CANARY_ON_ ||
+       vaaLedgerProdModeStatus_(props).state!=='ENABLED'){
+      throw vaaLedgerJournalError_('CANARY_ADMIN_READBACK_FAILED');
+    }
+    out.enabled=true;out.pass=true;
+  }catch(err){
+    const code=String(err&&err.code||'');
+    const allowed=[
+      'CANARY_ADMIN_NOT_OFF','CANARY_ADMIN_PREFLIGHT_FAILED',
+      'CANARY_ADMIN_READBACK_FAILED'
+    ];
+    out.errorCode=allowed.indexOf(code)>=0?code:'CANARY_ADMIN_FAILED';
+    // If enabling partially succeeded, restore OFF; never change unrelated mode.
+    try{
+      const props=PropertiesService.getScriptProperties();
+      if(props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)===
+         VAA_LEDGER_PROD_RETIRE_CANARY_ON_){
+        props.setProperty(VAA_LEDGER_PROD_RETIRE_PROP_,'OFF');
+        out.propertyWrites++;
+      }
+    }catch(_){out.errorCode='CANARY_ADMIN_OFF_UNVERIFIED';}
+    out.enabled=false;out.pass=false;
+  }finally{
+    if(held){try{lock.releaseLock();}catch(_){}}
+  }
+  // Log booleans and fixed error codes only; never IDs or property values.
+  console.log('VAA_PROD_CANARY_ARM '+JSON.stringify(out));
+  return out;
+}
+
+/**
+ * Operator-only switch to OFF after the one-shot GAS execution has ENDED.
+ * Unlike the unused-ID preflight, this may be called after the canary is used.
+ * Do NOT call while its doPost execution is still running.
+ */
+function vaaLedgerProdRetireCanaryOffOnce() {
+  const out={
+    phase:'PROD_CANARY_OFF_ONCE',off:false,
+    propertyWrites:0,propertyDeletes:0,
+    actualPostInvoked:false,errorCode:'NONE',pass:false
+  };
+  const lock=LockService.getScriptLock();
+  let held=false;
+  try{
+    lock.waitLock(20000);held=true;
+    const props=PropertiesService.getScriptProperties();
+    const mode=String(props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)||'').trim();
+    if(mode && mode!=='OFF' &&
+       mode!==VAA_LEDGER_PROD_RETIRE_CANARY_ON_){
+      throw vaaLedgerJournalError_('CANARY_ADMIN_WRONG_MODE');
+    }
+    if(mode===VAA_LEDGER_PROD_RETIRE_CANARY_ON_){
+      props.setProperty(VAA_LEDGER_PROD_RETIRE_PROP_,'OFF');
+      out.propertyWrites++;
+    }
+    out.off=!props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_) ||
+      props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)==='OFF';
+    if(!out.off)throw vaaLedgerJournalError_('CANARY_ADMIN_READBACK_FAILED');
+    out.pass=true;
+  }catch(err){
+    const code=String(err&&err.code||'');
+    const allowed=['CANARY_ADMIN_WRONG_MODE','CANARY_ADMIN_READBACK_FAILED'];
+    out.errorCode=allowed.indexOf(code)>=0?code:'CANARY_ADMIN_FAILED';
+  }finally{
+    if(held){try{lock.releaseLock();}catch(_){}}
+  }
+  console.log('VAA_PROD_CANARY_OFF '+JSON.stringify(out));
+  return out;
+}
