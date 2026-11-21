@@ -4,6 +4,13 @@ Last updated: 2026-11-21
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Legacy dual-archive COPY first batch PASS; 10 dual verified, 31 candidates pending (2026-11-21 22:41 JST)
+
+- Operator executed **one** approved production `vaaLedgerProdLegacyCopyBatchOnce` after the 21:28 JST COPY mode ARM. `VAA_PROD_LEGACY_BATCH`: `phase:PROD_LEGACY_COPY_BATCH`, `action:COPY`, `scriptLockHeld:true`, `scopeVerified:true`, `beforeReadyCount:41`, `alreadyDualVerified:0`, `quarantinedLegacyReady:39`, `quarantinedTargetReady:60` (`targetCannotOpen:46`, `targetTrashed:14`), `copied:10`, `retired:0`, `remainingNeedCopy:41`, `sourceStableAfter:true`, `unknownCompletion:false`, `automaticRetryAuthorized:false`, `cleanupAuthorized:false`, `pass:true`, `errorStage:NONE`.
+- Both primary V1 and private backup were verified by the production COPY routine for the selected 10 receipts; no historical `REQ_` has been deleted. `remainingNeedCopy:41` is a **before-batch** count. If inventory remained unchanged, **31** eligible receipts remain to copy. An independent read-only post-batch audit is needed for authoritative totals if inventory is unexpectedly different.
+- Next operator step **only**: with `VAA_PROD_LEGACY_MIGRATION_MODE=COPY_DUAL_ARCHIVE_READY_V1` still armed, invoke `vaaLedgerProdLegacyCopyBatchOnce` **one more time** for the second batch (up to 10); inspect full `VAA_PROD_LEGACY_BATCH` log before any further batch. Expected `alreadyDualVerified:10`, `copied:10`, `retired:0`, `sourceStableAfter:true`, `unknownCompletion:false`, `pass:true`; `remainingNeedCopy` should be 31 at the start of the second invocation if the source inventory is unchanged.
+- On `pass:false` or `unknownCompletion:true`, do not retry; stop and use `vaaLedgerProdLegacyAuditReadOnly` to inspect exact archive state. No new SYNC/deployment, RETIRE/DELETE or mode switch requested in this step. Existing global new-V2 auto-retirement stays ON.
+
 ## Legacy dual-archive COPY ARM PASSED; first batch not yet run (2026-11-21 21:28 JST)
 
 - Operator executed `vaaLedgerProdLegacyArmCopyModeOnce` in the production GAS editor at 21:28:07 JST, following explicit approval for historical READY COPY only (NOT RETIRE).
