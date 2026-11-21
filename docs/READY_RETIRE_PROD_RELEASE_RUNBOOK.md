@@ -1,5 +1,28 @@
 # 本番Webアプリ：次バージョンへの最短更新手順（2026-11-21）
 
+## 旧REQ移管：41件の候補と99件の保護対象（2026-11-21）
+
+本番 `vaaLedgerProdLegacyAuditReadOnly` は `pass:true`。141件のREADY履歴の内訳は **移管候補41、再利用証明がない旧UPDATE39、参照先不正/消失60、既存V2 READY1**。別に非READY4。移管候補41件は、独立バックアップと主V1アーカイブのどちらもまだ未コピー（`verifiedBoth:0`、`needPrimaryCopy:41`、`needBackupCopy:41`）。現在の新規V2 READYの自動REQ退避はONのまま。
+
+従来の25番ソースは、保護対象の旧UPDATE/参照先不明が残る限り、**別の二重保存済み41件も全件RETIRE禁止**だった。そこで次の仕様をGitHubのみに追加した。
+
+- `toRetire` に入るのは、個別に有効な元READY・元ファイルが管理フォルダ内・主V1と独立バックアップの両方に完全一致して保存済みの履歴に限る。欠落/ゴミ箱/管理外・メタデータ不十分の保護対象・ERROR・V2履歴は従来どおり選択外。
+- **候補となる未コピーのREADYが1件でも残る間、RETIREを許可しない**。コピーが全件済みになっても、RETIREの各IDについて直前にソースと両アーカイブを完全一致で再確認し、削除直後にV1 replay可能なREADYへ戻ることを検証する。ScriptLock・最大10件/回・再試行禁止・Property全体の想定差分確認を維持。
+- 50件超のScript Properties UI制限のため、エディタ専用の管理関数 `vaaLedgerProdLegacyArmCopyModeOnce` / `vaaLedgerProdLegacyArmRetireModeOnce` / `vaaLedgerProdLegacyModeOffOnce` を追加。変更対象は `VAA_PROD_LEGACY_MIGRATION_MODE` だけ。通常新規V2 READYの退避ON設定には触れない。OFFを待っていたバッチが実行されないよう、バッチはロック取得後にもモード再確認。
+- 上記は `central-api/25_Request_Ledger_V2_Legacy_Batch_Migration.gs` とテスト・SHAマニフェストに反映。 [Central API check](https://github.com/tsicb/valid-app/actions/runs/44897213646) 成功。まだ本番GASへSYNCしておらず、コピー・削除は未実施。
+
+### この段階で安全に行えること
+
+GitHub Actions `Central API sync to GAS` を `branch=main`、`confirm=SYNC` で実行し、差分が25番の1本のみ、remote 26 / GitHub 26・追加/余分0・事後独立読戻し `VERIFIED_MATCH` を確認する。SYNCはエディタの正規ソース更新だけで、現在の単一Webアプリv63には新バージョン/再デプロイ不要。**SOURCE SYNC後でも旧履歴移管モードはOFFのまま**。
+
+### COPY実行の前に別途承認する事項
+
+安全なCOPYは「削除せず、最大10件ずつを独立バックアップと主V1へ同じREADY JSONで保存する」操作だが、実際には2つの私有スプレッドシートを書き換える。今の監査は `copyAuthorized:false` なので、SYNC後も勝手に `vaaLedgerProdLegacyArmCopyModeOnce` や `vaaLedgerProdLegacyCopyBatchOnce` を実行しない。承認後、COPYモードを1回ON → 10件上限の手動バッチを都度確認しながら最大5回 → 処理完了後は `vaaLedgerProdLegacyModeOffOnce` でOFF → `vaaLedgerProdLegacyAuditReadOnly` で `verifiedBoth:41`、コピー必要0を確認する。不明応答時は自動/反射的に再実行しない。
+
+### RETIRE実行の前に別途承認する事項
+
+**RETIREはREQの実削除を伴うため、COPY完了とは別の承認事項。** 41件の個別二重保存をすべて検証してから、RETIREモードを明示的にONにし、10件上限の手動バッチを都度確認する。99件の保護対象、4件の非READY、既存V2 READY 1件は退避対象外。削除前の容量節約見込みは、41件の個々のサイズが未計測なので推定値で断定しない。退避結果と `vaaAuditScriptPropertyCapacityReadOnly` の再監査で容量を測定する。
+
 ## カナリア再利用条件の本番照合は合格・恒常切替は別承認（2026-11-21）
 
 - 管理者がGitHub `Central API sync to GAS`（commit `bccc505`）を実行し、26/26完全一致・変更1件（24番）・リモート独立再取得 `VERIFIED_MATCH` を確認。Webアプリは既存v63のまま。
