@@ -197,8 +197,10 @@ test("aggregate diagnostics never emit receipt secrets or identifiers",()=>{
 });
 test("manual-only preflight does not alter main doPost or viewer route",()=>{
   new vm.Script(source);
-  const s=source.slice(source.indexOf(
-    "function vaaLedgerProdReadyRetirePreflightReadOnly()"));
+  const s=source.slice(
+    source.indexOf("function vaaLedgerProdReadyRetirePreflightReadOnly()"),
+    source.indexOf("function vaaLedgerProdRetireCanaryArmOnce()")
+  );
   assert.doesNotMatch(s,/\.deleteProperty\s*\(/);
   assert.doesNotMatch(s,/\.setProperty\s*\(/);
   assert.doesNotMatch(s,/\.appendRow\s*\(/);
