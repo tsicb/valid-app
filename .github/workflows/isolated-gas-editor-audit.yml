@@ -1,0 +1,140 @@
+name: Isolated GAS editor source inventory (read only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type TEST_AUDIT to read the separate TEST GAS source only'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    name: Inventory isolated TEST editor without writing
+    runs-on: ubuntu-latest
+    env:
+      TEST_GAS_SCRIPT_ID: ${{ secrets.VAA_TEST_GAS_SCRIPT_ID }}
+      PROD_GAS_SCRIPT_ID: ${{ secrets.GAS_SCRIPT_ID }}
+      CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+      USER_CONFIRM: ${{ inputs.confirm }}
+    steps:
+      - name: Require separate TEST project and exact read-only confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$USER_CONFIRM" = "TEST_AUDIT"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test -n "$TEST_GAS_SCRIPT_ID"
+          test -n "$PROD_GAS_SCRIPT_ID"
+          test -n "$CLASPRC_JSON"
+          [[ "$TEST_GAS_SCRIPT_ID" =~ ^[A-Za-z0-9_-]{20,}$ ]]
+          test "$TEST_GAS_SCRIPT_ID" != "$PROD_GAS_SCRIPT_ID"
+          echo "TEST_GAS_PROJECT_SEPARATION: CONFIRMED_NO_ID_OUTPUT"
+
+      - name: Checkout canonical GitHub source
+        uses: actions/checkout@v4
+
+      - name: Install pinned clasp reader
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @google/clasp@3.3.0 >/dev/null 2>&1
+
+      - name: Configure temporary TEST reader
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          node <<'NODE'
+          const fs=require('node:fs');
+          fs.writeFileSync('.clasp.json',JSON.stringify({
+            scriptId:process.env.TEST_GAS_SCRIPT_ID,
+            rootDir:'.gas-test-inventory',
+            scriptExtensions:['.gs','.js']
+          })+'\n');
+          NODE
+
+      - name: Pull TEST editor source (read only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .gas-test-inventory
+          if ! clasp pull >/dev/null 2>&1; then
+            echo "TEST_SOURCE_PULL_FAILED_NO_REMOTE_MODIFICATION"
+            exit 2
+          fi
+          if [ ! -f .gas-test-inventory/appsscript.json ]; then
+            echo "TEST_SOURCE_MANIFEST_MISSING_NO_REMOTE_MODIFICATION"
+            exit 2
+          fi
+
+      - name: Report aggregate source inventory without IDs or source text
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          'use strict';
+          const fs=require('node:fs'),path=require('node:path');
+          const remoteDir='.gas-test-inventory',gitDir='central-api';
+          const normalize=s=>String(s).replace(/\r\n?/g,'\n');
+          function collect(dir){
+            const names=fs.readdirSync(dir).filter(n=>/\.(gs|js)$/.test(n));
+            const map=new Map();
+            for(const name of names){
+              const stem=name.replace(/\.(gs|js)$/,'');
+              if(map.has(stem))throw Error('DUPLICATE_SOURCE_NAME');
+              map.set(stem,fs.readFileSync(path.join(dir,name),'utf8'));
+            }
+            return map;
+          }
+          function folder(source,key){
+            const pattern=new RegExp('\\b'+key+':\\s*\\x27([A-Za-z0-9_-]+)\\x27','g');
+            const all=[...String(source||'').matchAll(pattern)];
+            return all.length===1?all[0][1]:null;
+          }
+          try {
+            const git=collect(gitDir),remote=collect(remoteDir);
+            const prodConfig=git.get('00_Config'),testConfig=remote.get('00_Config');
+            const rootProd=folder(prodConfig,'ROOT_FOLDER_ID');
+            const outputProd=folder(prodConfig,'SHEET_OUTPUT_FOLDER_ID');
+            const rootTest=folder(testConfig,'ROOT_FOLDER_ID');
+            const outputTest=folder(testConfig,'SHEET_OUTPUT_FOLDER_ID');
+            const valid=id=>typeof id==='string' && /^[A-Za-z0-9_-]{20,}$/.test(id);
+            const foldersDiffer=valid(rootProd)&&valid(outputProd)&&
+              valid(rootTest)&&valid(outputTest)&&rootTest!==outputTest&&
+              ![rootProd,outputProd].includes(rootTest)&&
+              ![rootProd,outputProd].includes(outputTest);
+            const missing=[...git.keys()].filter(n=>!remote.has(n));
+            const extra=[...remote.keys()].filter(n=>!git.has(n));
+            const changed=[...git.keys()].filter(n=>n!=='00_Config'&&remote.has(n)&&
+              normalize(git.get(n))!==normalize(remote.get(n)));
+            const matched=git.size-missing.length-changed.length-(remote.has('00_Config')?1:0);
+            const summary=[
+              '## Isolated TEST GAS source inventory (read only)','',
+              '- Source read: separate TEST GAS editor, no deployment',
+              '- TEST scripts / GitHub scripts: '+remote.size+' / '+git.size,
+              '- Unchanged non-config scripts: '+matched,
+              '- Missing / extra / changed non-config scripts: '+
+                missing.length+' / '+extra.length+' / '+changed.length,
+              '- TEST root/output differ from canonical production IDs: '+foldersDiffer,
+              '- Exact current GitHub source except isolated config: '+
+                (missing.length===0&&extra.length===0&&changed.length===0&&foldersDiffer),
+              '',
+              'File names, Script IDs, folder IDs, source contents and property values are not printed.',
+              'This checks source configuration only, NOT actual Drive folder access or project property isolation.',
+              'No TEST or PROD source writes, Script Properties access, doPost, deployments or data changes.',
+              'No TEST source replacement or PROD deployment is authorized by this report.'
+            ].join('\n')+'\n';
+            if(process.env.GITHUB_STEP_SUMMARY){
+              fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,summary);
+            }
+            console.log('TEST_SOURCE_AUDIT: REPORT_WRITTEN');
+          } catch(_) {
+            console.log('TEST_SOURCE_AUDIT: FAILED_WITHOUT_SOURCE_OUTPUT');
+            process.exitCode=2;
+          }
+          NODE
