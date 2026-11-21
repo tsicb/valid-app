@@ -4,6 +4,15 @@ Last updated: 2026-11-21
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Script Properties UI 50-row limitation: editor-only canary control ready, SYNC pending (2026-11-21)
+
+- User confirmed that the GAS UI displays only the first 50 Script Properties, mostly `REQ_`, and the list becomes read-only. This is a **UI visibility/editing limit**, not a lack of access through `PropertiesService.getScriptProperties().getProperty/setProperty`.
+- Added two narrow, manually invoked functions to canonical `central-api/24_Request_Ledger_V2_Production_Gate.gs`: `vaaLedgerProdRetireCanaryArmOnce` and `vaaLedgerProdRetireCanaryOffOnce`. ARM verifies the prior read-only scope and unused configured exact CREATE ID, changes only `VAA_PROD_READY_RETIRE_MODE` from OFF to `CANARY_ONE_NEW_READY_V1`, reads back, and blocks duplicate ARM without disarming a possibly active request. OFF must only be run **after GAS execution ends**; it changes only this same exact mode to OFF. No `REQ_` mutations, doPost or secrets logging in these helper functions.
+- Updated canonical checksum manifest and extended Node mock coverage (single key, default no write, duplicate ARM safe, denied scope, OFF rescue, no global mode overwrite). [Central API check](https://github.com/tsicb/valid-app/actions/runs/44853321326) succeeded at commit `3ac3895d36f899de53509e291cd6b49b1ad335ff`.
+- **Current production GAS editor has not yet been updated with this new helper**. Production Web App remains saved version **63**, one deployment, and it does not require another Web App redeploy to use editor-only Script Property management. **Next operator action:** run one manual GitHub `Central API sync to GAS` workflow with `main`, `confirm=SYNC` and inspect the independent post-sync fresh pull. Expect exactly `24_Request_Ledger_V2_Production_Gate.gs` changed, 26 scripts, 0 extra, source match. If a guard fails, stop and do not run ARM. Close stale editor tabs and reopen before manually executing ARM.
+- User's explicit authorization for **one** synthetic production CREATE/REQ retirement already exists. A passed SYNC is not itself a POST or property change. Detailed [50+ property helper runbook](READY_RETIRE_PROD_RELEASE_RUNBOOK.md). Do not add a temporary 99_ helper or edit hidden REQ_ entries. No permanent global retirement is authorized; legacy migration stays OFF.
+- No canary ARM, POST, REQ deletion or legacy migration has been executed as of this checkpoint.
+
 ## Version 63 GET verified; one-shot synthetic canary sender prepared, NOT RUN (2026-11-21)
 
 - Operator verified production `/exec` GET with `ok:true`, `service:"valid-application-analysis-sheet-api"`, `schemaVersion:"3.0"`. This completes the post-deployment non-mutating check following the single deployment v63, and the editor-only `vaaLedgerProdRetireCanaryPreflightReadOnly` `pass:true` with no writes.
