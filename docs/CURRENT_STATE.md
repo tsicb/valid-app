@@ -4,6 +4,14 @@ Last updated: 2026-11-21
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Ongoing new-READY REQ retirement explicitly authorized; activation log pending (2026-11-21)
+
+- Operator explicitly approved enabling `RETIRE_VERIFIED_NEW_READY_V1` for **all future successfully verified new V2 CREATE and UPDATE READY receipts**. This is separate from the prior single-request CREATE canary authorization.
+- Production evidence before authorization: single deployed Web App v63, V2 sticky gate enabled, canary retirement and legacy migration OFF; 26/26 GAS scripts verified after `SYNC`; exact used-canary `vaaLedgerProdCanaryReplayProofReadOnly` `pass:true`, `replayEligible:true`, `canaryReady:true`, `canaryReqAbsent:true`, `targetVerified:true`, `sourceStable:true`, zero writes/deletes.
+- **Authorization is NOT proof of activation.** Operator next manually executes `vaaLedgerProdReadyRetireEnableAllNewOnce` exactly once in the existing production GAS editor. The existing helper internally reruns exact-ID replay proof and aggregate preflight, checks no pending journal and unchanged Script Properties, then writes **only** `VAA_PROD_READY_RETIRE_MODE=RETIRE_VERIFIED_NEW_READY_V1`. Expected log `VAA_PROD_NEW_READY_RETIRE_ENABLE` with `pass:true`, `enabled:true`, `replayProofPassed:true`, `aggregatePassed:true`, `propertyWrites:1`, `propertyDeletes:0`, `existingReqDeleted:false`, `actualPostInvoked:false`. No independent duplicate QA, SYNC or deployment needed.
+- If `pass:false` or an uncertain response, do **not** repeat activation or send synthetic POST; inspect mode state read-only and error code. Once activated, V2 READY new receipts are retired only after journal READY verification; legacy existing `REQ_` and previously persisted V2 READY `REQ_` remain untouched. Leave `VAA_PROD_LEGACY_MIGRATION_MODE=OFF`.
+- In case of downstream operational problems, finish/inspect in-flight doPost executions before manually using `vaaLedgerProdReadyRetireDisableAllNewOnce` to set only the retire flag OFF; do not disable the sticky V2 gate or roll back to pre-canary v62 while the broad flag is ON.
+
 ## Exact-ID canary replay proof PASSED in production; broad retirement remains OFF (2026-11-21)
 
 - Operator ran `Central API sync to GAS` from commit `bccc505`: 26 remote / 26 GitHub scripts, only `24_Request_Ledger_V2_Production_Gate.gs` changed, 25 identical, no unexpected scripts; independent post-SYNC fresh remote readback `VERIFIED_MATCH` with missing/unexpected/drift all zero. This changes editor HEAD only, not active immutable Web App v63.
