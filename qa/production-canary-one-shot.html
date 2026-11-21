@@ -41,7 +41,7 @@ pre{font:inherit;white-space:pre-wrap;padding:12px;background:#eef5fa;border-rad
 <input id="confirm" type="text" autocomplete="off" spellcheck="false" placeholder="ONE_CREATE_ONLY">
 <button id="send" type="button">架空データ1件を本番へ送信（1回限り）</button>
 <pre id="status" aria-live="polite">未送信。ボタンを押すまで通信は発生しません。</pre>
-<p><small>送信後は成功・失敗・通信切断を問わず再送禁止です。最初に削除モードをOFFへ戻し、GASエディタの既存関数vaaLedgerProdReadyRetirePreflightReadOnlyでジャーナルとREQの状態を読み取り確認してください。送信画面にはレスポンスのID、URL、データ本文を表示しません。</small></p>
+<p><small>送信後は成功・失敗・通信切断を問わず再送禁止です。GASの実行が終了したことを確認してから削除モードをOFFへ戻し、既存関数vaaLedgerProdReadyRetirePreflightReadOnlyでジャーナルとREQの状態を読み取り確認してください。応答不明の場合、先にGASの実行履歴を確認してください。送信画面にはレスポンスのID、URL、データ本文を表示しません。</small></p>
 </main>
 <script>
 (function(){
@@ -111,9 +111,9 @@ send.addEventListener("click",async function(){
   const data=await response.json();
   const code=typeof data.code==="string"&&/^[A-Z0-9_]{1,80}$/.test(data.code)?data.code:"NONE";
   const ready=response.ok&&data.ok===true&&data.status==="READY"&&data.reused===false;
-  show("送信試行済み。HTTP成功="+response.ok+" / READY="+ready+" / reused="+(data.reused===true)+" / code="+code+"\n削除モードをOFFへ戻し、既存の読み取り専用監査で最終確認してください。再送は禁止です。");
+  show("送信試行済み。HTTP成功="+response.ok+" / READY="+ready+" / reused="+(data.reused===true)+" / code="+code+"\nGASの実行終了を確認してから削除モードをOFFへ戻し、既存の読み取り専用監査で最終確認してください。再送は禁止です。");
  }catch(_){
-  show("送信試行済み。応答が不明です。再送禁止。削除モードをOFFへ戻し、既存の読み取り専用監査で状態を確認してください。");
+  show("送信試行済み。応答が不明です。再送禁止。GAS実行履歴を先に確認し、実行終了後に削除モードをOFFへ戻して既存の読み取り専用監査を行ってください。");
  }finally{payload=null;}
 });
 })();
