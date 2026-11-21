@@ -1,5 +1,25 @@
 # 本番Webアプリ：次バージョンへの最短更新手順（2026-11-21）
 
+## 次工程：カナリアの読み取り専用再利用証明（2026-11-21）
+
+直前の本番カナリアは1回限りのCREATE成功（`READY:true`, `reused:false`）。終了後にOFFへ復帰（`VAA_PROD_CANARY_OFF pass:true`）、既存全体監査で`journalReady:2`、`journalPending:0`、`modernReadyWithoutReq:1`、`pass:true`。**カナリアは消費済みなので再送せず、既存のV2 READYから再利用可能であることを照合する。**
+
+今回のGitHubソース追加はファイル `central-api/24_Request_Ledger_V2_Production_Gate.gs` のみ。最新CI [44857554443](https://github.com/tsicb/valid-app/actions/runs/44857554443) 合格。追加関数：
+
+- `vaaLedgerProdCanaryReplayProofReadOnly`：本番GASエディタで実行する、現在設定済みCREATEカナリアIDだけの読み取り専用証明。V2 READY rev2・元REQなし・V1衝突なし・元の個社管理シートの存在とフォルダ・本番モードとScript Properties安定性をチェックする。**doPost・CREATE・UPDATE・ジャーナル予約は実行しない**。
+- `vaaLedgerProdReadyRetireEnableAllNewOnce`：次の明示承認後に限る、通常の**新規**V2 READYに対するREQ自動退避をONにする管理関数。内部で上記証明と既存全体監査を実行し、1キーだけ変更。旧REQの削除はしない。現時点で**実行禁止**。
+- `vaaLedgerProdReadyRetireDisableAllNewOnce`：ON後のOFF関数。稼働中のdoPostが終了してから使う。旧REQを消さず、V2のsticky gateは変更しない。
+
+### 今回の人手操作（1回のSYNCと1回の読み取り専用関数）
+
+1. GitHub Actions `Central API sync to GAS` を `branch=main`、`confirm=SYNC` で実行。変更は24番の1本のみ、26本完全一致、`VERIFIED_MATCH`、余分0を確認。同期で本番Webアプリの保存版v63は変わらない。
+2. 本番GASエディタを新しく開き直し、`vaaLedgerProdCanaryReplayProofReadOnly` だけを実行する。
+3. ログ `VAA_PROD_CANARY_REPLAY_PROOF` で `pass:true`、`replayEligible:true`、`canaryReady:true`、`canaryReqAbsent:true`、`v1Absent:true`、`targetVerified:true`、`sourceStable:true`、`propertyWrites:0`、`journalWrites:0`、`propertyDeletes:0` を確認。ID・Google Sheet URLは貼らず、集計ログだけ共有。
+4. `pass:false` の場合、**POSTも退避ONもせず**、ログの`errorStage`/`errorCode` だけをもとに調査する。
+5. 合格後、通常の新規CREATE/UPDATEのREQ退避を有効化するか、改めて判断する。`vaaLedgerProdReadyRetireEnableAllNewOnce` の実行は**今回には含まれない**。先行して実行しない。
+
+これにより、本番での2回目の同一requestId POST（重複作成リスク）も、別の架空ファイル生成も不要。現行の一般CREATE/UPDATEと履歴の扱いは、この読み取り専用検証だけでは変わらない。
+
 ## 50件超のScript Propertiesを扱う管理関数（2026-11-21）
 
 GASの設定画面では50個を超えるとリストが読み取り専用になるため、**GASエディタから管理関数を実行**して、設定キー1個だけを変更する。Script Properties自体が50件で停止するわけではない。
