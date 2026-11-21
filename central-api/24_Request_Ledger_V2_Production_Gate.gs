@@ -494,11 +494,11 @@ function vaaLedgerProdRetireCanaryArmOnce() {
   const out={
     phase:'PROD_CANARY_ARM_ONCE',
     enabled:false,propertyWrites:0,propertyDeletes:0,
-    actualPostInvoked:false,activationAuthorized:false,
+    actualPostInvoked:false,postNotInvoked:true,
     errorCode:'NONE',pass:false
   };
   const lock=LockService.getScriptLock();
-  let held=false;
+  let held=false,armingAttempted=false;
   try{
     lock.waitLock(20000);held=true;
     const props=PropertiesService.getScriptProperties();
@@ -511,6 +511,7 @@ function vaaLedgerProdRetireCanaryArmOnce() {
     if(!pre.pass || !canary || canary.operationMode!=='CREATE'){
       throw vaaLedgerJournalError_('CANARY_ADMIN_PREFLIGHT_FAILED');
     }
+    armingAttempted=true;
     props.setProperty(
       VAA_LEDGER_PROD_RETIRE_PROP_,VAA_LEDGER_PROD_RETIRE_CANARY_ON_
     );
@@ -528,15 +529,18 @@ function vaaLedgerProdRetireCanaryArmOnce() {
       'CANARY_ADMIN_READBACK_FAILED'
     ];
     out.errorCode=allowed.indexOf(code)>=0?code:'CANARY_ADMIN_FAILED';
-    // If enabling partially succeeded, restore OFF; never change unrelated mode.
-    try{
-      const props=PropertiesService.getScriptProperties();
-      if(props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)===
-         VAA_LEDGER_PROD_RETIRE_CANARY_ON_){
-        props.setProperty(VAA_LEDGER_PROD_RETIRE_PROP_,'OFF');
-        out.propertyWrites++;
-      }
-    }catch(_){out.errorCode='CANARY_ADMIN_OFF_UNVERIFIED';}
+    // Only undo a write attempted by THIS call. A duplicate ARM invocation
+    // must never turn OFF a canary that may be processing in another call.
+    if(armingAttempted){
+      try{
+        const props=PropertiesService.getScriptProperties();
+        if(props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)===
+           VAA_LEDGER_PROD_RETIRE_CANARY_ON_){
+          props.setProperty(VAA_LEDGER_PROD_RETIRE_PROP_,'OFF');
+          out.propertyWrites++;
+        }
+      }catch(_){out.errorCode='CANARY_ADMIN_OFF_UNVERIFIED';}
+    }
     out.enabled=false;out.pass=false;
   }finally{
     if(held){try{lock.releaseLock();}catch(_){}}
