@@ -7,18 +7,25 @@ const path=require("node:path");
 const {verifyLegacyBeforeSync,verifyPulledAgainstGit,summary}
   =require("../scripts/verify-central-api-sync.cjs");
 
-test("legacy preflight allows current and exact pinned revision only",()=>{
+test("legacy preflight accepts only exact current, previous production or pinned historic",()=>{
   const current="const mode='CURRENT';\n";
   const old="const mode='OLD';\n";
-  assert.equal(verifyLegacyBeforeSync(current,current.replace(/\n/g,"\r\n"),old),
+  const prior="const mode='PREVIOUS_VERIFIED_SYNC';\n";
+  assert.equal(verifyLegacyBeforeSync(current,current.replace(/\n/g,"\r\n"),old,prior),
     "ALREADY_CURRENT");
-  assert.equal(verifyLegacyBeforeSync(current,old,old),
+  assert.equal(verifyLegacyBeforeSync(current,prior.replace(/\n/g,"\r\n"),old,prior),
+    "PINNED_PREVIOUS_PRODUCTION_SOURCE");
+  assert.equal(verifyLegacyBeforeSync(current,old,old,prior),
     "PINNED_2026_11_19_REVISION");
-  assert.equal(verifyLegacyBeforeSync(current,"const mode='UNKNOWN';\n",old),
+  assert.equal(verifyLegacyBeforeSync(current,"const mode='UNKNOWN';\n",old,prior),
     "UNRECOGNIZED_SOURCE_BLOCK_SYNC");
 });
 test("similar length or cosmetic matching does not authorize unknown version",()=>{
-  assert.equal(verifyLegacyBeforeSync("abc","abd","abe"),
+  assert.equal(verifyLegacyBeforeSync("abc","abd","abe","abf"),
+    "UNRECOGNIZED_SOURCE_BLOCK_SYNC");
+  // A close but not exact revision cannot bypass the independent source fence.
+  assert.equal(verifyLegacyBeforeSync(
+    "const x=1;","const x=3;","const x=2;","const x=4;"),
     "UNRECOGNIZED_SOURCE_BLOCK_SYNC");
 });
 function withTree(filesGit,filesGAS,check){
