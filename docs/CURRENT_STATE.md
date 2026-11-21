@@ -4,6 +4,13 @@ Last updated: 2026-11-21
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## File 25 pinned rollback confirmed again; file 24 source diagnosis added (2026-11-21)
+
+- Operator re-ran the existing **read-only** legacy drift workflow after seeing `remote=27, expected=26, changed=2 (24/25), extra=99`. Remote file `25_Request_Ledger_V2_Legacy_Batch_Migration.gs` again matched pinned historical `0c4be7c5e9e3eb39eafcd341618dacb79797dd36` exactly after line-ending normalization (337 lines, 13,190 characters vs current GitHub 468/19,229, first different aligned line 68). This proves the file25 historic reversion is repeatable after the prior 26/26 source readback; it does not establish the underlying Google editor mechanism.
+- Add a **read-only** second stage to the same manual `Central API legacy source drift diagnosis` workflow: compare live file 24 to current GitHub and to pinned pre-canary GitHub file 24 at `0f70a7e68375445eb063a1e54599d65f28c96284`. The report classifies current source, exact pre-canary revision, pre-canary source with strictly appended content, or unknown changes needing review. Does not print script text, appended content, property names/values, receipts or secrets. Append-only still requires the operator to preserve any local helper before overwriting.
+- Recover only after: (1) confirm file24 classification, (2) preserve temporary `99_Canary_Properties_OneTime.gs` outside GAS and any local-only additions, (3) close stale browser tabs and reload a single GAS editor, (4) deliberately remove temporary 99 from the freshly reloaded project, (5) re-AUDIT. Only then consider a separately initiated SYNC using the existing preflight/source-readback guard; never use SYNC to silently delete an unreviewed extra file.
+- Maintain retirement unset/OFF, legacy migration unset/OFF, V2 sticky fence ON; configuration identity exists but authorizes nothing. No active canary request, deleted REQ or deployment change has occurred.
+
 ## New post-editor-save AUDIT shows both file 24 and 25 drift plus temporary file 99 (2026-11-21)
 
 - Operator reran `Central API sync to GAS` with `confirm=AUDIT` **after** opening a previously stale GAS editor tab, manually editing/saving source 24 and using temporary `99_Canary_Properties_OneTime.gs`. Read-only result: **remote 27 / GitHub 26, changed 2, identical 24, new GitHub 0, extra remote 1**.
