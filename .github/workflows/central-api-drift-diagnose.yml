@@ -73,3 +73,11 @@ jobs:
           # Git show output stays on runner. Nothing is printed or uploaded.
           git show 0c4be7c5e9e3eb39eafcd341618dacb79797dd36:central-api/25_Request_Ledger_V2_Legacy_Batch_Migration.gs > .gas-stage/.historic-file25
           node scripts/diagnose-central-api-drift.cjs
+
+      - name: Classify file 24 against the pre-canary GitHub revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Local runner-only pinned historic source; no source output/artifact.
+          git show 0f70a7e68375445eb063a1e54599d65f28c96284:central-api/24_Request_Ledger_V2_Production_Gate.gs > .gas-stage/.historic-file24
+          node scripts/diagnose-central-api-gateway24.cjs
