@@ -4,6 +4,14 @@ Last updated: 2026-11-21
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Live editor cannot resolve newly synced canary preflight (2026-11-21; investigate before activation)
+
+- Operator's read-only script-property inventory: 281 total properties, 145 legacy `REQ_`, 8 `VAA_`; production sticky `ACTIVE_V1`, `PROD_RESERVATION_V2`, `PROD_V2_GATED`, with READY retirement and old migration mode both unset (OFF). No history or property edits in this inspection.
+- The two canary identity properties were deliberately registered through a temporary editor file, returning `VAA_CANARY_CONFIG_SET {"status":"VERIFIED",...,"requestPropertiesDeleted":0}`. This proves only identity configuration, not a canary preflight.
+- The temporary editor wrapper `vaaCanaryPreflightRunOnce` emitted **`VAA_CANARY_PREFLIGHT_FUNCTION_MISSING`**. Therefore in the current script execution context, `vaaLedgerProdRetireCanaryPreflightReadOnly` cannot be referenced, despite its source existing in GitHub `24_Request_Ledger_V2_Production_Gate.gs` around line 418 and the previous GH Actions post-push readback matching 26 scripts. This is a live execution/source-context discrepancy, not proof of a missing GitHub function.
+- Do not enable canary or global retirement, do not trigger CREATE, and do not attempt another blind SYNC. First run a *read-only* `typeof` diagnostic for production gate, original READY preflight, canary identity helper, canary preflight and legacy audit in the **same editor project**. Then inspect source 24 around its last 70 lines and compare against the known canonical GitHub definition. Potential wrong project, stale editor state or post-push source regression remain unconfirmed hypotheses.
+- Temporary `99_Canary_Properties_OneTime.gs` created in the editor can cause an extra server script in a future GitHub AUDIT; this is expected until the diagnostic file is deliberately removed. Never use SYNC to silently remove it without a review. The two canary properties remain configured but inert while retirement is OFF.
+
 ## Synced-source V2 READY read-only preflight reverified (2026-11-21)
 
 - Operator reran `vaaLedgerProdReadyRetirePreflightReadOnly` from GAS editor after verified 26/26 source SYNC. Returned `phase:PROD_NEW_V2_READY_RETIRE_PREFLIGHT_READ_ONLY`, `strictReadOnly:true`, `sourceStable:true`, `prodV2Enabled:true`, `retireModeOff:true`, `legacyMigrationOff:true`, `journalEvents:2`, `journalReady:1`, `journalPending:0`, `modernReadyWithReq:1`, `modernReadyWithoutReq:0`, `eligibleForFutureRetirement:1`, zero writes/deletions, `activationAuthorized:false`, `errorStage:NONE`, `errorCode:NONE`, `pass:true`. Existing READY source property remains intact.
