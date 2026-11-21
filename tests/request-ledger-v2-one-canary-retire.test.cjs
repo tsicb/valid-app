@@ -45,11 +45,12 @@ function fixture(options={}){
       options.legacyMode||"OFF",
     ["REQ_"+id]:options.sourceMismatch?raw+" ":raw
   };
-  const effects={deleteCalls:0,deleteCommitted:0,reserves:0,
+  const effects={deleteCalls:0,deleteCommitted:0,setCalls:0,reserves:0,
     finalized:0,journalReads:0,scopeReads:0,locks:0,releases:0,
     logs:[]};
   const props={
     getProperty:k=>data[k]||null,
+    setProperty:(k,v)=>{effects.setCalls++;data[k]=String(v);},
     getProperties:()=>({...data}),
     deleteProperty:k=>{
       effects.deleteCalls++;
@@ -122,6 +123,8 @@ function fixture(options={}){
   return {
     finalize:(kind=op)=>ctx.vaaLedgerProdFinalizeReady_(props,id,kind),
     preflight:()=>ctx.vaaLedgerProdRetireCanaryPreflightReadOnly(),
+    arm:()=>ctx.vaaLedgerProdRetireCanaryArmOnce(),
+    off:()=>ctx.vaaLedgerProdRetireCanaryOffOnce(),
     decide:(kind=op)=>ctx.vaaLedgerProdDecideUnderLock_(
       props,id,kind,kind==="UPDATE"?TARGET:"",
       kind==="UPDATE"?"APPEND":"",
@@ -278,4 +281,76 @@ test("canary source adds no logging, doPost changes or extra delete path",()=>{
   assert.doesNotMatch(hotPath,/console\.(?:log|error|warn)\s*\(/);
   assert.doesNotMatch(hotPath,/UrlFetchApp|\bdoPost\s*\(/);
   assert.equal((hotPath.match(/props\.deleteProperty\(/g)||[]).length,1);
+});
+
+test("operator-only ARM sets only one non-REQ mode property after read-only preflight",()=>{
+  const h=fixture();
+  delete h.data["REQ_"+C_CREATE];
+  const before={...h.data};
+  const armed=h.arm();
+  assert.equal(armed.pass,true);
+  assert.equal(armed.enabled,true);
+  assert.equal(armed.propertyWrites,1);
+  assert.equal(h.effects.setCalls,1);
+  assert.equal(h.data.VAA_PROD_READY_RETIRE_MODE,"CANARY_ONE_NEW_READY_V1");
+  for(const [key,val] of Object.entries(before)){
+    if(key!=="VAA_PROD_READY_RETIRE_MODE")assert.equal(h.data[key],val);
+  }
+  assert.equal(h.effects.deleteCalls,0);
+  assert.equal(h.effects.reserves,0);
+  assert.equal(armed.actualPostInvoked,false);
+  assert.ok(h.effects.logs.some(l=>l.startsWith("VAA_PROD_CANARY_ARM ")));
+  for(const value of [C_CREATE,SECRET,TARGET]){
+    assert.ok(h.effects.logs.every(l=>!l.includes(value)));
+  }
+});
+
+test("duplicate ARM must never disarm an already active canary",()=>{
+  const h=fixture();
+  delete h.data["REQ_"+C_CREATE];
+  assert.equal(h.arm().pass,true);
+  const n=h.effects.setCalls;
+  const second=h.arm();
+  assert.equal(second.pass,false);
+  assert.equal(second.errorCode,"CANARY_ADMIN_NOT_OFF");
+  assert.equal(second.propertyWrites,0);
+  assert.equal(h.effects.setCalls,n);
+  assert.equal(h.data.VAA_PROD_READY_RETIRE_MODE,"CANARY_ONE_NEW_READY_V1");
+});
+
+test("ARM fails closed with reused ID, invalid scope or legacy migration enabled",()=>{
+  for(const opts of [
+    {},
+    {configuredId:OTHER},
+    {legacyMode:"COPY_DUAL_ARCHIVE_READY_V1"},
+    {v2Off:true}
+  ]){
+    const h=fixture(opts);
+    if(Object.keys(opts).length)delete h.data["REQ_"+C_CREATE];
+    const out=h.arm();
+    assert.equal(out.pass,false,JSON.stringify(opts));
+    assert.equal(h.effects.setCalls,0,JSON.stringify(opts));
+    assert.equal(h.data.VAA_PROD_READY_RETIRE_MODE,"OFF");
+    assert.equal(h.effects.deleteCalls,0);
+  }
+});
+
+test("operator-only OFF switches exact canary mode only; global retire cannot be overwritten",()=>{
+  const h=fixture({retireMode:"CANARY_ONE_NEW_READY_V1"});
+  const done=h.off();
+  assert.equal(done.pass,true);
+  assert.equal(done.off,true);
+  assert.equal(done.propertyWrites,1);
+  assert.equal(h.data.VAA_PROD_READY_RETIRE_MODE,"OFF");
+  assert.equal(h.effects.deleteCalls,0);
+  const again=h.off();
+  assert.equal(again.pass,true);
+  assert.equal(again.propertyWrites,0);
+  assert.equal(h.effects.setCalls,1);
+  const other=fixture({retireMode:"RETIRE_VERIFIED_NEW_READY_V1"});
+  const blocked=other.off();
+  assert.equal(blocked.pass,false);
+  assert.equal(blocked.errorCode,"CANARY_ADMIN_WRONG_MODE");
+  assert.equal(other.effects.setCalls,0);
+  assert.equal(other.data.VAA_PROD_READY_RETIRE_MODE,"RETIRE_VERIFIED_NEW_READY_V1");
 });
