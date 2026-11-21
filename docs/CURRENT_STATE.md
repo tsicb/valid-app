@@ -4,6 +4,13 @@ Last updated: 2026-11-21
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## New post-editor-save AUDIT shows both file 24 and 25 drift plus temporary file 99 (2026-11-21)
+
+- Operator reran `Central API sync to GAS` with `confirm=AUDIT` **after** opening a previously stale GAS editor tab, manually editing/saving source 24 and using temporary `99_Canary_Properties_OneTime.gs`. Read-only result: **remote 27 / GitHub 26, changed 2, identical 24, new GitHub 0, extra remote 1**.
+- Differing files are **both** `24_Request_Ledger_V2_Production_Gate.gs` and `25_Request_Ledger_V2_Legacy_Batch_Migration.gs`. Extra remote file is exactly `99_Canary_Properties_OneTime.gs`. Thus a plain `SYNC` is currently correctly blocked; more significantly, file 25 also drifted again **after** successful independent remote readback of all 26 files in [SYNC run #44835161239](https://github.com/tsicb/valid-app/actions/runs/44835161239).
+- A stale editor saving a project-level snapshot is a plausible cause of both 24 and 25 source reverting, but **not proven**; no source content has yet been compared from this new AUDIT. Do not assert file 25 equals the 2026-11-19 old version until the read-only historical fingerprint workflow runs again.
+- **Next strictly read-only step:** run `Central API legacy source drift diagnosis (read only)` on `main` with `DIAGNOSE` and inspect `Matches pinned 2026-11-19 GitHub source`. Do not `SYNC`, re-save source 24/25, enable retirement or move legacy history. Preserve the temporary 99 source locally before a separate operator decision to remove it from a freshly reloaded GAS editor, then re-AUDIT; do not delete 99 blindly or override unidentified changes. The two configured canary identity properties are not retirement activation; retirement mode remains unset/OFF.
+
 ## Live editor cannot resolve newly synced canary preflight (2026-11-21; investigate before activation)
 
 - Operator's read-only script-property inventory: 281 total properties, 145 legacy `REQ_`, 8 `VAA_`; production sticky `ACTIVE_V1`, `PROD_RESERVATION_V2`, `PROD_V2_GATED`, with READY retirement and old migration mode both unset (OFF). No history or property edits in this inspection.
