@@ -1,0 +1,76 @@
+name: Central API deployed version 62 source audit (read only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type AUDIT_V62 for immutable saved GAS version 62 (read only)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  version-audit:
+    name: Audit saved version 62 without changing GAS
+    runs-on: ubuntu-latest
+    env:
+      GAS_SCRIPT_ID: ${{ secrets.GAS_SCRIPT_ID }}
+      CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+    steps:
+      - name: Checkout canonical GitHub scripts
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate read-only audit input
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirm }}" = "AUDIT_V62"
+          test -n "$GAS_SCRIPT_ID"
+          test -n "$CLASPRC_JSON"
+
+      - name: Install pinned clasp
+        shell: bash
+        run: npm install --global @google/clasp@3.3.0
+
+      - name: Configure ephemeral clasp reader
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          node <<'NODE'
+          const fs=require('fs');
+          fs.writeFileSync('.clasp.json',JSON.stringify({
+            scriptId:process.env.GAS_SCRIPT_ID,
+            rootDir:'.gas-version62',
+            scriptExtensions:['.gs','.js']
+          },null,2)+'\n');
+          NODE
+
+      - name: Pull immutable saved GAS version 62 (read only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .gas-version62
+          mkdir -p .gas-version62
+          if ! clasp pull --versionNumber 62 >/dev/null 2>&1; then
+            echo "V62_READONLY_PULL_FAILED_NO_REMOTE_MODIFICATION"
+            exit 2
+          fi
+          if [ ! -f .gas-version62/appsscript.json ]; then
+            echo "V62_READONLY_VERSION_MANIFEST_MISSING"
+            exit 2
+          fi
+
+      - name: Report version 62 source capabilities without source text
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/audit-central-api-version62.cjs
