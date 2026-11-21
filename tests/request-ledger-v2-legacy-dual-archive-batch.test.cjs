@@ -301,9 +301,9 @@ test("legacy noncanonical target references remain protected, never archived",()
   assert.equal(f.calls.deletes,0);
   assert.equal(JSON.stringify(f.properties),sourceBefore);
   f.setMode("RETIRE_DUAL_VERIFIED_READY_V1");
-  const result=f.retire();
-  assert.equal(result.pass,true,JSON.stringify(result));
-  assert.equal(result.retired,1);
+  const retired=f.retire();
+  assert.equal(retired.pass,true,JSON.stringify(retired));
+  assert.equal(retired.retired,1);
   assert.equal(f.calls.deletes,1);
   assert.ok(f.properties["REQ_LEGACY_UPDATE_WITHOUT_DIGEST_OR_STRATEGY"]);
   assert.equal(f.a.archive.size,1);
