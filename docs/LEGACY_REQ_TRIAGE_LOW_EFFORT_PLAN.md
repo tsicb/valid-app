@@ -1,6 +1,24 @@
-# 旧REQ履歴103件の低工数整理方針（設計のみ）
+# 旧REQ履歴103件の低工数整理方針と実装状況
 
-更新: 2026-11-22 / Status: **DESIGN ONLY — GAS未改修・未SYNC・本番データ未変更**
+更新: 2026-11-22 / Status: **READ-ONLY AUDIT IMPLEMENTED IN GITHUB — NOT SYNCED TO GAS / 本番データ未変更**
+
+## 実装済み（GitHubのみ、未SYNC）
+
+- `central-api/25_Request_Ledger_V2_Legacy_Batch_Migration.gs` に新しい**エディタ専用・読み取り専用**関数 `vaaLedgerProdResidualReqTriageReadOnly` を追加。既存の26本のGAS構成を維持した（新ファイル数0、25番のみ変更）。
+- Script Propertiesを1度スナップショットし、既存の厳密な旧READY判定とV2ジャーナル除外を再利用。管理フォルダ直下と第1階層サブフォルダを**全件列挙**（作業上限：500フォルダ・10,000ファイル。上限・読取障害・不一致なら `pass:false`）。既存の書込みを伴うレジストリ同期関数は使わない。
+- 既存 `RPTREG_` と `VIEWER_` のSpreadsheet IDを照合する（これは現役である証明ではなく、関連参照の存在を表す）。不正JSONの参照元があれば `referencesComplete:false` とし、フォルダ外の「関連なし」判定を保留して `UNKNOWN` とする。
+- 残存履歴を集計分類：`CURRENT_MANAGED`、`OUTSIDE_WITH_LINK`、`OUTSIDE_NO_LINK`、`TRASHED`、`ERROR_REVIEW`、`UNKNOWN`。別軸で `OLD_UPDATE_NO_PROOF`、`OLD_READY_TARGET`、`NON_READY` の件数・推定bytesを返す。V2 READYは対象外と明示。
+- `OUTSIDE_NO_LINK` は**完全列挙できた管理フォルダに見当たらず、参照も見当たらない**という意味。永久削除された証明ではなく、**整理候補であって削除許可ではない**。現役フォルダに存在したファイルは `getFileById` の単独失敗に依存せず現役と分類。ERRORは参照先の有無を問わず自動整理候補にしない。
+- 監査出力は集計件数・推定bytes・照合完了のフラグ・固定エラーコードのみ。requestId、Spreadsheet ID、URL、企業名、元REQ本文、元エラー文は一切ログに含めない。全プロパティの前後一致も検証する。`propertyWrites:0`、`propertyDeletes:0`、`archiveWrites:0`、`requestPosts:0`、`cleanupAuthorized:false`。
+- 回帰テスト `tests/request-ledger-residual-triage-readonly.test.cjs` を追加（正常分類、フォルダ列挙失敗・trashed root、不正Viewer/Registry、途中のProperties変化、Drive一覧とファイル親情報の不一致、ログの機密値非表示）。`central-api/SOURCE_SHA256SUMS.txt` を25番の新ソースに更新。
+- GitHub Actions [Central API check run 44962671517](https://github.com/tsicb/valid-app/actions/runs/44962671517) **成功**：全回帰テスト、GAS構文、SHA-256マニフェスト照合合格。
+- **実際のGAS Script Properties・個社シート・主V1・V2・独立バックアップは一切変更していない。GitHubのコードを更新しただけで、本番GAS未SYNC。** 通常のWebアプリv63はそのまま。GitHubソースを変えただけでは現行GASの動作も変わらない。
+
+### 次の人間操作（別途確認後）
+
+1. 本番へ反映する場合はGitHub Actions `Central API sync to GAS` の **`AUDIT` でread-only差分確認**を先に行う。期待：26本/26本で差分は `25_Request_Ledger_V2_Legacy_Batch_Migration.gs` のみ（直近のGAS源が想定どおりなら）。`SYNC` の実施は差分とソース同一性precheckを見た後で別途承認する。
+2. 本番GASエディタに正常SYNCできたら、`vaaLedgerProdResidualReqTriageReadOnly` を**1回だけ**実行して `VAA_RESIDUAL_REQ_TRIAGE` の集計ログを確認。SYNCそのものは既存Webアプリの再デプロイを伴わない。
+3. 分類後、現状51.3%容量のまま放置可能か、隔離タブ/再送防止を追加する必要があるか判断する。**本工程では実REQ削除を承認していない**。
 
 ## 目的と現状
 
@@ -29,11 +47,11 @@
 
 ## 最小工数の実装順（提案、未着手）
 
-### Phase A: 1回実行の集計監査（最優先）
+### Phase A: 1回実行の集計監査（GitHub実装済み・本番未反映）
 
 既存の `central-api/25_Request_Ledger_V2_Legacy_Batch_Migration.gs` に **管理者専用の読み取り専用関数を1個**追加する方針。追加のCSVアップロード・スプシ作成・手動1件ずつの確認は不要。
 
-想定関数名: `vaaLedgerProdResidualReqTriageReadOnly`（未実装）。
+想定関数名: `vaaLedgerProdResidualReqTriageReadOnly`（GitHub実装済み）。
 
 入力は既存のScript Propertiesと既存Drive管理フォルダ、既存レジストリ／Viewerマッピング。実行時に以下を行う：
 
