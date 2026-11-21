@@ -352,6 +352,12 @@ function vaaLedgerProdLegacyMutateBatch_(action){
     lock=LockService.getScriptLock();
     lock.waitLock(20000);held=true;
     out.scriptLockHeld=true;
+    // The operator may have turned the legacy mode OFF while this batch
+    // waited for ScriptLock. Re-check only AFTER acquiring that lock.
+    stage='MODE_UNDER_LOCK';
+    if(String(props.getProperty(VAA_PROD_LEGACY_MODE_PROP_)||'')!==desired){
+      throw vaaLedgerReadyError_('LEGACY_MODE_CHANGED');
+    }
     stage='SCOPE';
     vaaLedgerProdAssertScope_(props);
     const v1=vaaLedgerReadyOpenReadOnly_(props);
@@ -465,5 +471,125 @@ function vaaLedgerProdLegacyMutateBatch_(action){
     }
   }
   console.log('VAA_PROD_LEGACY_BATCH '+JSON.stringify(out));
+  return out;
+}
+
+/**
+ * Operator-only narrow mode switches for the Apps Script 50+ Properties UI.
+ * These helpers ONLY alter the legacy migration mode key; they never copy,
+ * retire, or log an ID/receipt. Defaults remain OFF. Calls are MANUAL,
+ * independently authorized before running COPY/RETIRE batch mutators.
+ */
+function vaaLedgerProdLegacyArmCopyModeOnce(){
+  return vaaLedgerProdLegacyArmBatchModeOnce_('COPY');
+}
+function vaaLedgerProdLegacyArmRetireModeOnce(){
+  return vaaLedgerProdLegacyArmBatchModeOnce_('RETIRE');
+}
+function vaaLedgerProdLegacyArmBatchModeOnce_(action){
+  const desired=action==='COPY'?VAA_PROD_LEGACY_COPY_MODE_:
+    action==='RETIRE'?VAA_PROD_LEGACY_RETIRE_MODE_:'';
+  const out={
+    phase:'PROD_LEGACY_BATCH_MODE_ARM',action:action,
+    armed:false,readOnlyAuditPassed:false,
+    eligibleCount:0,protectedCount:0,
+    propertyWrites:0,propertyDeletes:0,
+    archiveWrites:0,requestPosts:0,
+    pass:false,errorCode:'NONE'
+  };
+  const lock=LockService.getScriptLock();
+  let held=false,writeAttempted=false;
+  try{
+    if(!desired)throw vaaLedgerReadyError_('LEGACY_ARM_ACTION_DENIED');
+    lock.waitLock(20000);held=true;
+    const props=PropertiesService.getScriptProperties();
+    const mode=String(props.getProperty(VAA_PROD_LEGACY_MODE_PROP_)||'').trim();
+    if(mode&&mode!=='OFF'){
+      throw vaaLedgerReadyError_('LEGACY_ARM_NOT_OFF');
+    }
+    const audit=vaaLedgerProdLegacyAuditReadOnly();
+    out.readOnlyAuditPassed=audit.pass===true && audit.sourceStable===true &&
+      audit.strictReadOnly===true &&
+      audit.propertyWrites===0 && audit.archiveWrites===0;
+    if(!out.readOnlyAuditPassed){
+      throw vaaLedgerReadyError_('LEGACY_ARM_AUDIT_FAILED');
+    }
+    out.eligibleCount=action==='COPY'?Math.max(audit.needPrimaryCopy,
+      audit.needBackupCopy):audit.verifiedBoth;
+    out.protectedCount=audit.quarantinedLegacyReady+
+      audit.quarantinedTargetReady+audit.nonReady+
+      audit.modernJournalExcluded+audit.modernExcluded;
+    if(action==='COPY' && out.eligibleCount<1){
+      throw vaaLedgerReadyError_('LEGACY_ARM_NOTHING_TO_COPY');
+    }
+    if(action==='RETIRE' &&
+       (out.eligibleCount<1 || audit.needPrimaryCopy!==0 ||
+        audit.needBackupCopy!==0)){
+      throw vaaLedgerReadyError_('LEGACY_ARM_DUAL_ARCHIVE_INCOMPLETE');
+    }
+    writeAttempted=true;
+    props.setProperty(VAA_PROD_LEGACY_MODE_PROP_,desired);
+    out.propertyWrites++;
+    if(props.getProperty(VAA_PROD_LEGACY_MODE_PROP_)!==desired ||
+       vaaLedgerProdModeStatus_(props).state!=='ENABLED'){
+      throw vaaLedgerReadyError_('LEGACY_ARM_READBACK_FAILED');
+    }
+    out.armed=true;out.pass=true;
+  }catch(err){
+    const code=String(err&&err.code||'');
+    const allowed=['LEGACY_ARM_ACTION_DENIED','LEGACY_ARM_NOT_OFF',
+      'LEGACY_ARM_AUDIT_FAILED','LEGACY_ARM_NOTHING_TO_COPY',
+      'LEGACY_ARM_DUAL_ARCHIVE_INCOMPLETE','LEGACY_ARM_READBACK_FAILED'];
+    out.errorCode=allowed.indexOf(code)>=0?code:'LEGACY_ARM_FAILED';
+    if(writeAttempted){
+      try{
+        const props=PropertiesService.getScriptProperties();
+        if(props.getProperty(VAA_PROD_LEGACY_MODE_PROP_)===desired){
+          props.setProperty(VAA_PROD_LEGACY_MODE_PROP_,'OFF');
+          out.propertyWrites++;
+        }
+      }catch(_){out.errorCode='LEGACY_ARM_OFF_UNVERIFIED';}
+    }
+    out.armed=false;out.pass=false;
+  }finally{
+    if(held)try{lock.releaseLock();}catch(_){}
+  }
+  console.log('VAA_PROD_LEGACY_MODE_ARM '+JSON.stringify(out));
+  return out;
+}
+
+/** Restore only the legacy migration mode to OFF after a completed batch. */
+function vaaLedgerProdLegacyModeOffOnce(){
+  const out={
+    phase:'PROD_LEGACY_MODE_OFF',off:false,
+    propertyWrites:0,propertyDeletes:0,
+    archiveWrites:0,requestPosts:0,
+    pass:false,errorCode:'NONE'
+  };
+  const lock=LockService.getScriptLock();let held=false;
+  try{
+    lock.waitLock(20000);held=true;
+    const props=PropertiesService.getScriptProperties();
+    const mode=String(props.getProperty(VAA_PROD_LEGACY_MODE_PROP_)||'').trim();
+    if(mode && mode!=='OFF' && mode!==VAA_PROD_LEGACY_COPY_MODE_ &&
+       mode!==VAA_PROD_LEGACY_RETIRE_MODE_){
+      throw vaaLedgerReadyError_('LEGACY_OFF_MODE_INVALID');
+    }
+    if(mode && mode!=='OFF'){
+      props.setProperty(VAA_PROD_LEGACY_MODE_PROP_,'OFF');
+      out.propertyWrites++;
+    }
+    out.off=!props.getProperty(VAA_PROD_LEGACY_MODE_PROP_) ||
+      props.getProperty(VAA_PROD_LEGACY_MODE_PROP_)==='OFF';
+    if(!out.off)throw vaaLedgerReadyError_('LEGACY_OFF_READBACK_FAILED');
+    out.pass=true;
+  }catch(err){
+    const code=String(err&&err.code||'');
+    out.errorCode=code==='LEGACY_OFF_MODE_INVALID' ||
+      code==='LEGACY_OFF_READBACK_FAILED'?code:'LEGACY_OFF_FAILED';
+  }finally{
+    if(held)try{lock.releaseLock();}catch(_){}
+  }
+  console.log('VAA_PROD_LEGACY_MODE_OFF '+JSON.stringify(out));
   return out;
 }
