@@ -4,6 +4,12 @@ Last updated: 2026-11-21
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Version 63 read-only canary preflight passed (2026-11-21)
+
+- Following the operator-confirmed single active Web App v63 (2026-11-21 10:25 JST), the operator reran the existing editor-only `vaaLedgerProdRetireCanaryPreflightReadOnly`. Result: `phase:PROD_V2_SINGLE_CANARY_PREFLIGHT_READ_ONLY`, `strictReadOnly:true`, `prodV2Enabled:true`, `globalRetireOff:true`, `legacyMigrationOff:true`, `canaryConfigValid:true`, `canaryUnused:true`, `sourceStable:true`, `propertyWrites:0`, `journalWrites:0`, `propertyDeletes:0`, `activationAuthorized:false`, `errorStage:NONE`, `errorCode:NONE`, `pass:true`.
+- **Remaining post-release check:** production `/exec` GET response (`ok:true`, expected service, schema 3.0). External checker tools could not access the Apps Script URL; do **not** treat a failed external fetch as proof of deployment failure. Operator can inspect GET locally and report only non-sensitive fields. Do not publish full JSON because `doGet` includes internal folder IDs.
+- This is preflight only, not a real canary execution. Retirement and legacy migration still OFF, no REQ deletion, synthetic production POST or migration authorized. Next after GET: exact single-request CREATE payload plan and separately approved one-request canary trial; avoid repeating older generic QA.
+
 ## Version 63 deployed; pending non-mutating post-release checks (2026-11-21)
 
 - Operator reports the **only** active Web App deployment now references **version 63**, dated **2026-11-21 10:25 JST**. This follows the clean read-only source AUDIT (26/26 identical). The deployed version number is operator-verified; unchanged /exec URL and runtime GET response have **not yet been independently confirmed**. This is not yet a live CREATE or REQ-retirement validation.
