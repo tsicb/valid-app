@@ -4,6 +4,13 @@ Last updated: 2026-11-21
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Production legacy RETIRE batch 1 PASS: 10/41 retired; 31 pending (2026-11-21)
+
+- Operator executed **the first** manually authorized production `vaaLedgerProdLegacyRetireBatchOnce` after successful `vaaLedgerProdLegacyArmRetireModeOnce`. Reported `VAA_PROD_LEGACY_BATCH`: `phase:PROD_LEGACY_RETIRE_BATCH`, `action:RETIRE`, `scriptLockHeld:true`, `scopeVerified:true`, `beforeReadyCount:41`, `alreadyDualVerified:41`, `quarantinedLegacyReady:39`, `quarantinedTargetReady:60`, `targetCannotOpen:46`, `targetWrongMime:0`, `targetTrashed:14`, `targetOutsideManagedOutput:0`, `copied:0`, `retired:10`, `remainingNeedCopy:0`, `sourceStableAfter:true`, `unknownCompletion:false`, `automaticRetryAuthorized:false`, `cleanupAuthorized:false`, `pass:true`, `errorStage:NONE`.
+- The code performs per-record exact primary+backup/source pre-delete readback and post-delete READY replay verification under ScriptLock. Batch 1 passed for ten selectively eligible `REQ_` keys, with no unexpected property mutation and no uncertain completion. **10/41 historical READY source properties retired**, **31 eligible source properties remain** if inventory unchanged; dual archives remain independently intact. The 39 nonreplayable UPDATE READY, 60 missing/trashed target READY, four ERROR and one V2 READY are still outside this operation's scope.
+- **Next one manual action only**: execute `vaaLedgerProdLegacyRetireBatchOnce` exactly once for batch 2. Expected if no unrelated source changes: `beforeReadyCount:31`, `alreadyDualVerified:31`, `remainingNeedCopy:0`, `retired:10`, `sourceStableAfter:true`, `unknownCompletion:false`, `pass:true`, `errorStage:NONE`. Review operator log before batch 3. On `pass:false` or unknown completion, STOP with no blind retry. Keep `VAA_PROD_LEGACY_MIGRATION_MODE=RETIRE_DUAL_VERIFIED_READY_V1` armed until remaining approved batches complete; global new-V2 READY auto-retire switch is unaffected.
+- Do not execute `vaaLedgerProdLegacyArmRetireModeOnce` again, switch modes, or make GitHub source SYNC/deployment. At end, legacy mode OFF, an independent read-only audit, and capacity check are required.
+
 ## Production legacy RETIRE ARM PASSED; first destructive batch still pending (2026-11-21 23:46 JST)
 
 - Production operator performed read-only audit and `vaaLedgerProdLegacyArmRetireModeOnce` after explicitly authorizing RETIRE of only the 41 independently dual-archived historical READY `REQ_` records.
