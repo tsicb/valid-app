@@ -589,3 +589,219 @@ function vaaLedgerProdRetireCanaryOffOnce() {
   console.log('VAA_PROD_CANARY_OFF '+JSON.stringify(out));
   return out;
 }
+
+/**
+ * Post-canary exact-ID proof. READ ONLY: never submit doPost or call the
+ * admission helper, which can reserve an ABSENT ID. Verifies all conditions
+ * of the existing PROD READY replay branch for the configured CREATE ID,
+ * including the target file; never prints ID/target/receipt.
+ *
+ * This establishes safe replay eligibility, NOT a second HTTP replay.
+ */
+function vaaLedgerProdCanaryReplayProofCore_(props) {
+  const out={
+    phase:'PROD_CANARY_REPLAY_PROOF_READ_ONLY',strictReadOnly:true,
+    prodV2Enabled:false,retireModeOff:false,legacyMigrationOff:false,
+    canaryConfigValid:false,canaryReady:false,canaryReqAbsent:false,
+    v1Absent:false,targetVerified:false,replayEligible:false,
+    sourceStable:false,propertyWrites:0,journalWrites:0,
+    propertyDeletes:0,actualPostInvoked:false,
+    replayPerformed:false,pass:false,
+    errorStage:'NONE',errorCode:'NONE'
+  };
+  let stage='MODE';
+  try{
+    const before=props.getProperties();
+    out.prodV2Enabled=vaaLedgerProdModeStatus_(props).state==='ENABLED';
+    const retire=String(props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)||'').trim();
+    const legacy=String(props.getProperty('VAA_PROD_LEGACY_MIGRATION_MODE')||'').trim();
+    out.retireModeOff=!retire||retire==='OFF';
+    out.legacyMigrationOff=!legacy||legacy==='OFF';
+    const canary=vaaLedgerProdRetireCanary_(props);
+    out.canaryConfigValid=!!canary && canary.operationMode==='CREATE';
+    if(!out.prodV2Enabled||!out.retireModeOff||
+       !out.legacyMigrationOff||!out.canaryConfigValid){
+      throw vaaLedgerJournalError_('REPLAY_PROOF_MODE_INVALID');
+    }
+    stage='SCOPE';
+    vaaLedgerProdAssertScope_(props);
+    const tabs=vaaLedgerJournalOpenReadOnly_(props);
+    stage='EXACT_CANARY';
+    const id=canary.id;
+    const old=vaaLedgerReadyLookupFromSheet_(tabs.readySheet,id);
+    const modern=vaaLedgerJournalLookupFromSheet_(tabs.sheet,id);
+    out.v1Absent=old.state==='NOT_FOUND';
+    out.canaryReady=modern.state==='READY' && modern.revision===2;
+    out.canaryReqAbsent=!props.getProperty(getRequestPropertyKey_(id));
+    if(!out.v1Absent||!out.canaryReady||!out.canaryReqAbsent){
+      throw vaaLedgerJournalError_('REPLAY_PROOF_LEDGER_NOT_READY');
+    }
+    const rec=modern.latest && modern.latest.body &&
+      modern.latest.body.receipt;
+    const raw=JSON.stringify(rec);
+    vaaLedgerReadyValidateRaw_(id,raw);
+    stage='TARGET';
+    out.targetVerified=vaaLedgerDopReceiptMatches_(
+      rec,id,'CREATE','','','',API_CONFIG.SHEET_OUTPUT_FOLDER_ID
+    );
+    if(!out.targetVerified){
+      throw vaaLedgerJournalError_('REPLAY_PROOF_TARGET_UNVERIFIED');
+    }
+    stage='STABILITY';
+    const after=props.getProperties();
+    const a=Object.keys(before).sort(),b=Object.keys(after).sort();
+    out.sourceStable=a.length===b.length &&
+      a.every(function(key,i){return key===b[i] && before[key]===after[key];});
+    if(!out.sourceStable){
+      throw vaaLedgerJournalError_('REPLAY_PROOF_SOURCE_CHANGED');
+    }
+    out.replayEligible=true;
+    out.pass=true;
+  }catch(err){
+    out.pass=false;
+    out.errorStage=stage;
+    const code=String(err&&err.code||'');
+    const allowed=[
+      'REPLAY_PROOF_MODE_INVALID','REPLAY_PROOF_LEDGER_NOT_READY',
+      'REPLAY_PROOF_TARGET_UNVERIFIED','REPLAY_PROOF_SOURCE_CHANGED',
+      'LEDGER_RECEIPT_INVALID','JOURNAL_UNAVAILABLE',
+      'JOURNAL_CHAIN_UNVERIFIED','LEDGER_UNAVAILABLE'
+    ];
+    out.errorCode=allowed.indexOf(code)>=0?code:'REPLAY_PROOF_UNCLASSIFIED';
+  }
+  return out;
+}
+
+/** Manual editor call. Strictly non-mutating, exact used CREATE canary only. */
+function vaaLedgerProdCanaryReplayProofReadOnly() {
+  const lock=LockService.getScriptLock();
+  let held=false;
+  let out;
+  try{
+    lock.waitLock(20000);held=true;
+    out=vaaLedgerProdCanaryReplayProofCore_(
+      PropertiesService.getScriptProperties()
+    );
+  }catch(_){
+    out={
+      phase:'PROD_CANARY_REPLAY_PROOF_READ_ONLY',strictReadOnly:true,
+      propertyWrites:0,journalWrites:0,propertyDeletes:0,
+      actualPostInvoked:false,replayPerformed:false,
+      pass:false,errorStage:'LOCK',errorCode:'REPLAY_PROOF_LOCK_UNAVAILABLE'
+    };
+  }finally{
+    if(held){try{lock.releaseLock();}catch(_){}}
+  }
+  console.log('VAA_PROD_CANARY_REPLAY_PROOF '+JSON.stringify(out));
+  return out;
+}
+
+/**
+ * PREPARED, NOT ACTIVATED. Enabling ongoing retirement of ONLY new V2 READY
+ * receipts requires explicit separate operator approval and manual call.
+ * Existing/legacy REQ_ records are NOT touched by this helper.
+ *
+ * A single ScriptLock protects preconditions and the one-key write.
+ * A duplicate ON invocation may not flip an already active setting to OFF.
+ */
+function vaaLedgerProdReadyRetireEnableAllNewOnce() {
+  const out={
+    phase:'PROD_NEW_READY_RETIRE_ENABLE_ONCE',enabled:false,
+    replayProofPassed:false,aggregatePassed:false,
+    propertyWrites:0,propertyDeletes:0,
+    actualPostInvoked:false,existingReqDeleted:false,
+    errorCode:'NONE',pass:false
+  };
+  const lock=LockService.getScriptLock();
+  let held=false,writeAttempted=false;
+  try{
+    lock.waitLock(20000);held=true;
+    const props=PropertiesService.getScriptProperties();
+    const mode=String(props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)||'').trim();
+    if(mode && mode!=='OFF'){
+      throw vaaLedgerJournalError_('GLOBAL_RETIRE_ALREADY_SET');
+    }
+    const proof=vaaLedgerProdCanaryReplayProofCore_(props);
+    out.replayProofPassed=proof.pass===true && proof.replayEligible===true;
+    if(!out.replayProofPassed){
+      throw vaaLedgerJournalError_('GLOBAL_RETIRE_REPLAY_NOT_VERIFIED');
+    }
+    const pre=vaaLedgerProdReadyRetirePreflightReadOnly();
+    out.aggregatePassed=pre.pass===true && pre.journalPending===0 &&
+      pre.modernReadyWithoutReq>=1 && pre.sourceStable===true &&
+      pre.prodV2Enabled===true && pre.retireModeOff===true &&
+      pre.legacyMigrationOff===true;
+    if(!out.aggregatePassed){
+      throw vaaLedgerJournalError_('GLOBAL_RETIRE_PREFLIGHT_FAILED');
+    }
+    writeAttempted=true;
+    props.setProperty(VAA_LEDGER_PROD_RETIRE_PROP_,VAA_LEDGER_PROD_RETIRE_ON_);
+    out.propertyWrites++;
+    if(props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)!==VAA_LEDGER_PROD_RETIRE_ON_ ||
+       vaaLedgerProdModeStatus_(props).state!=='ENABLED'){
+      throw vaaLedgerJournalError_('GLOBAL_RETIRE_READBACK_FAILED');
+    }
+    out.enabled=true;out.pass=true;
+  }catch(err){
+    const code=String(err&&err.code||'');
+    const allowed=[
+      'GLOBAL_RETIRE_ALREADY_SET','GLOBAL_RETIRE_REPLAY_NOT_VERIFIED',
+      'GLOBAL_RETIRE_PREFLIGHT_FAILED','GLOBAL_RETIRE_READBACK_FAILED'
+    ];
+    out.errorCode=allowed.indexOf(code)>=0?code:'GLOBAL_RETIRE_FAILED';
+    // Revert only a write attempted in THIS invocation.
+    if(writeAttempted){
+      try{
+        const props=PropertiesService.getScriptProperties();
+        if(props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)===VAA_LEDGER_PROD_RETIRE_ON_){
+          props.setProperty(VAA_LEDGER_PROD_RETIRE_PROP_,'OFF');
+          out.propertyWrites++;
+        }
+      }catch(_){out.errorCode='GLOBAL_RETIRE_OFF_UNVERIFIED';}
+    }
+    out.enabled=false;out.pass=false;
+  }finally{
+    if(held){try{lock.releaseLock();}catch(_){}}
+  }
+  console.log('VAA_PROD_NEW_READY_RETIRE_ENABLE '+JSON.stringify(out));
+  return out;
+}
+
+/**
+ * Manual emergency OFF for the ongoing new-READY retirement mode.
+ * Call only after active production requests have finished.
+ * Does not disable the V2 sticky gate or mutate legacy REQ_ records.
+ */
+function vaaLedgerProdReadyRetireDisableAllNewOnce() {
+  const out={
+    phase:'PROD_NEW_READY_RETIRE_DISABLE_ONCE',off:false,
+    propertyWrites:0,propertyDeletes:0,actualPostInvoked:false,
+    errorCode:'NONE',pass:false
+  };
+  const lock=LockService.getScriptLock();
+  let held=false;
+  try{
+    lock.waitLock(20000);held=true;
+    const props=PropertiesService.getScriptProperties();
+    const mode=String(props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)||'').trim();
+    if(mode && mode!=='OFF' && mode!==VAA_LEDGER_PROD_RETIRE_ON_){
+      throw vaaLedgerJournalError_('GLOBAL_RETIRE_WRONG_MODE');
+    }
+    if(mode===VAA_LEDGER_PROD_RETIRE_ON_){
+      props.setProperty(VAA_LEDGER_PROD_RETIRE_PROP_,'OFF');
+      out.propertyWrites++;
+    }
+    out.off=!props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)||
+      props.getProperty(VAA_LEDGER_PROD_RETIRE_PROP_)==='OFF';
+    if(!out.off)throw vaaLedgerJournalError_('GLOBAL_RETIRE_READBACK_FAILED');
+    out.pass=true;
+  }catch(err){
+    const code=String(err&&err.code||'');
+    const allowed=['GLOBAL_RETIRE_WRONG_MODE','GLOBAL_RETIRE_READBACK_FAILED'];
+    out.errorCode=allowed.indexOf(code)>=0?code:'GLOBAL_RETIRE_FAILED';
+  }finally{
+    if(held){try{lock.releaseLock();}catch(_){}}
+  }
+  console.log('VAA_PROD_NEW_READY_RETIRE_DISABLE '+JSON.stringify(out));
+  return out;
+}
