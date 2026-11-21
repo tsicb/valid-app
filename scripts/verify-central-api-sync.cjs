@@ -7,8 +7,14 @@ const path = require("node:path");
 function normalize(s) {
   return String(s).replace(/\r\n?/g,"\n");
 }
-function verifyLegacyBeforeSync(expected, live, historical) {
+function verifyLegacyBeforeSync(expected, live, historical, previousProduction) {
   if (normalize(live)===normalize(expected)) return "ALREADY_CURRENT";
+  // The exact 25.gs deployed in the independently VERIFIED 26/26 GAS SYNC
+  // on 2026-11-21. Pin a git commit rather than allowing arbitrary history.
+  if (typeof previousProduction==="string" &&
+      normalize(live)===normalize(previousProduction)) {
+    return "PINNED_PREVIOUS_PRODUCTION_SOURCE";
+  }
   if (normalize(live)===normalize(historical)) return "PINNED_2026_11_19_REVISION";
   return "UNRECOGNIZED_SOURCE_BLOCK_SYNC";
 }
@@ -66,6 +72,9 @@ function runFromCli() {
       const historical=process.env.VAA_HISTORIC_FILE25;
       if(!historical || !fs.existsSync(historical))
         throw Error("HISTORICAL_SOURCE_UNAVAILABLE");
+      const previous=process.env.VAA_PREVIOUS_PRODUCTION_FILE25;
+      if(!previous || !fs.existsSync(previous))
+        throw Error("PREVIOUS_PRODUCTION_SOURCE_UNAVAILABLE");
       const base="25_Request_Ledger_V2_Legacy_Batch_Migration";
       const local=path.join(git,base+".gs");
       const remoteGs=path.join(stage,base+".gs");
@@ -77,7 +86,8 @@ function runFromCli() {
       const state=verifyLegacyBeforeSync(
         fs.readFileSync(local,"utf8"),
         fs.readFileSync(remote,"utf8"),
-        fs.readFileSync(historical,"utf8")
+        fs.readFileSync(historical,"utf8"),
+        fs.readFileSync(previous,"utf8")
       );
       const msg="LEGACY25_SOURCE_PRECHECK: "+state;
       process.stdout.write(msg+"\n");
@@ -102,7 +112,8 @@ function runFromCli() {
     }
   } catch(e) {
     // Never echo source snippets, file contents, or arbitrary error messages.
-    const safe=["HISTORICAL_SOURCE_UNAVAILABLE","REMOTE_LEGACY_FILE_MISSING",
+    const safe=["HISTORICAL_SOURCE_UNAVAILABLE",
+      "PREVIOUS_PRODUCTION_SOURCE_UNAVAILABLE","REMOTE_LEGACY_FILE_MISSING",
       "INVALID_PHASE","DUPLICATE_SCRIPT_BASENAME"];
     const code=safe.includes(e.message)?e.message:"UNCLASSIFIED_FAILURE";
     process.stdout.write("SOURCE_GUARD: "+code+"\n");
