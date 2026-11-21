@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https://script.google.com https://script.googleusercontent.com; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>有効応募分析｜本番カナリア1件実行（管理者専用）</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;color:#173249;background:#f2f6fa}
+body{margin:0;padding:24px}main{max-width:680px;margin:auto;background:#fff;border:1px solid #d2e2ed;border-radius:12px;padding:28px}
+h1{font-size:1.35rem;margin-top:0}p,li{line-height:1.7;font-size:.93rem}
+small{color:#4c6679}label{font-weight:600;display:block;margin-top:16px;font-size:.94rem}
+input[type=text],input[type=password]{width:100%;box-sizing:border-box;padding:12px;border:1px solid #9cb6c8;border-radius:6px;font:inherit}
+button{font:inherit;border:0;border-radius:6px;padding:12px 20px;background:#126c99;color:white;cursor:pointer;font-weight:600;margin-top:18px}
+button:disabled{background:#aebec8;cursor:not-allowed}
+fieldset{border:1px solid #c7d8e3;border-radius:7px;margin-top:22px}
+legend{font-weight:600}fieldset label{font-weight:400;margin:10px 0}
+pre{font:inherit;white-space:pre-wrap;padding:12px;background:#eef5fa;border-radius:6px;min-height:48px}
+.note{border-left:3px solid #9e5e00;padding-left:12px;background:#fffaf0}
+</style>
+</head>
+<body>
+<main>
+<h1>本番カナリア：CREATEを1件だけ送信</h1>
+<p class="note">管理者専用の実行画面です。送信は実際の本番GASとDriveに書き込みを行い、指定した1件のREQ履歴を削除する可能性があります。まだ実行の承認を受けていない場合、この画面で送信しないでください。</p>
+<p>2026-11-21版。専用の架空応募1件・架空求人1件を送信します。既存企業の応募・求人データは一切使用しません。企業の通常画面を変更するものではありません。</p>
+<p><small>このページは認証キーやrequestIdを保存しません。別途、誤送信防止のため「実行を試みた」というフラグのみブラウザに保存します。</small></p>
+<label for="request-id">本番GASに設定済みのカナリアrequestId</label>
+<input id="request-id" type="text" autocomplete="off" spellcheck="false" placeholder="VAA_READY_RETIRE_CANARY_CREATE_YYYYMMDD_XXXXXXXX">
+<label for="access-key">本番ACCESS_KEY（表示・保存しません）</label>
+<input id="access-key" type="password" autocomplete="off" spellcheck="false">
+<fieldset>
+<legend>送信前の確認</legend>
+<label><input id="check-deployed" type="checkbox"> 既存Webアプリはバージョン63、デプロイ1件、GET正常</label>
+<label><input id="check-mode" type="checkbox"> Script PropertyのVAA_PROD_READY_RETIRE_MODEをCANARY_ONE_NEW_READY_V1に設定済み。旧履歴移管はOFF</label>
+<label><input id="check-preflight" type="checkbox"> モード変更前のvaaLedgerProdRetireCanaryPreflightReadOnlyがpass:true、ID未使用</label>
+<label><input id="check-approval" type="checkbox"> 本番CREATE1件・対象REQ削除について個別の実行承認を得ている</label>
+</fieldset>
+<label for="confirm">実行確認：以下の文字列を正確に入力</label>
+<input id="confirm" type="text" autocomplete="off" spellcheck="false" placeholder="ONE_CREATE_ONLY">
+<button id="send" type="button">架空データ1件を本番へ送信（1回限り）</button>
+<pre id="status" aria-live="polite">未送信。ボタンを押すまで通信は発生しません。</pre>
+<p><small>送信後は成功・失敗・通信切断を問わず再送禁止です。最初に削除モードをOFFへ戻し、GASエディタの既存関数vaaLedgerProdReadyRetirePreflightReadOnlyでジャーナルとREQの状態を読み取り確認してください。送信画面にはレスポンスのID、URL、データ本文を表示しません。</small></p>
+</main>
+<script>
+(function(){
+"use strict";
+const ENDPOINT="https://script.google.com/macros/s/AKfycbwS_-ptDyhVk5yrNtRB8I32WUJen-xdjKUtp-Rf7Dbdhhg4V9Vw3gneD9K7ErZgP_Y/exec";
+const LOCK_KEY="vaa.prodCanaryOneShotAttempted.20261121";
+const $=id=>document.getElementById(id);
+const status=$("status");
+const send=$("send");
+let attempted=false;
+function show(s){status.textContent=s;}
+function lockExists(){try{return localStorage.getItem(LOCK_KEY)==="1";}catch(_){return true;}}
+function lockBeforeSend(){try{localStorage.setItem(LOCK_KEY,"1");return localStorage.getItem(LOCK_KEY)==="1";}catch(_){return false;}}
+function fixture(requestId,accessKey){
+ const appHeaders=["レコードID","企業ID","仕事番号","求人参照ID","求人データ突合フラグ","応募日時","応募年月","応募日","応募曜日","応募時間帯","応募数","対応状況","応募媒体","年齢","年代","性別","氏名文字種区分","メールドメイン","居住都道府県","勤務地・居住都道府県一致","応募識別キー","応募識別方式"];
+ const jobHeaders=["求人参照ID","求人分析情報ソース","企業ID","仕事番号","求人管理番号","公開情報区分","仕事名","Indeed用求人タイトル","職種","雇用形態","募集背景","求人勤務地名称","勤務地住所","勤務地都道府県","最寄駅","求人備考","給与区分コード","給与金額MIN","給与金額MAX","メイン画像ファイル名","メイン画像あり","求人画像枚数","動画タイトル","求人動画あり","特徴コード","Indeed求人タグコード","Indeed求人タグ数","求人原稿文字数"];
+ const appRow=["APP000001","QA0001","QA_JOB_1","QA_REF_1",1,"2026/11/21 10:00","2026/11","2026/11/21","土","10時台",1,"未対応","Indeed",30,"30代","不明","","","東京都","","I1:"+"a".repeat(64),"PERSON_NAME"];
+ const jobRow=["QA_REF_1","JOB_CSV","QA0001","QA_JOB_1","QA_MANAGEMENT_1","公開","QA架空求人","QA架空求人","事務","正社員","","QA勤務地","","東京都","","","03",1200,1500,"",0,0,"",0,"","",0,0];
+ if(appHeaders.length!==appRow.length||jobHeaders.length!==jobRow.length)throw Error("FIXTURE_LENGTH_MISMATCH");
+ return {
+  action:"create",operationMode:"create",requestId:requestId,
+  schemaVersion:"3.0",accessKey:accessKey,requestedAt:new Date().toISOString(),
+  appVersion:"2026.09.03-etl-v2.22-prerelease-clean",
+  commonMasterVersion:"2026.09.03-common-v1",
+  companyDisplayName:"QA_VAA_PROD_CANARY_SYNTHETIC_20261121",
+  outputFolderId:"",outputFolderName:"",
+  viewerBaseUrl:"https://tsicb.github.io/valid-app/report.html",
+  manageBaseUrl:"https://tsicb.github.io/valid-app/index.html",
+  updateProtocol:"IDENTITY_V1",
+  initialSettings:{analysisStartDate:"",analysisEndDate:"",targetAgeMin:"",targetAgeMax:"",jobNameKeywords:[]},
+  datasets:{
+   applicationData:{headers:appHeaders,rows:[appRow]},
+   jobAnalysisMaster:{headers:jobHeaders,rows:[jobRow]},
+   processInfo:{headers:["項目","値"],rows:[["ETL実行日時","2026-11-21T01:00:00Z"]]},
+   inputFiles:{headers:["種別","ファイル名","読込行数","文字コード"],rows:[["応募CSV","QA_SYNTHETIC_ONLY.csv",1,"UTF-8"]]},
+   imageMasterInitial:{headers:["画像ファイル名","画像URL","取得状態","参照求人管理番号","取得方法","取得日時","メモ"],rows:[]}
+  }
+ };
+}
+function validate(){
+ if(attempted||lockExists())throw Error("このブラウザでは既に送信を試みています。再実行禁止です。");
+ const requestId=$("request-id").value.trim();
+ const accessKey=$("access-key").value;
+ if(!/^VAA_READY_RETIRE_CANARY_CREATE_[0-9]{8}_[A-Z0-9]{8}$/.test(requestId))throw Error("専用CREATEカナリアIDの形式が一致しません。");
+ if(!accessKey.trim())throw Error("ACCESS_KEYを入力してください。");
+ for(const id of ["check-deployed","check-mode","check-preflight","check-approval"]){
+  if(!$(id).checked)throw Error("すべての事前確認にチェックしてください。");
+ }
+ if($("confirm").value.trim()!=="ONE_CREATE_ONLY")throw Error("確認文字列が一致しません。");
+ return fixture(requestId,accessKey);
+}
+if(lockExists()){send.disabled=true;show("既に送信を試みた記録があります。結果不明を含め再送禁止。既存の読み取り専用GAS監査を使用してください。");}
+send.addEventListener("click",async function(){
+ let payload;
+ try{payload=validate();}
+ catch(error){show("送信なし："+error.message);return;}
+ if(!window.confirm("本番Driveへの架空CREATE 1件と指定REQの削除可能性があります。実行承認済みの1回だけ送信しますか？")){show("送信キャンセル。");return;}
+ if(!lockBeforeSend()){show("安全ロックを保存できないため送信しません。");return;}
+ attempted=true;
+ send.disabled=true;
+ $("access-key").value="";
+ $("request-id").value="";
+ $("confirm").value="";
+ show("1回限りの送信を試行しました。応答待ち。結果にかかわらず再送禁止です。");
+ try{
+  const response=await fetch(ENDPOINT,{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify(payload),credentials:"omit",redirect:"follow",cache:"no-store"});
+  const data=await response.json();
+  const code=typeof data.code==="string"&&/^[A-Z0-9_]{1,80}$/.test(data.code)?data.code:"NONE";
+  const ready=response.ok&&data.ok===true&&data.status==="READY"&&data.reused===false;
+  show("送信試行済み。HTTP成功="+response.ok+" / READY="+ready+" / reused="+(data.reused===true)+" / code="+code+"\n削除モードをOFFへ戻し、既存の読み取り専用監査で最終確認してください。再送は禁止です。");
+ }catch(_){
+  show("送信試行済み。応答が不明です。再送禁止。削除モードをOFFへ戻し、既存の読み取り専用監査で状態を確認してください。");
+ }finally{payload=null;}
+});
+})();
+</script>
+</body>
+</html>
