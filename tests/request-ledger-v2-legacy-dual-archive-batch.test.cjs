@@ -24,6 +24,7 @@ function fixture(opt={}){
   const properties={
     REQ_HISTORIC_READY_CREATE:raw,
     VAA_PROD_LEGACY_MIGRATION_MODE:opt.mode||"OFF",
+    VAA_PROD_READY_RETIRE_MODE:"RETIRE_VERIFIED_NEW_READY_V1",
     VAA_PROD_LEGACY_BACKUP_SPREADSHEET_ID:BACK,
     VAA_PROD_LEDGER_ROOT_ID:ROOT,
     VAA_PROD_LEDGER_OUTPUT_ID:OUT,
@@ -48,10 +49,11 @@ function fixture(opt={}){
   const a={archive:new Map(opt.alreadyPrimary?[[ID,raw]]:[])};
   const b={archive:new Map(opt.alreadyBackup?[[ID,raw]]:[])};
   if(opt.conflictBackup)b.archive.set(ID,"DIFFERENT"+SECRET);
-  const calls={backupWrites:0,primaryWrites:0,deletes:0,locks:0,
+  const calls={backupWrites:0,primaryWrites:0,deletes:0,sets:0,locks:0,
     releases:0,logs:[],reads:0};
   const props={
     getProperty:k=>properties[k]||null,
+    setProperty:(k,v)=>{calls.sets++;properties[k]=String(v);},
     getProperties:()=>({...properties}),
     deleteProperty:k=>{calls.deletes++;delete properties[k];}
   };
@@ -83,12 +85,16 @@ function fixture(opt={}){
     }},
     PropertiesService:{getScriptProperties:()=>props},
     LockService:{getScriptLock:()=>{calls.locks++;
-      return {waitLock:()=>{if(opt.lockFail)throw Error(SECRET);},
+      return {waitLock:()=>{
+        if(opt.lockFail)throw Error(SECRET);
+        if(opt.flipOffDuringLock)properties.VAA_PROD_LEGACY_MIGRATION_MODE="OFF";
+      },
         releaseLock:()=>calls.releases++};
     }},
     vaaLedgerProdAssertScope_:()=>{
       if(opt.badMain)throw Error(SECRET);
     },
+    vaaLedgerProdModeStatus_:()=>({state:"ENABLED"}),
     vaaLedgerReadyOpenReadOnly_:adapter=>{
       const id=adapter.getProperty("VAA_REQUEST_LEDGER_SPREADSHEET_ID");
       const book=getBook(id);
@@ -155,6 +161,9 @@ function fixture(opt={}){
     audit:()=>ctx.vaaLedgerProdLegacyAuditReadOnly(),
     copy:()=>ctx.vaaLedgerProdLegacyCopyBatchOnce(),
     retire:()=>ctx.vaaLedgerProdLegacyRetireBatchOnce(),
+    armCopy:()=>ctx.vaaLedgerProdLegacyArmCopyModeOnce(),
+    armRetire:()=>ctx.vaaLedgerProdLegacyArmRetireModeOnce(),
+    off:()=>ctx.vaaLedgerProdLegacyModeOffOnce(),
     setMode:x=>properties.VAA_PROD_LEGACY_MIGRATION_MODE=x,
     calls,properties,a,b
   };
@@ -506,4 +515,109 @@ test("manual-only batch never appears in normal API route or automation",()=>{
   assert.doesNotMatch(script,/\bdoPost\s*\(|ScriptApp\.|newTrigger\s*\(/);
   assert.match(script,/VAA_PROD_LEGACY_BATCH_LIMIT_=10/);
   assert.doesNotMatch(script,/console\.log\([^\n]*item\.id/);
+});
+
+test("mode setters keep existing broad auto-retirement ON and change only legacy mode",()=>{
+  const f=fixture();
+  const copyArm=f.armCopy();
+  assert.equal(copyArm.pass,true,JSON.stringify(copyArm));
+  assert.equal(copyArm.armed,true);
+  assert.equal(copyArm.readOnlyAuditPassed,true);
+  assert.equal(copyArm.eligibleCount,1);
+  assert.equal(copyArm.propertyWrites,1);
+  assert.equal(copyArm.propertyDeletes,0);
+  assert.equal(copyArm.archiveWrites,0);
+  assert.equal(copyArm.requestPosts,0);
+  assert.equal(f.properties.VAA_PROD_LEGACY_MIGRATION_MODE,
+    "COPY_DUAL_ARCHIVE_READY_V1");
+  assert.equal(f.properties.VAA_PROD_READY_RETIRE_MODE,
+    "RETIRE_VERIFIED_NEW_READY_V1");
+  assert.equal(f.calls.deletes,0);
+  assert.equal(f.calls.backupWrites+f.calls.primaryWrites,0);
+  const duplicate=f.armCopy();
+  assert.equal(duplicate.pass,false);
+  assert.equal(duplicate.errorCode,"LEGACY_ARM_NOT_OFF");
+  assert.equal(duplicate.propertyWrites,0);
+  assert.equal(f.properties.VAA_PROD_LEGACY_MIGRATION_MODE,
+    "COPY_DUAL_ARCHIVE_READY_V1");
+  assert.equal(f.copy().pass,true);
+  const off=f.off();
+  assert.equal(off.pass,true);
+  assert.equal(off.off,true);
+  assert.equal(f.properties.VAA_PROD_LEGACY_MIGRATION_MODE,"OFF");
+  const retireArm=f.armRetire();
+  assert.equal(retireArm.pass,true,JSON.stringify(retireArm));
+  assert.equal(retireArm.eligibleCount,1);
+  assert.equal(retireArm.propertyWrites,1);
+  assert.equal(retireArm.propertyDeletes,0);
+  assert.equal(f.properties.VAA_PROD_READY_RETIRE_MODE,
+    "RETIRE_VERIFIED_NEW_READY_V1");
+  assert.equal(f.retire().retired,1);
+  assert.equal(f.off().pass,true);
+  assert.equal(f.properties.VAA_PROD_LEGACY_MIGRATION_MODE,"OFF");
+  assert.equal(f.properties.VAA_PROD_READY_RETIRE_MODE,
+    "RETIRE_VERIFIED_NEW_READY_V1");
+  assert.equal(f.calls.deletes,1);
+});
+test("retire ARM requires both existing exact archive copies and no remaining copy",()=>{
+  for(const opt of [{},{alreadyBackup:true},{alreadyPrimary:true}]){
+    const f=fixture(opt);
+    const before={...f.properties};
+    const out=f.armRetire();
+    assert.equal(out.pass,false,JSON.stringify(opt));
+    assert.equal(out.errorCode,"LEGACY_ARM_DUAL_ARCHIVE_INCOMPLETE");
+    assert.equal(out.propertyWrites,0);
+    assert.deepEqual(f.properties,before);
+    assert.equal(f.calls.deletes,0);
+  }
+});
+test("legacy ARM fails closed if private backup audit fails or no eligible sources",()=>{
+  for(const opt of [
+    {badBackupAcl:true},
+    {invalidReceipt:true},
+    {targetTrashed:true},
+    {notPrivate:true}
+  ]){
+    const f=fixture(opt);
+    const before={...f.properties};
+    const arm=f.armCopy();
+    assert.equal(arm.pass,false,JSON.stringify(opt));
+    assert.equal(arm.propertyWrites,0);
+    assert.deepEqual(f.properties,before);
+    assert.equal(f.calls.deletes,0);
+  }
+});
+test("protected old UPDATE contributes to audit but never becomes a mode ARM target",()=>{
+  const f=fixture({legacyUpdateWithoutMetadata:true});
+  const copyArm=f.armCopy();
+  assert.equal(copyArm.pass,true);
+  assert.equal(copyArm.eligibleCount,1);
+  assert.equal(copyArm.protectedCount,1);
+  assert.equal(f.off().pass,true);
+  assert.equal(f.armRetire().pass,false);
+  assert.equal(f.calls.deletes,0);
+  assert.ok(f.properties["REQ_LEGACY_UPDATE_WITHOUT_DIGEST_OR_STRATEGY"]);
+});
+test("changing legacy mode while batch waits for ScriptLock prevents batch writes",()=>{
+  for(const mode of ["COPY_DUAL_ARCHIVE_READY_V1","RETIRE_DUAL_VERIFIED_READY_V1"]){
+    const f=fixture({
+      mode,alreadyBackup:true,alreadyPrimary:true,
+      flipOffDuringLock:true
+    });
+    const out=mode.startsWith("COPY")?f.copy():f.retire();
+    assert.equal(out.pass,false);
+    assert.equal(out.errorStage,"MODE_UNDER_LOCK");
+    assert.equal(f.calls.deletes,0);
+    assert.equal(f.calls.backupWrites+f.calls.primaryWrites,0);
+    assert.equal(f.properties["REQ_"+ID],raw);
+  }
+});
+test("legacy OFF refuses unknown migration modes, does not alter broad retirement",()=>{
+  const f=fixture({mode:"UNRELATED_SENSITIVE_MODE"});
+  const out=f.off();
+  assert.equal(out.pass,false);
+  assert.equal(out.errorCode,"LEGACY_OFF_MODE_INVALID");
+  assert.equal(f.calls.sets,0);
+  assert.equal(f.properties.VAA_PROD_READY_RETIRE_MODE,
+    "RETIRE_VERIFIED_NEW_READY_V1");
 });
