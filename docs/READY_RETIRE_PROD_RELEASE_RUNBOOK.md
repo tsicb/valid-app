@@ -1,5 +1,15 @@
 # 本番Webアプリ：次バージョンへの最短更新手順（2026-11-21）
 
+## カナリア再利用条件の本番照合は合格・恒常切替は別承認（2026-11-21）
+
+- 管理者がGitHub `Central API sync to GAS`（commit `bccc505`）を実行し、26/26完全一致・変更1件（24番）・リモート独立再取得 `VERIFIED_MATCH` を確認。Webアプリは既存v63のまま。
+- `vaaLedgerProdCanaryReplayProofReadOnly` 実行結果は `pass:true`、`replayEligible:true`、`canaryReady:true`、`canaryReqAbsent:true`、`v1Absent:true`、`targetVerified:true`、`sourceStable:true`、すべてのwrite/delete 0、`actualPostInvoked:false`、`replayPerformed:false`。この証明は同一IDを再送せずに、既存の本番V2の再利用条件を照合したもの。
+- **現在は`VAA_PROD_READY_RETIRE_MODE=OFF`。この次の変更だけは、通常の新規CREATE/UPDATEの成功全件に効く本番運用変更なので別途明示承認が必要。**このチャットで承認されるまでは切替関数を実行しない。
+
+承認後の最小操作は、現在のGASエディタで `vaaLedgerProdReadyRetireEnableAllNewOnce` を**1回だけ**実行すること。関数が自動で既存のexact-ID replay proofと全体のREADY preflightを再検証するため、別個の監査関数を重複実行する必要はない。期待ログ：`VAA_PROD_NEW_READY_RETIRE_ENABLE`、`pass:true`、`enabled:true`、`replayProofPassed:true`、`aggregatePassed:true`、`propertyWrites:1`、`propertyDeletes:0`、`existingReqDeleted:false`。この実行自身はCREATE/UPDATEや履歴削除を行わない。成功後の**新規**V2 READYで、対応するREQだけを検証後に自動退避する。
+
+想定外の`pass:false`なら再実行せずエラーコードを共有。稼働中のPOSTがある場合はその完了を確認し、切替後の異常時に限り `vaaLedgerProdReadyRetireDisableAllNewOnce` でOFFに戻す。古い`REQ_`（本番V2旧READY 1件を含む）はこの切替の対象外であり、旧履歴移管はOFF維持。追加のGAS SYNC・Web Appデプロイ・合成CREATEは不要。
+
 ## 次工程：カナリアの読み取り専用再利用証明（2026-11-21）
 
 直前の本番カナリアは1回限りのCREATE成功（`READY:true`, `reused:false`）。終了後にOFFへ復帰（`VAA_PROD_CANARY_OFF pass:true`）、既存全体監査で`journalReady:2`、`journalPending:0`、`modernReadyWithoutReq:1`、`pass:true`。**カナリアは消費済みなので再送せず、既存のV2 READYから再利用可能であることを照合する。**
