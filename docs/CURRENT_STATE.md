@@ -4,6 +4,13 @@ Last updated: 2026-11-21
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Saved Web App version 62 audit confirmed (2026-11-21)
+
+- Operator ran [the strictly read-only version 62 workflow](https://github.com/tsicb/valid-app/actions/workflows/central-api-deployed-version62-audit.yml) with `AUDIT_V62`. Summary: `BEFORE_EXACT_CANARY_SOURCE`, 26 saved scripts / 26 current GitHub scripts; V2 production gateway present `true`, doPost invokes the gateway `true`, exact one-request retirement canary `false`, legacy migration audit `true`, GitHub code equality `false`; missing/extra/changed scripts `0/0/2`.
+- This definitively confirms the saved active /exec version 62 **does not implement** the one-request canary mode. The read-only audit identified the **number**, not the names or semantics, of the two differing scripts; do not ascribe either difference without independent inspection. The GAS editor HEAD passed earlier canary preflight, but HEAD is not the deployed version.
+- **No canary activation, new Apps Script version, deployment edit, live CREATE/UPDATE, REQ deletion or legacy migration is authorized.** Keep `VAA_PROD_READY_RETIRE_MODE` unset/OFF and `VAA_PROD_LEGACY_MIGRATION_MODE` unset/OFF; keep existing production V2 sticky gate ON.
+- Next release gate: verify present GAS editor source still equals pinned GitHub scripts via read-only `Central API sync to GAS` `AUDIT`; validate the exact candidate on a separate isolated TEST GAS project using synthetic data (normal CREATE/UPDATE and replay, exact-ID one-request retirement and replay, unrelated requests retain REQ, fail-closed fault cases). Do not use production /dev for synthetic POST. Before any production deployment, explicitly approve a versioned deployment update preserving the existing /exec URL, record the old version 62 rollback target, and design post-cutover no-write checks. Before any later rollback, disable canary retirement first so version 62 will not reject that setting.
+
 ## Deployed Web App version 62 identified; PR #60 read-only source audit merged (2026-11-21)
 
 - Operator read `Deploy > Manage deployments` without editing: **one Web App deployment**, **version 62**, dated **2026-11-20 16:11 JST**. GitHub PR [#55](https://github.com/tsicb/valid-app/pull/55), which introduced the exact one-request `CANARY_ONE_NEW_READY_V1` mode, merged at **2026-11-21 00:26 JST** (2026-11-20T15:26Z). Thus the active saved version 62 predates that code's integration. Do not presume the editor HEAD and deployed /exec use identical source.
