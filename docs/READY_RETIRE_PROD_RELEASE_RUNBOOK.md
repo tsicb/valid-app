@@ -1,5 +1,25 @@
 # 本番Webアプリ：次バージョンへの最短更新手順（2026-11-21）
 
+## 50件超のScript Propertiesを扱う管理関数（2026-11-21）
+
+GASの設定画面では50個を超えるとリストが読み取り専用になるため、**GASエディタから管理関数を実行**して、設定キー1個だけを変更する。Script Properties自体が50件で停止するわけではない。
+
+- `vaaLedgerProdRetireCanaryArmOnce`：`VAA_PROD_READY_RETIRE_MODE` を `OFF` → `CANARY_ONE_NEW_READY_V1` に変更。実行前に既存の `vaaLedgerProdRetireCanaryPreflightReadOnly` を内部から再検証し、本番V2有効・専用ID未使用・CREATE専用・旧移管OFF・管理範囲正常でなければ設定を変えない。ScriptLockで保護し、読み戻し検証を行う。同じ関数を2回呼んでも稼働中カナリアを勝手にOFFにしない。
+- `vaaLedgerProdRetireCanaryOffOnce`：実際のCREATE処理が**完全に終了した後**、専用モードだけを `OFF` に変更。すでにOFFなら変更しない。全件退避モード等を上書きしない。失敗・通信断でもGAS実行中にOFFにしない。
+- 両関数は `central-api/24_Request_Ledger_V2_Production_Gate.gs` の正規ソースに記録。ログは固定コード・件数・真偽値のみであり、ID、認証キー、REQ本体は出力しない。**REQの読み書き・削除、doPost実行は一切行わない**。
+- 変更はエディタ専用管理関数の追加のみ。**公開済みWebアプリ v63 を新たにデプロイする必要はない**。Version 63の `doPost` はScript Propertiesを読んで動作する。
+- GitHub Actions `Central API check` [run 44853321326](https://github.com/tsicb/valid-app/actions/runs/44853321326) で構文・ソース整合性・回帰テストが成功。管理コードを実行する前に `Central API sync to GAS` で `main` の正規ソースを1度だけ `SYNC` し、差分がファイル24のみ、追加/余分なスクリプトが0、実際のfresh pullで一致することを確認する。SYNCは本番Webアプリの既存デプロイには影響しない。
+- 直近のGASエディタタブを閉じ、SYNC後は新規タブで読み直して管理関数を選択する。古いタブに保存・手書きの99_一時ファイル作成・任意のプロパティ一括表示ログは行わない。
+
+管理関数を使った本番の最短操作順：
+1. 正規ソースを上記SYNCで反映（本番v63 Webアプリはそのまま）。
+2. GASエディタの関数一覧から `vaaLedgerProdRetireCanaryArmOnce` を手動実行する。ログ `VAA_PROD_CANARY_ARM` の `pass:true`、`enabled:true`、`propertyWrites:1`、`propertyDeletes:0`、`actualPostInvoked:false` を確認。 `pass:false` ならPOSTせず停止。
+3. 管理者承認済みの [架空CREATE 1件専用画面](https://tsicb.github.io/valid-app/qa/production-canary-one-shot.html) から**1回だけ**送信。ID/ACCESS_KEYはローカル入力で、会話やGitHubに貼らない。
+4. GAS実行が終了したことを確認後、エディタで `vaaLedgerProdRetireCanaryOffOnce` を手動実行する。 `VAA_PROD_CANARY_OFF` の `pass:true`、`off:true`、`propertyDeletes:0` を確認。
+5. 既存 `vaaLedgerProdReadyRetirePreflightReadOnly` でV2 READYのREQ未保持・台帳整合性・保留0・書込0を確認する。失敗や応答不明なら同一IDを再送しない。
+
+この関数方式は「Properties画面の50件制限」を迂回するための正規操作方法であり、Script Properties自体の容量制限を解除するものではない。容量問題の根本対策は後続の新規READY自動整理。
+
 ## v63公開済み・カナリア準備（2026-11-21更新）
 
 - 管理者報告：既存Webアプリは **v63 (2026-11-21 10:25 JST)**、デプロイは1件。 `/exec` GETで `ok:true`、`service:"valid-application-analysis-sheet-api"`、`schemaVersion:"3.0"` を確認。
