@@ -90,11 +90,11 @@ function fixture(opt={}){
     vaaUtf8ByteLength_:str=>Buffer.byteLength(str,"utf8"),
     fileIsInManagedOutputTree_:(_file,_root)=>!!opt.rosterMismatch
   };
+  const legacyEntriesMock=mock.vaaLedgerProdLegacyEntries_;
   const context=vm.createContext(mock);
   vm.runInContext(script,context);
-  // Override declaration inside loaded legacy file, using the isolated source
-  // fixture so triage tests do not depend on the old migration tests' mocks.
-  context.vaaLedgerProdLegacyEntries_=mock.vaaLedgerProdLegacyEntries_;
+  // Script declarations replace context properties: restore captured fixture.
+  context.vaaLedgerProdLegacyEntries_=legacyEntriesMock;
   if(opt.mutateOnRead){
     let call=0;
     props.getProperties=()=>{
