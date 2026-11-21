@@ -4,6 +4,16 @@ Last updated: 2026-11-21
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Production ongoing NEW V2 READY REQ auto-retirement ENABLED (2026-11-21 12:24 JST)
+
+- User invoked the approved `vaaLedgerProdReadyRetireEnableAllNewOnce` in the production GAS editor at 12:24:21 JST, with no extra SYNC or Web App deployment.
+- Automatic internal `VAA_PROD_READY_RETIRE_PREFLIGHT`: `strictReadOnly:true`, `sourceStable:true`, `prodV2Enabled:true`, `retireModeOff:true`, `legacyMigrationOff:true`, `journalEvents:4`, `journalReady:2`, `journalPending:0`, `modernReadyWithReq:1`, `modernReadyWithoutReq:1`, `eligibleForFutureRetirement:1`, `propertyWrites:0`, `journalWrites:0`, `propertyDeletes:0`, `activationAuthorized:false`, `errorStage:NONE`, `errorCode:NONE`, `pass:true`.
+- Activation `VAA_PROD_NEW_READY_RETIRE_ENABLE`: `phase:PROD_NEW_READY_RETIRE_ENABLE_ONCE`, `enabled:true`, `replayProofPassed:true`, `aggregatePassed:true`, `propertyWrites:1`, `propertyDeletes:0`, `actualPostInvoked:false`, `existingReqDeleted:false`, `errorCode:NONE`, `pass:true`.
+- **Current live setting**: `VAA_PROD_READY_RETIRE_MODE=RETIRE_VERIFIED_NEW_READY_V1`; V2 sticky journal remains active, legacy migration remains OFF, Web App v63 remains the single deployment. Only *future new, successfully finalized* V2 CREATE/UPDATE READY receipts will have their source `REQ_` deleted after full V2 journal verification. The activation function itself made no CREATE/UPDATE and deleted no historical properties.
+- **Not yet observed in normal operations:** a real post-activation normal CREATE or UPDATE completing and retiring its own REQ. Do not fabricate requests solely to check this if a genuine next user workflow can be observed instead. No previously existing `REQ_` records, including one earlier V2 READY, were removed by the switch.
+- **Next safe capacity baseline:** editor-only `vaaAuditScriptPropertyCapacityReadOnly` produces `VAA_PROPERTY_CAPACITY_READONLY` aggregate counts/estimated bytes without printing secrets or modifying Script Properties. This remains safe while ongoing retirement is ON and helps decide how to manage historical REQ history. Evaluate the read-only historical dual-archive migration audit separately; never run `vaaLedgerProdLegacyCopyBatchOnce` or `vaaLedgerProdLegacyRetireBatchOnce` until prerequisites and explicit approval are established.
+- **Fallback**: `vaaLedgerProdReadyRetireDisableAllNewOnce` is available for a deliberate return to OFF after active GAS executions finish. It does not disable the sticky V2 gate. Avoid rolling back to v62 while ongoing retirement is ON.
+
 ## Ongoing new-READY REQ retirement explicitly authorized; activation log pending (2026-11-21)
 
 - Operator explicitly approved enabling `RETIRE_VERIFIED_NEW_READY_V1` for **all future successfully verified new V2 CREATE and UPDATE READY receipts**. This is separate from the prior single-request CREATE canary authorization.
