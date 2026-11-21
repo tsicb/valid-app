@@ -4,6 +4,14 @@ Last updated: 2026-11-21
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Legacy dual-archive COPY mode OFF PASS; independent final audit pending (2026-11-21)
+
+- Following five successful approved historical READY COPY batches (10+10+10+10+1 = 41), operator manually invoked `vaaLedgerProdLegacyModeOffOnce`.
+- Live GAS log `VAA_PROD_LEGACY_MODE_OFF`: `phase:PROD_LEGACY_MODE_OFF`, `off:true`, `propertyWrites:1`, `propertyDeletes:0`, `archiveWrites:0`, `requestPosts:0`, `pass:true`, `errorCode:NONE`. The separate historical COPY migration mode `VAA_PROD_LEGACY_MIGRATION_MODE` is now OFF. No historical `REQ_` was removed, and both V1/private backup archives remain intact.
+- Distinct global new-V2 READY auto-REQ retirement setting is unaffected by this legacy mode OFF operation; normal production V2 mode stays ON per last reported activation.
+- **Next one read-only step**: execute `vaaLedgerProdLegacyAuditReadOnly` in the live GAS editor and inspect `VAA_PROD_LEGACY_AUDIT`. If source inventory is unchanged, expect `pass:true`, `sourceStable:true`, `ready:41`, `verifiedBoth:41`, `needPrimaryCopy:0`, `needBackupCopy:0`, `propertyWrites:0`, `archiveWrites:0`, `errorCode:NONE`. This provides independent post-COPY verification; no additional copy, deletion, SYNC or deployment required.
+- Historical RETIRE (deletion of the selected 41 `REQ_`) is NOT YET AUTHORIZED. Do not invoke `vaaLedgerProdLegacyArmRetireModeOnce` or `vaaLedgerProdLegacyRetireBatchOnce` until separate approval after exact final audit. Protected 39+60 old READY, 4 ERROR, 1 old V2 READY remain excluded.
+
 ## Legacy dual-archive fifth/final COPY batch PASS; cumulative 41/41, OFF and audit pending (2026-11-21)
 
 - Operator executed the **fifth/final** manually approved `vaaLedgerProdLegacyCopyBatchOnce`; `VAA_PROD_LEGACY_BATCH` returned `phase:PROD_LEGACY_COPY_BATCH`, `action:COPY`, `scriptLockHeld:true`, `scopeVerified:true`, `beforeReadyCount:41`, `alreadyDualVerified:40`, `quarantinedLegacyReady:39`, `quarantinedTargetReady:60`, `targetCannotOpen:46`, `targetWrongMime:0`, `targetTrashed:14`, `targetOutsideManagedOutput:0`, `copied:1`, `retired:0`, `remainingNeedCopy:1`, `sourceStableAfter:true`, `unknownCompletion:false`, `automaticRetryAuthorized:false`, `cleanupAuthorized:false`, `pass:true`, `errorStage:NONE`.
