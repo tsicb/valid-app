@@ -266,10 +266,15 @@ test("known legacy UPDATE missing replay proof is quarantined without failing sa
   assert.equal(f.calls.backupWrites,1);
   assert.equal(f.calls.primaryWrites,1);
   f.setMode("RETIRE_DUAL_VERIFIED_READY_V1");
-  const denied=f.retire();
-  assert.equal(denied.pass,false,JSON.stringify(denied));
-  assert.equal(denied.errorStage,"INVENTORY");
-  assert.equal(f.calls.deletes,0);
+  const partial=f.retire();
+  assert.equal(partial.pass,true,JSON.stringify(partial));
+  assert.equal(partial.retired,1);
+  assert.equal(partial.quarantinedLegacyReady,1);
+  assert.equal(f.calls.deletes,1);
+  assert.equal(f.properties["REQ_"+ID],undefined);
+  assert.ok(f.properties["REQ_LEGACY_UPDATE_WITHOUT_DIGEST_OR_STRATEGY"]);
+  assert.equal(f.a.archive.size,1);
+  assert.equal(f.b.archive.size,1);
 });
 test("legacy noncanonical target references remain protected, never archived",()=>{
   const f=fixture({mode:"COPY_DUAL_ARCHIVE_READY_V1",
@@ -287,8 +292,13 @@ test("legacy noncanonical target references remain protected, never archived",()
   assert.equal(f.calls.deletes,0);
   assert.equal(JSON.stringify(f.properties),sourceBefore);
   f.setMode("RETIRE_DUAL_VERIFIED_READY_V1");
-  assert.equal(f.retire().pass,false);
-  assert.equal(f.calls.deletes,0);
+  const result=f.retire();
+  assert.equal(result.pass,true,JSON.stringify(result));
+  assert.equal(result.retired,1);
+  assert.equal(f.calls.deletes,1);
+  assert.ok(f.properties["REQ_LEGACY_UPDATE_WITHOUT_DIGEST_OR_STRATEGY"]);
+  assert.equal(f.a.archive.size,1);
+  assert.equal(f.b.archive.size,1);
 });
 test("missing target is not mistaken for protected old UPDATE metadata",()=>{
   const f=fixture({legacyUpdateMissingTarget:true});
@@ -364,9 +374,11 @@ test("unavailable historic targets are counted, excluded from COPY and never ret
     assert.equal(f.calls.deletes,0);
     assert.equal(JSON.stringify(f.properties),before);
     f.setMode("RETIRE_DUAL_VERIFIED_READY_V1");
-    const denied=f.retire();
-    assert.equal(denied.pass,false);
-    assert.equal(denied.errorStage,"INVENTORY");
+    const excluded=f.retire();
+    assert.equal(excluded.pass,true,JSON.stringify({flag,excluded}));
+    assert.equal(excluded.retired,0);
+    assert.equal(excluded.quarantinedTargetReady,1);
+    assert.equal(f.properties["REQ_"+ID],raw);
     assert.equal(f.calls.deletes,0);
     const log=f.calls.logs.join("\n");
     for(const secret of [ID,TARGET,SECRET,ROOT,OUT,MAIN,BACK,raw]){
@@ -414,6 +426,54 @@ test("valid historical target stays eligible for backup copy",()=>{
   assert.equal(f.calls.primaryWrites,1);
   assert.equal(f.calls.backupWrites,1);
   assert.equal(f.calls.deletes,0);
+});
+test("protected old UPDATE remains source-only while unrelated exact dual READY is retired",()=>{
+  const f=fixture({
+    mode:"RETIRE_DUAL_VERIFIED_READY_V1",
+    alreadyPrimary:true,alreadyBackup:true,legacyUpdateWithoutMetadata:true
+  });
+  const copyBefore=f.a.archive.size+f.b.archive.size;
+  const audit=f.audit();
+  assert.equal(audit.pass,true);
+  assert.equal(audit.verifiedBoth,1);
+  assert.equal(audit.quarantinedLegacyReady,1);
+  const out=f.retire();
+  assert.equal(out.pass,true,JSON.stringify(out));
+  assert.equal(out.retired,1);
+  assert.equal(out.quarantinedLegacyReady,1);
+  assert.equal(f.calls.deletes,1);
+  assert.equal(f.properties["REQ_"+ID],undefined);
+  assert.ok(f.properties["REQ_LEGACY_UPDATE_WITHOUT_DIGEST_OR_STRATEGY"]);
+  assert.equal(f.a.archive.size+f.b.archive.size,copyBefore);
+  assert.equal(f.calls.primaryWrites+f.calls.backupWrites,0);
+  assert.equal(f.retire().retired,0);
+  assert.equal(f.calls.deletes,1);
+});
+test("protected old UPDATE never weakens dual copy requirement for another READY",()=>{
+  const f=fixture({
+    mode:"RETIRE_DUAL_VERIFIED_READY_V1",
+    legacyUpdateWithoutMetadata:true,alreadyPrimary:true
+  });
+  const before={...f.properties};
+  const r=f.retire();
+  assert.equal(r.pass,false);
+  assert.equal(r.errorStage,"INVENTORY");
+  assert.equal(f.calls.deletes,0);
+  assert.deepEqual(f.properties,before);
+});
+test("quarantined target does not count as eligible and does not retire on its own",()=>{
+  for(const key of ["targetCannotOpen","targetTrashed","targetOutsideManagedOutput"]){
+    const f=fixture({
+      mode:"RETIRE_DUAL_VERIFIED_READY_V1",
+      alreadyPrimary:true,alreadyBackup:true,[key]:true
+    });
+    const out=f.retire();
+    assert.equal(out.pass,true,JSON.stringify({key,out}));
+    assert.equal(out.retired,0);
+    assert.equal(out.quarantinedTargetReady,1);
+    assert.equal(f.properties["REQ_"+ID],raw);
+    assert.equal(f.calls.deletes,0);
+  }
 });
 test("non-READY historical error is excluded from copy and retirement",()=>{
   const f=fixture({mode:"COPY_DUAL_ARCHIVE_READY_V1",nonready:true});
