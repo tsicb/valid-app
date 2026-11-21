@@ -1,5 +1,26 @@
 # 本番Webアプリ：次バージョンへの最短更新手順（2026-11-21）
 
+## v63公開済み・カナリア準備（2026-11-21更新）
+
+- 管理者報告：既存Webアプリは **v63 (2026-11-21 10:25 JST)**、デプロイは1件。 `/exec` GETで `ok:true`、`service:"valid-application-analysis-sheet-api"`、`schemaVersion:"3.0"` を確認。
+- エディタの `vaaLedgerProdRetireCanaryPreflightReadOnly`：`pass:true`、本番V2有効、退避と旧移管OFF、カナリアID未使用、ソース安定、書込み・削除0、`activationAuthorized:false`。
+- [本番1件限定の送信画面](https://tsicb.github.io/valid-app/qa/production-canary-one-shot.html) を追加。GitHubソース：[qa/production-canary-one-shot.html](../qa/production-canary-one-shot.html)。架空の応募1件・求人1件のみ。ブラウザでACCESS_KEY・正確なカナリアCREATE IDを入力し、明示承認チェックと最終確認文字列がそろった場合だけPOST可能。ページ読み込み時のPOSTなし。認証キー・IDは保存せず、送信試行フラグのみ保存し再送を遮断する。既存本番`/exec`へ直接送信し、管理者にID・認証キーの開示を求めない。
+- `tests/production-canary-one-shot.test.cjs` 追加、GitHub Actions `Central API check` 成功。送信画面の準備とテストは**本番POST、モード変更、REQ削除ではない**。
+
+### 本番カナリア1件：実行前に別途明示承認が必要
+
+1. **本番カナリアCREATEを1件実行し、該当REQ_のみを退避すること**について管理者の明示的承認を得る。別の包括的QAは追加しない。
+2. 本番GAS Script Propertiesで設定済み `VAA_PROD_READY_RETIRE_CANARY_REQUEST_ID` の値（公開禁止）が送信画面のIDと完全一致し、`VAA_PROD_READY_RETIRE_CANARY_OPERATION_MODE=CREATE`、旧履歴移管OFF、V2ゲートONをローカルで確認。IDの変更・再利用はしない。
+3. 今回の1件に限り `VAA_PROD_READY_RETIRE_MODE=CANARY_ONE_NEW_READY_V1` に設定する。旧履歴移管や広域RETIREモードはONにしない。設定後にエディタ専用の「モードOFF前提」preflightを再実行しない。
+4. 上記の送信画面を一度だけ操作する。企業データを入れず、画面内の固定された架空CSV相当データを使う。送信画面は再送しない。失敗・通信断時にもボタンを押し直したり、ロックを消して再試行しない。
+5. GAS実行の終了を確認する。**進行中に削除モードをOFFにすると完了処理が停止するおそれがある**。結果不明なら先にGAS「実行数」で進行中リクエストがないか確認し、記録を残す。結果不明のまま同じIDに再POSTしない。
+6. 実行終了後は `VAA_PROD_READY_RETIRE_MODE=OFF` に戻す。 `VAA_PROD_LEGACY_MIGRATION_MODE` は常にOFF、Sticky V2はON維持。
+7. 既存の `vaaLedgerProdReadyRetirePreflightReadOnly` で、`pass:true`、`journalPending:0`、`sourceStable:true`、`modernReadyWithoutReq` がカナリア前基準値（直近0件）から+1以上になったことを確認する。以前の本番V2 READYは1件・REQありだった。通常業務による新規READYが増えても、カナリア以外のREQ削除をこの操作で意図しない。判定不能・不整合ならそこで停止し、既存台帳を破壊せず調査する。
+8. カナリアで作成された架空の個社管理シートは、その後の照合が完了するまで削除・移動しない。成功しても恒久的な広域RETIREを勝手に有効化しない。
+
+※このカナリアは「実際の送信1件とREQなしREADY台帳」を見るための最小限の実地確認。既存の隔離メモリテストにある再送防止は再利用し、ここではリトライ操作を追加して工数を増やさない。
+
+
 目的：本番 `/exec` を「1件限定READY退避カナリア対応ソース」へ更新し、次工程のカナリア試験に進める状態にする。**この公開だけではREQ削除を一切有効化しない。** 本番での削除・CREATE試験は別の判断。
 
 ## 現状と省略できる工程
