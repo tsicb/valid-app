@@ -1,6 +1,14 @@
 # 旧READY97件の非公開退避と小型REQマーカー化 — 実装・運用手順
 
-更新: 2026-11-22 / 状態: **補正版の本番GAS SYNCおよび旧READY97件のCOPY・完全照合は成功。元REQ無変更、COMPACT未実施。**
+更新: 2026-11-22 / 状態: **本番COPY97件・COMPACT97件とも完全照合成功。元REQキーは維持、容量監査のみ未実施。**
+
+## 2026-11-22 本番COMPACT完了・次は容量確認のみ
+
+- ユーザーがCOPY97件成功ログを確認後、COMPACTを明示承認して `vaaLedgerProdQuarantineCompactOnce` を本番で1回実行。
+- 正常結果：`pass:true`, `sourceStable:true`, `archiveVerified:true`, `backedUp:97`, `rawReady:0`, `compacted:97`, `propertyWrites:97`, `propertyDeletes:0`, `archiveWrites:0`, `requestPosts:0`, `unknownCompletion:false`, `errorStage:NONE`, `errorCode:NONE`。
+- 保護対象 `preservedManagedReady:2`, `preservedErrors:4`, `modernExcluded:1` も正常。REQキーは97件とも保持して値のみ59バイトマーカー化。元JSONは独立PRIVATEバックアップへ保存済み。
+- **COPYとCOMPACTを再実行しない。** 追加SYNC・Webアプリ再デプロイ不要。現在の残る作業は読み取り専用関数 `vaaAuditScriptPropertyCapacityReadOnly` を1回実行し、実際のScript Properties使用容量を測定すること。
+- 汎用容量監査の `requestLifecycle.inProgressOrOther` にはマーカー97件が含まれるため、未完了の処理97件と誤解しない。マーカー件数を独立に確認する必要がある場合は `vaaLedgerProdQuarantineAuditReadOnly` を利用。
 
 ## 2026-11-22 補正SYNCと本番COPY完了（COMPACT未実施）
 
