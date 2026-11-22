@@ -48,3 +48,17 @@ test("unexpected live QA scripts fail before replacement and push",()=>{
   assert.ok(gate<replace && replace<push);
   assert.match(workflow,/unexpected remote GAS source files would be deleted/);
 });
+
+test("single-step SYNC is blocked before write on missing scripts or unrelated source drift",()=>{
+  const read=workflow.indexOf("Audit remote GAS script names and source drift (NO PUSH)");
+  const block=workflow.indexOf("Block SYNC if GAS has missing or unapproved source drift");
+  const pin=workflow.indexOf("Guard file 25 against unrecognized live source before SYNC");
+  const push=workflow.indexOf("Push GitHub Central API source to GAS");
+  assert.ok(read>=0 && block>read && pin>block && push>pin);
+  assert.match(workflow,/new_count=' \+ add\.length/);
+  assert.match(workflow,/unexpected_change_count=' \+ unexpectedDrift\.length/);
+  assert.match(workflow,/change\.filter\(name => name !== allowedFile25\)/);
+  assert.match(workflow,/steps\.gas_audit\.outputs\.new_count/);
+  assert.match(workflow,/steps\.gas_audit\.outputs\.unexpected_change_count/);
+  assert.match(workflow,/SYNC blocked: source drift outside approved file25/);
+});
