@@ -1,6 +1,14 @@
 # 旧READY97件の非公開退避と小型REQマーカー化 — 実装・運用手順
 
-更新: 2026-11-22 / 状態: **補正コードGitHub実装済み・CI PASS。直前のGAS版でCOPYは事前停止（書込0）、補正版は未SYNC、COMPACT未実行。**
+更新: 2026-11-22 / 状態: **補正版の本番GAS SYNCおよび旧READY97件のCOPY・完全照合は成功。元REQ無変更、COMPACT未実施。**
+
+## 2026-11-22 補正SYNCと本番COPY完了（COMPACT未実施）
+
+- ユーザーがGitHub Actions `Central API sync to GAS` を `confirm=SYNC` で実行。ソースコミット `9d41ba3`、事前差分は26/26本中 **25番1本のみ変更**、旧ソース照合 `LEGACY25_SOURCE_PRECHECK: PINNED_PREVIOUS_PRODUCTION_SOURCE`、事後の独立再取得 `POST_SYNC_SOURCE_READBACK: VERIFIED_MATCH`、missing0／unexpected0／drift0。GASソースのみ更新、Webアプリv63再デプロイなし。
+- 続いて `vaaLedgerProdQuarantineCopyOnce` を本番で**1回実行し成功**。出力は `phase:PROD_QUARANTINE_COPY_ONCE`, `pass:true`, `sourceStable:true`, `archiveVerified:true`, `expectedOutside:97`, `backedUp:97`, `rawReady:97`, `compacted:0`, `copied:97`, `archiveWrites:97`, `propertyWrites:0`, `propertyDeletes:0`, `unknownCompletion:false`, `errorStage:NONE`, `errorCode:NONE`。
+- 保護された管理フォルダ内READY2件、ERROR4件、V2 READY1件はそれぞれ `preservedManagedReady:2`, `preservedErrors:4`, `modernExcluded:1` を確認。元REQ値は一切置換・削除されていない。
+- **COPY工程は完了**。もうCOPYを繰り返さない。次の `vaaLedgerProdQuarantineCompactOnce` は97件のREQ値を変えるため、**別途明示的な承認を得てから1回だけ実行**する。実行前に別のSYNC・Webアプリデプロイ・新しい保管用ファイル作成は不要。COMPACTにはコピー全97件、元REQ全97件、現在のDriveフォルダとV1/V2台帳、保護対象を再照合するコード内ガードがある。
+- COMPACTの予期せぬ失敗・部分完了・`unknownCompletion:true` は再実行禁止。手動で原文を操作せず、`vaaLedgerProdQuarantineAuditReadOnly` で読み取り専用診断してから次の回復を考える。
 
 ## 2026-11-22 初回COPY停止と修正
 
