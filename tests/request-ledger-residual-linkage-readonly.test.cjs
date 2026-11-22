@@ -106,7 +106,8 @@ function fixture(options={}){
       return {...props};
     };
   }
-  const result=cx.vaaLedgerProdResidualLinkageAuditReadOnly();
+  const result=JSON.parse(JSON.stringify(
+    cx.vaaLedgerProdResidualLinkageAuditReadOnly()));
   return {result,stats,props};
 }
 const named=(items,name)=>items.find(x=>x.category===name);
