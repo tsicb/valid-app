@@ -842,3 +842,243 @@ function vaaLedgerProdResidualReqTriageReadOnly(){
   console.log('VAA_RESIDUAL_REQ_TRIAGE '+JSON.stringify(out));
   return out;
 }
+
+
+/**
+ * Read-only follow-up: determine how many legacy REQs and distinct target
+ * sheets are linked to stale Registry / Viewer mappings outside the
+ * managed output folder. Mapping presence is NOT evidence of active access.
+ * Never returns IDs, hashes, URLs, names, or individual timestamps.
+ */
+function vaaLedgerResidualLinkageIndex_(snapshot,nowMs){
+  const byId=Object.create(null);
+  let registryProperties=0,viewerProperties=0,malformed=0;
+  const recentCutoff=nowMs-30*86400000;
+  Object.keys(snapshot).forEach(function(key){
+    const registry=key.indexOf(API_CONFIG.REPORT_REGISTRY_PREFIX)===0;
+    const viewer=key.indexOf('VIEWER_')===0;
+    if(!registry&&!viewer)return;
+    if(registry)registryProperties++;else viewerProperties++;
+    let rec;
+    try{rec=JSON.parse(snapshot[key]);}catch(_){malformed++;return;}
+    if(!rec||typeof rec!=='object'||Array.isArray(rec)){
+      malformed++;return;
+    }
+    const id=String(rec.spreadsheetId||'').trim();
+    if(!id || (registry &&
+      key.slice(API_CONFIG.REPORT_REGISTRY_PREFIX.length)!==id)){
+      malformed++;return;
+    }
+    const state=byId[id]||(byId[id]={
+      registryProperties:0,viewerProperties:0,
+      hasDatedAccess:false,recentViewerAccess:false
+    });
+    if(registry){state.registryProperties++;return;}
+    state.viewerProperties++;
+    const accessTime=Date.parse(String(rec.lastAccessAt||''));
+    if(Number.isFinite(accessTime)&&accessTime<=nowMs){
+      state.hasDatedAccess=true;
+      if(accessTime>=recentCutoff)state.recentViewerAccess=true;
+    }
+  });
+  return {
+    byId:byId,registryProperties:registryProperties,
+    viewerProperties:viewerProperties,malformed:malformed,
+    referencesComplete:malformed===0
+  };
+}
+
+function vaaLedgerResidualLinkageMetric_(){
+  return {requests:0,uniqueTargets:0,estimatedReqBytes:0};
+}
+function vaaLedgerResidualLinkageMappedMetric_(){
+  return {uniqueTargets:0,registryProperties:0,viewerProperties:0,
+    targetsWithDatedViewerAccess:0,targetsWithRecentViewerAccess30Days:0};
+}
+
+/**
+ * One-shot, aggregate only, no deletion authorization. A complete folder
+ * snapshot proves only "not in the managed folder at scan time"; it does
+ * not prove Drive file deletion or permanent loss of permission.
+ */
+function vaaLedgerProdResidualLinkageAuditReadOnly(){
+  const locKinds=[
+    'CURRENT_MANAGED','OUTSIDE_WITH_LINK','OUTSIDE_NO_LINK',
+    'TRASHED','UNKNOWN'
+  ];
+  const linkKinds=['REGISTRY_AND_VIEWER','REGISTRY_ONLY','VIEWER_ONLY'];
+  const mapKinds=[
+    'CURRENT_MANAGED','OUTSIDE_WITH_READY_REQ',
+    'OUTSIDE_WITHOUT_READY_REQ'
+  ];
+  const location={},linkType={},mapping={};
+  locKinds.forEach(function(k){location[k]=vaaLedgerResidualLinkageMetric_();});
+  linkKinds.forEach(function(k){linkType[k]=vaaLedgerResidualLinkageMetric_();});
+  mapKinds.forEach(function(k){mapping[k]=vaaLedgerResidualLinkageMappedMetric_();});
+  const out={
+    phase:'PROD_RESIDUAL_LINKAGE_AUDIT_READ_ONLY',
+    strictReadOnly:true,sourceStable:false,
+    inventoryComplete:false,referencesComplete:false,
+    folderCount:0,filesEnumerated:0,uniqueManagedSheets:0,
+    registryProperties:0,viewerProperties:0,malformedReferences:0,
+    uniqueMappedTargets:0,
+    residualReqCount:0,readyReqCount:0,nonReadyCount:0,
+    modernExcluded:0,uniqueReadyTargets:0,
+    linkedReadyReqCount:0,linkedReadyUniqueTargets:0,
+    mappedOutsideUniqueTargets:0,
+    locations:locKinds.map(function(k){
+      return {category:k,requests:0,uniqueTargets:0,estimatedReqBytes:0};
+    }),
+    linkedReadyByMapping:linkKinds.map(function(k){
+      return {category:k,requests:0,uniqueTargets:0,estimatedReqBytes:0};
+    }),
+    mappedTargets:mapKinds.map(function(k){
+      return {category:k,uniqueTargets:0,registryProperties:0,
+        viewerProperties:0,targetsWithDatedViewerAccess:0,
+        targetsWithRecentViewerAccess30Days:0};
+    }),
+    propertyWrites:0,propertyDeletes:0,
+    archiveWrites:0,requestPosts:0,
+    cleanupAuthorized:false,pass:false,
+    errorStage:'NONE',errorCode:'NONE'
+  };
+  let stage='SOURCE';
+  try{
+    const props=PropertiesService.getScriptProperties();
+    const before=props.getProperties();
+    const source=vaaLedgerResidualSources_(props,before);
+    const nowMs=Date.now();
+    const index=vaaLedgerResidualLinkageIndex_(before,nowMs);
+    out.registryProperties=index.registryProperties;
+    out.viewerProperties=index.viewerProperties;
+    out.malformedReferences=index.malformed;
+    out.referencesComplete=index.referencesComplete;
+    if(!index.referencesComplete)throw Error('LINKAGE_REFERENCES_INVALID');
+
+    stage='FOLDER_INVENTORY';
+    const folder=vaaLedgerResidualFolderSnapshot_();
+    out.inventoryComplete=folder.inventoryComplete;
+    out.folderCount=folder.folderCount;
+    out.filesEnumerated=folder.fileCount;
+    out.uniqueManagedSheets=folder.uniqueSheetCount;
+
+    stage='CLASSIFY';
+    const seenReady=Object.create(null);
+    const seenByLocation=Object.create(null);
+    const seenByLink=Object.create(null);
+    const targetStatuses=Object.create(null);
+    source.rows.forEach(function(item){
+      out.residualReqCount++;
+      if(item.type==='NON_READY'){
+        out.nonReadyCount++;
+        return; // ERROR is never treated as a READY cleanup candidate.
+      }
+      out.readyReqCount++;
+      const target=String(item.record&&item.record.spreadsheetId||'').trim();
+      if(!target)throw Error('LINKAGE_TARGET_MISSING');
+      seenReady[target]=true;
+      let status=targetStatuses[target];
+      if(!status){
+        if(folder.ids[target])status='CURRENT_MANAGED';
+        else{
+          let file;
+          try{file=DriveApp.getFileById(target);}
+          catch(_){status='CANNOT_OPEN';}
+          if(file){
+            if(typeof file.isTrashed==='function'&&file.isTrashed()){
+              status='TRASHED';
+            }else if(fileIsInManagedOutputTree_(
+              file,API_CONFIG.SHEET_OUTPUT_FOLDER_ID)){
+              // A new parent membership with an old roster is not proof of absence.
+              throw Error('LINKAGE_ROSTER_MISMATCH');
+            }else status='OUTSIDE';
+          }
+        }
+        targetStatuses[target]=status;
+      }
+      const linked=index.byId[target];
+      const category=status==='CURRENT_MANAGED'?'CURRENT_MANAGED':
+        status==='TRASHED'?'TRASHED':
+        linked?'OUTSIDE_WITH_LINK':'OUTSIDE_NO_LINK';
+      if(!location[category])throw Error('LINKAGE_CATEGORY_UNKNOWN');
+      const bytes=vaaUtf8ByteLength_(
+        API_CONFIG.REQUEST_PROPERTY_PREFIX+item.id
+      )+vaaUtf8ByteLength_(item.raw);
+      location[category].requests++;
+      location[category].estimatedReqBytes+=bytes;
+      if(!seenByLocation[category])seenByLocation[category]=Object.create(null);
+      if(!seenByLocation[category][target]){
+        seenByLocation[category][target]=true;
+        location[category].uniqueTargets++;
+      }
+      if(category==='OUTSIDE_WITH_LINK'){
+        const linkKind=linked.registryProperties>0&&linked.viewerProperties>0?
+          'REGISTRY_AND_VIEWER':linked.registryProperties>0?
+          'REGISTRY_ONLY':'VIEWER_ONLY';
+        linkType[linkKind].requests++;
+        linkType[linkKind].estimatedReqBytes+=bytes;
+        if(!seenByLink[linkKind])seenByLink[linkKind]=Object.create(null);
+        if(!seenByLink[linkKind][target]){
+          seenByLink[linkKind][target]=true;
+          linkType[linkKind].uniqueTargets++;
+        }
+      }
+    });
+    out.modernExcluded=source.modernExcluded;
+    out.uniqueReadyTargets=Object.keys(seenReady).length;
+    out.linkedReadyReqCount=location.OUTSIDE_WITH_LINK.requests;
+    out.linkedReadyUniqueTargets=location.OUTSIDE_WITH_LINK.uniqueTargets;
+    const mappingTargets=Object.keys(index.byId);
+    out.uniqueMappedTargets=mappingTargets.length;
+    mappingTargets.forEach(function(target){
+      const ref=index.byId[target];
+      const kind=folder.ids[target]?'CURRENT_MANAGED':
+        seenReady[target]?'OUTSIDE_WITH_READY_REQ':
+          'OUTSIDE_WITHOUT_READY_REQ';
+      const stat=mapping[kind];
+      stat.uniqueTargets++;
+      stat.registryProperties+=ref.registryProperties;
+      stat.viewerProperties+=ref.viewerProperties;
+      if(ref.hasDatedAccess)stat.targetsWithDatedViewerAccess++;
+      if(ref.recentViewerAccess)stat.targetsWithRecentViewerAccess30Days++;
+    });
+    out.mappedOutsideUniqueTargets=
+      mapping.OUTSIDE_WITH_READY_REQ.uniqueTargets+
+      mapping.OUTSIDE_WITHOUT_READY_REQ.uniqueTargets;
+    out.locations=locKinds.map(function(k){
+      return {category:k,requests:location[k].requests,
+        uniqueTargets:location[k].uniqueTargets,
+        estimatedReqBytes:location[k].estimatedReqBytes};
+    });
+    out.linkedReadyByMapping=linkKinds.map(function(k){
+      return {category:k,requests:linkType[k].requests,
+        uniqueTargets:linkType[k].uniqueTargets,
+        estimatedReqBytes:linkType[k].estimatedReqBytes};
+    });
+    out.mappedTargets=mapKinds.map(function(k){
+      return {category:k,uniqueTargets:mapping[k].uniqueTargets,
+        registryProperties:mapping[k].registryProperties,
+        viewerProperties:mapping[k].viewerProperties,
+        targetsWithDatedViewerAccess:
+          mapping[k].targetsWithDatedViewerAccess,
+        targetsWithRecentViewerAccess30Days:
+          mapping[k].targetsWithRecentViewerAccess30Days};
+    });
+    stage='SOURCE_STABILITY';
+    out.sourceStable=vaaLedgerProdLegacySnapshotsEqual_(
+      before,props.getProperties()
+    );
+    if(!out.sourceStable)throw Error('LINKAGE_SOURCE_CHANGED');
+    out.pass=true;
+  }catch(_){
+    out.pass=false;
+    out.errorStage=stage;
+    out.errorCode=stage==='SOURCE'?'LINKAGE_SOURCE_UNVERIFIED':
+      stage==='FOLDER_INVENTORY'?'LINKAGE_FOLDER_INVENTORY_FAILED':
+      stage==='CLASSIFY'?'LINKAGE_CLASSIFICATION_UNVERIFIED':
+      'LINKAGE_SOURCE_CHANGED';
+    out.cleanupAuthorized=false;
+  }
+  console.log('VAA_RESIDUAL_LINKAGE_AUDIT '+JSON.stringify(out));
+  return out;
+}
