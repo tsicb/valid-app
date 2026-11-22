@@ -47,10 +47,16 @@ function fixture(opts={}){
   const effects={setPropertiesCalls:0,propValuesWritten:0,deleted:0,
     archiveCellsWritten:0,archiveAttempts:0,tabCreated:0,
     lockWait:0,lockRelease:0,logs:[],reserve:0};
+  let getPropertiesCalls=0;
   const props={
     getProperty:key=>Object.prototype.hasOwnProperty.call(store,key)?
       store[key]:null,
-    getProperties:()=>({...store}),
+    getProperties:()=>{
+      getPropertiesCalls++;
+      if(opts.driftBeforeCopy && getPropertiesCalls===2)
+        store.UNRELATED_EXTERNAL_PROPERTY="CHANGED_DURING_PREWRITE";
+      return {...store};
+    },
     setProperties:(changes,deleteAllOthers)=>{
       effects.setPropertiesCalls++;
       assert.equal(deleteAllOthers,false);
@@ -108,6 +114,7 @@ function fixture(opts={}){
   const backupReceipts=fakeSheet("receipts",[["ledger"]],book);
   const primary=fakeSheet("receipts",[["ledger"]],null);
   const journal=fakeSheet("journal_v2",[["ledger"]],null);
+  const managedIds={"CURRENT_0":true,"CURRENT_1":true};
   const mock={
     PropertiesService:{getScriptProperties:()=>props},
     SpreadsheetApp:{flush:()=>{if(opts.flushFail)throw Error(SECRET);}},
@@ -144,7 +151,7 @@ function fixture(opts={}){
     vaaLedgerJournalOpenReadOnly_:()=>({sheet:journal}),
     vaaLedgerResidualFolderSnapshot_:()=>{
       if(opts.badInventory)throw Error(SECRET);
-      return {inventoryComplete:true,ids:{"CURRENT_0":true,"CURRENT_1":true},
+      return {inventoryComplete:true,ids:managedIds,
         folderCount:6,fileCount:29,uniqueSheetCount:29};
     },
     vaaLedgerResidualReferences_:()=>{
@@ -162,7 +169,8 @@ function fixture(opts={}){
     "vaaLedgerResidualReferences_"])ctx[name]=originalMocks[name];
   const run=(fn)=>JSON.parse(JSON.stringify(ctx[fn]()));
   return {ctx,props,store,effects,full,outside,book,backupReceipts,
-    primary,journal,audit:()=>run("vaaLedgerProdQuarantineAuditReadOnly"),
+    primary,journal,moveIntoManaged:id=>{managedIds[id]=true;},
+    audit:()=>run("vaaLedgerProdQuarantineAuditReadOnly"),
     copy:()=>run("vaaLedgerProdQuarantineCopyOnce"),
     compact:()=>run("vaaLedgerProdQuarantineCompactOnce")};
 }
@@ -323,4 +331,45 @@ test("read failure on existing archive is not treated as empty archive",()=>{
   assert.equal(f.audit().pass,false);
   assert.equal(f.compact().pass,false);
   assert.equal(f.effects.setPropertiesCalls,0);
+});
+
+test("COPY checks source stability before inserting the backup tab",()=>{
+  const f=fixture({driftBeforeCopy:true});
+  const result=f.copy();
+  assert.equal(result.pass,false);
+  assert.equal(result.errorCode,"QUARANTINE_SOURCE_CHANGED");
+  assert.equal(f.effects.tabCreated,0);
+  assert.equal(f.effects.archiveAttempts,0);
+  assert.equal(f.effects.setPropertiesCalls,0);
+});
+test("moving a historical target into managed folder blocks subsequent COMPACT",()=>{
+  const f=fixture();
+  assert.equal(f.copy().pass,true);
+  f.moveIntoManaged("LINKED_0");
+  const result=f.compact();
+  assert.equal(result.pass,false);
+  assert.equal(f.effects.setPropertiesCalls,0);
+  assert.equal(JSON.parse(f.store.REQ_HISTORIC_000).status,"READY");
+});
+test("V1 / V2 collision blocks COMPACT even when private archive matches",()=>{
+  for(const which of ["primary","journal"]){
+    const f=fixture();
+    assert.equal(f.copy().pass,true);
+    f[which].state.rows.push([hash("HISTORIC_000")]);
+    assert.equal(f.audit().pass,false);
+    assert.equal(f.compact().pass,false);
+    assert.equal(f.effects.setPropertiesCalls,0);
+  }
+});
+test("archived row duplication or mismatched captured location fails closed",()=>{
+  for(const which of ["duplicate","location"]){
+    const f=fixture();
+    assert.equal(f.copy().pass,true);
+    const rows=f.book.tabs.legacy_quarantine_v1.state.rows;
+    if(which==="duplicate")rows[2]=rows[1].slice();
+    else rows[1][4]="TRASHED";
+    assert.equal(f.audit().pass,false);
+    assert.equal(f.compact().pass,false);
+    assert.equal(f.effects.setPropertiesCalls,0);
+  }
 });
