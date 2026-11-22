@@ -1270,6 +1270,8 @@ function vaaQuarantinePrepare_(props,snapshot){
   vaaLedgerProdAssertScope_(props);
   const backup=vaaQuarantineBook_(props);
   const archive=vaaQuarantineArchiveRead_(backup.book);
+  const v2=vaaLedgerJournalOpenReadOnly_(props).sheet;
+  const v2Hashes=vaaQuarantineLedgerHashSet_(v2);
   const folders=vaaLedgerResidualFolderSnapshot_();
   const refs=vaaLedgerResidualReferences_(snapshot);
   if(!folders.inventoryComplete||!refs.referencesComplete){
@@ -1285,6 +1287,17 @@ function vaaQuarantinePrepare_(props,snapshot){
       modern++;return;
     }
     const raw=snapshot[key];
+    if(v2Hashes[vaaLedgerReadyHash_(id)]){
+      // This is a V2-managed request, not a historical quarantine source.
+      // Verify the completed journal and its exact canonical READY source.
+      const journal=vaaLedgerJournalLookupFromSheet_(v2,id);
+      if(journal.state!=='READY'||journal.revision!==2||
+         !journal.latest||!journal.latest.body||
+         JSON.stringify(journal.latest.body.receipt)!==raw){
+        throw vaaQuarantineError_('QUARANTINE_MODERN_V2_UNVERIFIED');
+      }
+      modern++;return;
+    }
     if(raw===VAA_QUARANTINE_MARKER_){
       marked[id]=true;return;
     }
@@ -1363,11 +1376,10 @@ function vaaQuarantinePrepare_(props,snapshot){
     throw vaaQuarantineError_('QUARANTINE_BASELINE_CHANGED');
   }
   const v1=vaaLedgerReadyOpenReadOnly_(props);
-  const v2=vaaLedgerJournalOpenReadOnly_(props).sheet;
   const conflicts=[
     vaaQuarantineLedgerHashSet_(v1),
     vaaQuarantineLedgerHashSet_(backup.receipts),
-    vaaQuarantineLedgerHashSet_(v2)
+    v2Hashes
   ];
   candidates.forEach(function(item){
     if(conflicts.some(function(set){return !!set[item.hash];})){
