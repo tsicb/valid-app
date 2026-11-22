@@ -235,10 +235,10 @@ jobs:
           set -euo pipefail
           # Pin BOTH known safe baselines: historical source, and the
           # exact file 25 from the operator's earlier 26/26 VERIFIED_MATCH
-          # production SYNC (commit 7a34bb4), independently verified 26/26.
+          # production SYNC (commit f6d2139), independently verified 26/26.
           # Do not allow arbitrary revisions. Pinned sources stay on runner.
           git show 0c4be7c5e9e3eb39eafcd341618dacb79797dd36:central-api/25_Request_Ledger_V2_Legacy_Batch_Migration.gs > "$RUNNER_TEMP/vaa_pinned_legacy25.gs"
-          git show 7a34bb4cf3cc45774dd15957888cbdaef7223c09:central-api/25_Request_Ledger_V2_Legacy_Batch_Migration.gs > "$RUNNER_TEMP/vaa_previous_prod25.gs"
+          git show f6d213905b6abffe9331ad3c0707020ab3fa63b0:central-api/25_Request_Ledger_V2_Legacy_Batch_Migration.gs > "$RUNNER_TEMP/vaa_previous_prod25.gs"
           VAA_HISTORIC_FILE25="$RUNNER_TEMP/vaa_pinned_legacy25.gs" \
             VAA_PREVIOUS_PRODUCTION_FILE25="$RUNNER_TEMP/vaa_previous_prod25.gs" \
             node scripts/verify-central-api-sync.cjs preflight
