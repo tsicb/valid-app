@@ -209,7 +209,7 @@ test("COPY once archives 97 exact originals, leaves every REQ value untouched",(
   assert.equal(JSON.stringify(f.store),before);
   const rows=f.book.tabs.legacy_quarantine_v1.state.rows;
   assert.equal(rows.length,98);
-  assert.deepEqual(rows[0],HEADER);
+  assert.deepEqual(Array.from(rows[0]),HEADER);
   for(const r of rows.slice(1)){
     const rec=JSON.parse(r[1]);
     assert.equal(r[0],hash(rec.requestId));
