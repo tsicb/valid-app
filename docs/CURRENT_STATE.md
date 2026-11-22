@@ -1,8 +1,17 @@
 # Current State
 
-Last updated: 2026-11-21
+Last updated: 2026-11-22
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
+
+## Legacy 97 REQ quarantine COMPLETED: final property capacity 15.4%, all markers retained (2026-11-22)
+
+- Following completed private COPY 97/97 and COMPACT 97/97, operator ran `vaaAuditScriptPropertyCapacityReadOnly` in live production GAS editor. Reported `strictReadOnly:true`, `measuredAt:2026-11-22T12:10:32.620Z`, **`estimatedTotalBytes:78932` / `quotaLimitBytes:512000` = `estimatedUsagePercent:15.4`**, `estimatedValueBytes:68027`, property count **246**. This is a UTF-8 *key+value estimate*, not a direct authoritative Google quota reading; estimated available capacity is **433068 bytes (84.6%)**.
+- REQ group: **104** keys / **24171 estimated bytes** (key4160 + value20011), largest request property4189 bytes; zero values exceed 9216-byte limit. Lifecycle: **READY3** (two protected managed and one modern V2), **ERROR4** (preserved), **inProgressOrOther97** = compacted `RETIRED` markers, NOT 97 pending live operations. `malformed:0`, `missingCreatedAt:97` because markers intentionally omit `createdAt`, `activeLease:0`, `olderThan30Days:3`, `olderThan90Days:0`.
+- Unmodified mapping groups still present: `REPORT_REGISTRY` **43 keys / 36895 estimated bytes**, `VIEWER_MAPPINGS` **82 keys / 16908 estimated bytes**. Update leases0; protected config4 keys /227B; system config2/130B; other11/601B; no single property exceeds per-value ceiling. The external linked mappings were **not retired** and are a separate optional future project, not an urgent capacity concern.
+- **Project milestone complete:** 97 historic READY original JSON records safely retained in the independent PRIVATE `legacy_quarantine_v1` archive; 97 original `REQ_<id>` keys remain as occupied replay-denial tombstones; two managed READY, four ERROR, one modern V2 READY unchanged. Exact archive readback and key-value replacement were already verified by the production COMPACT `pass:true` audit. **Do not repeat COPY or COMPACT**, and do not delete tombstones, Registry/Viewer, the isolated backup tab, or protected histories. No further SYNC or Web App redeploy needed.
+- Optional independent post-COMPACT `vaaLedgerProdQuarantineAuditReadOnly` can be run in the future after other state mutations, but is not required to consider this value-compaction effort finished.
+- Completed runbook: [`docs/LEGACY_REQ_QUARANTINE_IMPLEMENTATION_RUNBOOK.md`](LEGACY_REQ_QUARANTINE_IMPLEMENTATION_RUNBOOK.md).
 
 ## Legacy 97 REQ COMPACT completed successfully; capacity read-only audit pending (2026-11-22)
 
