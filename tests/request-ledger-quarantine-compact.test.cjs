@@ -40,10 +40,14 @@ function fixture(opts={}){
     store["REQ_"+id]=JSON.stringify({requestId:id,operationMode:"UPDATE",
       spreadsheetId:"ERROR_TARGET",status:"ERROR",stage:"ERROR",secret:SECRET});
   }
-  store.REQ_QA_JOURNAL_E2E_CREATE_TEST=JSON.stringify({
-    requestId:"QA_JOURNAL_E2E_CREATE_TEST",operationMode:"CREATE",
+  const modernId=opts.modernWithJournal?
+    "MODERN_REAL_V2_READY":"QA_JOURNAL_E2E_CREATE_TEST";
+  const modernReceipt={
+    requestId:modernId,operationMode:"CREATE",
     spreadsheetId:"CURRENT_0",status:"READY",stage:"READY"
-  });
+  };
+  const modernRaw=JSON.stringify(modernReceipt);
+  store["REQ_"+modernId]=modernRaw;
   const effects={setPropertiesCalls:0,propValuesWritten:0,deleted:0,
     archiveCellsWritten:0,archiveAttempts:0,tabCreated:0,
     lockWait:0,lockRelease:0,logs:[],reserve:0};
@@ -113,7 +117,8 @@ function fixture(opts={}){
   };
   const backupReceipts=fakeSheet("receipts",[["ledger"]],book);
   const primary=fakeSheet("receipts",[["ledger"]],null);
-  const journal=fakeSheet("journal_v2",[["ledger"]],null);
+  const journal=fakeSheet("journal_v2",opts.modernWithJournal?
+    [["ledger"],[hash(modernId)]]:[["ledger"]],null);
   const managedIds={"CURRENT_0":true,"CURRENT_1":true};
   const mock={
     PropertiesService:{getScriptProperties:()=>props},
@@ -149,6 +154,14 @@ function fixture(opts={}){
     },
     vaaLedgerReadyOpenReadOnly_:()=>primary,
     vaaLedgerJournalOpenReadOnly_:()=>({sheet:journal}),
+    vaaLedgerJournalLookupFromSheet_:(_sheet,id)=>{
+      if(id!==modernId||!opts.modernWithJournal)
+        return {state:"ABSENT"};
+      return {state:opts.modernNotReady?"RESERVED":"READY",
+        revision:opts.modernNotReady?1:2,
+        latest:{body:{receipt:opts.modernConflict?
+          {...modernReceipt,fileName:SECRET}:modernReceipt}}};
+    },
     vaaLedgerResidualFolderSnapshot_:()=>{
       if(opts.badInventory)throw Error(SECRET);
       return {inventoryComplete:true,ids:managedIds,
@@ -370,6 +383,31 @@ test("archived row duplication or mismatched captured location fails closed",()=
     else rows[1][4]="TRASHED";
     assert.equal(f.audit().pass,false);
     assert.equal(f.compact().pass,false);
+    assert.equal(f.effects.setPropertiesCalls,0);
+  }
+});
+
+test("actual production-style V2 READY (not QA name) is excluded and stays intact",()=>{
+  const f=fixture({modernWithJournal:true});
+  const original=f.store.REQ_MODERN_REAL_V2_READY;
+  const a=f.audit();
+  assert.equal(a.pass,true);
+  assert.equal(a.modernExcluded,1);
+  assert.equal(a.rawReady,97);
+  assert.equal(f.copy().pass,true);
+  assert.equal(f.compact().pass,true);
+  assert.equal(f.store.REQ_MODERN_REAL_V2_READY,original);
+  assert.equal(f.audit().modernExcluded,1);
+});
+test("V2 pending or receipt-mismatched historical-looking ID blocks before archive",()=>{
+  for(const opts of [
+    {modernWithJournal:true,modernNotReady:true},
+    {modernWithJournal:true,modernConflict:true}
+  ]){
+    const f=fixture(opts);
+    assert.equal(f.audit().pass,false);
+    assert.equal(f.copy().pass,false);
+    assert.equal(f.effects.archiveAttempts,0);
     assert.equal(f.effects.setPropertiesCalls,0);
   }
 });
