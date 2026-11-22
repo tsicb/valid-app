@@ -1361,13 +1361,16 @@ function vaaQuarantinePrepare_(props,snapshot){
   if(Object.keys(marked).length!==markerCount){
     throw vaaQuarantineError_('QUARANTINE_UNKNOWN_MARKER');
   }
-  let managedReady=0;
+  let managedReady=0,managedOldUpdateNoProof=0;
   Object.keys(rawReady).forEach(function(id){
     if(idSet[id])return;
     if(!folders.ids[rawReady[id].record.spreadsheetId]){
       throw vaaQuarantineError_('QUARANTINE_UNARCHIVED_READY');
     }
     managedReady++;
+    if(rawReady[id].kind==='OLD_UPDATE_NO_PROOF'){
+      managedOldUpdateNoProof++;
+    }
   });
   if(managedReady!==VAA_QUARANTINE_EXPECTED_.managedReady ||
      totals.OUTSIDE_WITH_LINK!==VAA_QUARANTINE_EXPECTED_.linked ||
@@ -1392,11 +1395,15 @@ function vaaQuarantinePrepare_(props,snapshot){
       }
     }
   });
+  // First production audit found 39 historic UPDATEs in ALL 99 READYs.
+  // Two are currently managed/protected; only 37 belong to outside 97.
+  // Verify both groups rather than treating total historic UPDATE count
+  // as the outside-COPY eligible count.
   const beforeKinds={OLD_UPDATE_NO_PROOF:0,OLD_READY_TARGET:0};
   candidates.forEach(function(x){beforeKinds[x.kind]++;});
-  if(beforeKinds.OLD_UPDATE_NO_PROOF>
-     VAA_QUARANTINE_EXPECTED_.readyOutside ||
-     beforeKinds.OLD_UPDATE_NO_PROOF!==39){
+  if(beforeKinds.OLD_UPDATE_NO_PROOF!==37 ||
+     managedOldUpdateNoProof!==2 ||
+     beforeKinds.OLD_UPDATE_NO_PROOF+managedOldUpdateNoProof!==39){
     throw vaaQuarantineError_('QUARANTINE_KIND_MISMATCH');
   }
   return {
