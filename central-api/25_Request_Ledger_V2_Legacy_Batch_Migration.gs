@@ -1082,3 +1082,500 @@ function vaaLedgerProdResidualLinkageAuditReadOnly(){
   console.log('VAA_RESIDUAL_LINKAGE_AUDIT '+JSON.stringify(out));
   return out;
 }
+
+
+/**
+ * Legacy quarantine v1. Editor-only operators, never invoked by doPost.
+ *
+ * COPY preserves source REQ_ and writes one complete isolated private tab.
+ * COMPACT replaces 97 source values with occupied-key tombstones; it never
+ * deletes REQ_ keys, changes V1/V2 journal, or touches Registry/Viewer.
+ * No automatic retry after an unknown mutation completion.
+ */
+const VAA_QUARANTINE_TAB_='legacy_quarantine_v1';
+const VAA_QUARANTINE_SCHEMA_='LEGACY_QUARANTINE_V1';
+const VAA_QUARANTINE_MARKER_=
+  '{"status":"RETIRED","archiveSchema":"LEGACY_QUARANTINE_V1"}';
+const VAA_QUARANTINE_HEADERS_=[
+  'requestHash','rawJson','rawDigest','sourceKind',
+  'location','archivedAt','schemaVersion'
+];
+const VAA_QUARANTINE_EXPECTED_={
+  readyOutside:97,managedReady:2,errors:4,modern:1,
+  linked:81,unlinked:1,trashed:15
+};
+
+function vaaQuarantineError_(code){
+  const e=new Error(code);e.code=code;return e;
+}
+
+/** Full original READY validation; incomplete old UPDATE has a distinct
+ * strictly defined shape, and is never converted to a replayable receipt.
+ */
+function vaaQuarantineRawKind_(id,raw){
+  vaaLedgerReadyRequestId_(id);
+  let rec;
+  try{rec=JSON.parse(raw);}catch(_){
+    throw vaaQuarantineError_('QUARANTINE_RAW_INVALID');
+  }
+  if(!rec||Array.isArray(rec)||rec.requestId!==id ||
+     rec.status!=='READY'||rec.stage!=='READY'||
+     !String(rec.spreadsheetId||'').trim()){
+    throw vaaQuarantineError_('QUARANTINE_RAW_INVALID');
+  }
+  let kind='OLD_READY_TARGET';
+  try{vaaLedgerReadyValidateRaw_(id,raw);}
+  catch(_){
+    const ok=rec.operationMode==='UPDATE' &&
+      rec.targetSpreadsheetId===rec.spreadsheetId &&
+      !String(rec.updatePayloadDigest||'').trim() &&
+      rec.updateStrategy!=='APPEND'&&rec.updateStrategy!=='REPLACE';
+    if(!ok)throw vaaQuarantineError_('QUARANTINE_RAW_INVALID');
+    kind='OLD_UPDATE_NO_PROOF';
+  }
+  if(rec.leaseUntil){
+    const until=Date.parse(String(rec.leaseUntil));
+    if(!Number.isFinite(until)||until>Date.now()){
+      throw vaaQuarantineError_('QUARANTINE_LEASE_PRESENT');
+    }
+  }
+  return {record:rec,kind:kind};
+}
+
+/** Only authorized private backup workbook; the already configured receipts
+ * tab is opened/validated but NEVER written by this workflow.
+ */
+function vaaQuarantineBook_(props){
+  const verified=vaaLedgerProdLegacyBackupSheet_(props);
+  const book=verified.sheet.getParent();
+  if(!book||!book.getSheetByName){
+    throw vaaQuarantineError_('QUARANTINE_BACKUP_UNVERIFIED');
+  }
+  return {book:book,receipts:verified.sheet};
+}
+
+/** Read all hashed keys once, not 97 independent TextFinder calls. A
+ * candidate overlapping V1 or V2 is unsafe to tombstone.
+ */
+function vaaQuarantineLedgerHashSet_(sheet){
+  let last,hashes;
+  try{
+    last=sheet.getLastRow();
+    if(last<1)throw Error('INVALID');
+    hashes=last===1?[]:
+      sheet.getRange(2,1,last-1,1).getValues();
+  }catch(_){
+    throw vaaQuarantineError_('QUARANTINE_LEDGER_UNAVAILABLE');
+  }
+  const found=Object.create(null);
+  hashes.forEach(function(row){
+    const hash=String(row[0]||'');
+    if(!/^[0-9a-f]{64}$/.test(hash)){
+      throw vaaQuarantineError_('QUARANTINE_LEDGER_INVALID');
+    }
+    found[hash]=true;
+  });
+  return found;
+}
+
+function vaaQuarantineArchiveRead_(book){
+  let sheet;
+  try{sheet=book.getSheetByName(VAA_QUARANTINE_TAB_);}
+  catch(_){throw vaaQuarantineError_('QUARANTINE_TAB_UNAVAILABLE');}
+  if(!sheet)return {exists:false,sheet:null,items:[],byId:Object.create(null)};
+  let values;
+  try{
+    const last=sheet.getLastRow();
+    if(last<1 || last>VAA_QUARANTINE_EXPECTED_.readyOutside+1){
+      throw Error('BAD_ROWS');
+    }
+    values=sheet.getRange(1,1,last,7).getValues();
+  }catch(_){
+    throw vaaQuarantineError_('QUARANTINE_TAB_UNVERIFIED');
+  }
+  if(!VAA_QUARANTINE_HEADERS_.every(function(h,i){
+    return values[0][i]===h;
+  })){
+    throw vaaQuarantineError_('QUARANTINE_HEADER_INVALID');
+  }
+  const items=[],byId=Object.create(null);
+  for(let i=1;i<values.length;i++){
+    const row=values[i];
+    if(!row||row.length!==7||typeof row[1]!=='string'||
+       typeof row[0]!=='string'||
+       typeof row[2]!=='string'||
+       row[6]!==VAA_QUARANTINE_SCHEMA_||
+       (row[3]!=='OLD_UPDATE_NO_PROOF' &&
+        row[3]!=='OLD_READY_TARGET')||
+       ['OUTSIDE_WITH_LINK','OUTSIDE_NO_LINK','TRASHED'].indexOf(row[4])<0 ||
+       typeof row[5]!=='string' || !Number.isFinite(Date.parse(row[5]))){
+      throw vaaQuarantineError_('QUARANTINE_ROW_INVALID');
+    }
+    let parsed;
+    try{parsed=JSON.parse(row[1]);}catch(_){
+      throw vaaQuarantineError_('QUARANTINE_ROW_INVALID');
+    }
+    const id=parsed&&parsed.requestId;
+    if(typeof id!=='string'||byId[id]||
+       row[0]!==vaaLedgerReadyHash_(id) ||
+       row[2]!==vaaLedgerReadyHash_(row[1])){
+      throw vaaQuarantineError_('QUARANTINE_ROW_INVALID');
+    }
+    const original=vaaQuarantineRawKind_(id,row[1]);
+    if(original.kind!==row[3]){
+      throw vaaQuarantineError_('QUARANTINE_ROW_INVALID');
+    }
+    const item={
+      id:id,raw:row[1],record:original.record,kind:original.kind,
+      location:row[4],hash:row[0]
+    };
+    byId[id]=item;
+    items.push(item);
+  }
+  return {exists:true,sheet:sheet,items:items,byId:byId};
+}
+
+function vaaQuarantineLocation_(id,folders,refs,cache){
+  if(folders.ids[id])return 'CURRENT_MANAGED';
+  if(!Object.prototype.hasOwnProperty.call(cache,id)){
+    let state='OUTSIDE';
+    try{
+      const file=DriveApp.getFileById(id);
+      if(typeof file.isTrashed==='function'&&file.isTrashed()){
+        state='TRASHED';
+      }else if(fileIsInManagedOutputTree_(
+        file,API_CONFIG.SHEET_OUTPUT_FOLDER_ID)){
+        throw vaaQuarantineError_('QUARANTINE_FOLDER_ROSTER_CONFLICT');
+      }
+    }catch(err){
+      if(err&&err.code==='QUARANTINE_FOLDER_ROSTER_CONFLICT')throw err;
+      state='CANNOT_OPEN';
+    }
+    cache[id]=state;
+  }
+  if(cache[id]==='TRASHED')return 'TRASHED';
+  return refs.ids[id]?'OUTSIDE_WITH_LINK':'OUTSIDE_NO_LINK';
+}
+
+/** Complete state proof for COPY or COMPACT. All returned private IDs/raw
+ * remain in memory and are NEVER included in the public summary/log.
+ */
+function vaaQuarantinePrepare_(props,snapshot){
+  if(String(props.getProperty(VAA_PROD_LEGACY_MODE_PROP_)||'OFF')!=='OFF'){
+    throw vaaQuarantineError_('QUARANTINE_LEGACY_MODE_NOT_OFF');
+  }
+  vaaLedgerProdAssertScope_(props);
+  const backup=vaaQuarantineBook_(props);
+  const archive=vaaQuarantineArchiveRead_(backup.book);
+  const folders=vaaLedgerResidualFolderSnapshot_();
+  const refs=vaaLedgerResidualReferences_(snapshot);
+  if(!folders.inventoryComplete||!refs.referencesComplete){
+    throw vaaQuarantineError_('QUARANTINE_INVENTORY_UNVERIFIED');
+  }
+  const rawReady=Object.create(null),marked=Object.create(null);
+  let errors=0,modern=0;
+  const prefix=API_CONFIG.REQUEST_PROPERTY_PREFIX;
+  Object.keys(snapshot).sort().forEach(function(key){
+    if(key.indexOf(prefix)!==0)return;
+    const id=key.slice(prefix.length);
+    if(/^QA_JOURNAL_E2E_(CREATE|UPDATE)_/.test(id)){
+      modern++;return;
+    }
+    const raw=snapshot[key];
+    if(raw===VAA_QUARANTINE_MARKER_){
+      marked[id]=true;return;
+    }
+    let rec;
+    try{rec=JSON.parse(raw);}catch(_){
+      throw vaaQuarantineError_('QUARANTINE_SOURCE_INVALID');
+    }
+    if(rec&&rec.status==='ERROR'){
+      errors++;return;
+    }
+    if(!rec||rec.status!=='READY'){
+      throw vaaQuarantineError_('QUARANTINE_SOURCE_INVALID');
+    }
+    rawReady[id]={id:id,raw:raw,...vaaQuarantineRawKind_(id,raw)};
+  });
+  if(errors!==VAA_QUARANTINE_EXPECTED_.errors ||
+     modern!==VAA_QUARANTINE_EXPECTED_.modern){
+    throw vaaQuarantineError_('QUARANTINE_BASELINE_CHANGED');
+  }
+  const archiveItems=archive.exists?archive.items:null;
+  const ids=archiveItems?archiveItems.map(function(x){return x.id;}):
+    Object.keys(rawReady).filter(function(id){
+      return !folders.ids[rawReady[id].record.spreadsheetId];
+    });
+  if(ids.length!==VAA_QUARANTINE_EXPECTED_.readyOutside ||
+     (archiveItems&&Object.keys(archive.byId).length!==ids.length)){
+    throw vaaQuarantineError_('QUARANTINE_BASELINE_CHANGED');
+  }
+  const candidates=[],cache=Object.create(null);
+  const totals={OUTSIDE_WITH_LINK:0,OUTSIDE_NO_LINK:0,TRASHED:0};
+  let rawCount=0,markerCount=0;
+  const idSet=Object.create(null);
+  ids.forEach(function(id){
+    if(idSet[id])throw vaaQuarantineError_('QUARANTINE_DUPLICATE');
+    idSet[id]=true;
+    const item=archiveItems?archive.byId[id]:rawReady[id];
+    if(!item)throw vaaQuarantineError_('QUARANTINE_MISSING_SOURCE');
+    const key=prefix+id;
+    const live=snapshot[key];
+    if(live===undefined){
+      throw vaaQuarantineError_('QUARANTINE_MISSING_SOURCE');
+    }
+    if(live===VAA_QUARANTINE_MARKER_)markerCount++;
+    else if(live===item.raw)rawCount++;
+    else throw vaaQuarantineError_('QUARANTINE_SOURCE_MISMATCH');
+    const loc=vaaQuarantineLocation_(
+      item.record.spreadsheetId,folders,refs,cache
+    );
+    if(!totals.hasOwnProperty(loc) || loc==='CURRENT_MANAGED'){
+      throw vaaQuarantineError_('QUARANTINE_TARGET_NOW_MANAGED');
+    }
+    if(archiveItems&&loc!==item.location){
+      throw vaaQuarantineError_('QUARANTINE_TARGET_LOCATION_CHANGED');
+    }
+    totals[loc]++;
+    candidates.push({
+      id:id,raw:item.raw,record:item.record,kind:item.kind,
+      location:loc,hash:vaaLedgerReadyHash_(id)
+    });
+  });
+  if(Object.keys(marked).length!==markerCount){
+    throw vaaQuarantineError_('QUARANTINE_UNKNOWN_MARKER');
+  }
+  let managedReady=0;
+  Object.keys(rawReady).forEach(function(id){
+    if(idSet[id])return;
+    if(!folders.ids[rawReady[id].record.spreadsheetId]){
+      throw vaaQuarantineError_('QUARANTINE_UNARCHIVED_READY');
+    }
+    managedReady++;
+  });
+  if(managedReady!==VAA_QUARANTINE_EXPECTED_.managedReady ||
+     totals.OUTSIDE_WITH_LINK!==VAA_QUARANTINE_EXPECTED_.linked ||
+     totals.OUTSIDE_NO_LINK!==VAA_QUARANTINE_EXPECTED_.unlinked ||
+     totals.TRASHED!==VAA_QUARANTINE_EXPECTED_.trashed){
+    throw vaaQuarantineError_('QUARANTINE_BASELINE_CHANGED');
+  }
+  const v1=vaaLedgerReadyOpenReadOnly_(props);
+  const v2=vaaLedgerJournalOpenReadOnly_(props).sheet;
+  const conflicts=[
+    vaaQuarantineLedgerHashSet_(v1),
+    vaaQuarantineLedgerHashSet_(backup.receipts),
+    vaaQuarantineLedgerHashSet_(v2)
+  ];
+  candidates.forEach(function(item){
+    if(conflicts.some(function(set){return !!set[item.hash];})){
+      throw vaaQuarantineError_('QUARANTINE_LEDGER_CONFLICT');
+    }
+    if(item.record.operationMode==='UPDATE'){
+      const target=item.record.targetSpreadsheetId;
+      if(props.getProperty(vaaTargetUpdateLeaseKey_(target))){
+        throw vaaQuarantineError_('QUARANTINE_TARGET_LEASE_PRESENT');
+      }
+    }
+  });
+  const beforeKinds={OLD_UPDATE_NO_PROOF:0,OLD_READY_TARGET:0};
+  candidates.forEach(function(x){beforeKinds[x.kind]++;});
+  if(beforeKinds.OLD_UPDATE_NO_PROOF>
+     VAA_QUARANTINE_EXPECTED_.readyOutside ||
+     beforeKinds.OLD_UPDATE_NO_PROOF!==39){
+    throw vaaQuarantineError_('QUARANTINE_KIND_MISMATCH');
+  }
+  return {
+    candidates:candidates,archive:archive,backup:backup,
+    rawCount:rawCount,markerCount:markerCount,
+    managedReady:managedReady,errors:errors,modern:modern,
+    locationTotals:totals,folderCount:folders.folderCount,
+    uniqueManagedSheets:folders.uniqueSheetCount
+  };
+}
+
+function vaaQuarantineSummary_(phase){
+  return {
+    phase:phase,sourceStable:false,
+    archiveVerified:false,strictReadOnly:phase==='PROD_QUARANTINE_AUDIT_READ_ONLY',
+    expectedOutside:VAA_QUARANTINE_EXPECTED_.readyOutside,
+    backedUp:0,rawReady:0,compacted:0,
+    preservedManagedReady:0,preservedErrors:0,modernExcluded:0,
+    copied:0,propertyWrites:0,propertyDeletes:0,
+    archiveWrites:0,requestPosts:0,
+    lockHeld:false,unknownCompletion:false,
+    automaticRetryAuthorized:false,
+    compactAuthorized:false,cleanupAuthorized:false,
+    pass:false,errorStage:'NONE',errorCode:'NONE'
+  };
+}
+function vaaQuarantineSummaryFill_(out,plan){
+  out.backedUp=plan.archive.exists?plan.archive.items.length:0;
+  out.archiveVerified=plan.archive.exists &&
+    plan.archive.items.length===VAA_QUARANTINE_EXPECTED_.readyOutside;
+  out.rawReady=plan.rawCount;
+  out.compacted=plan.markerCount;
+  out.preservedManagedReady=plan.managedReady;
+  out.preservedErrors=plan.errors;
+  out.modernExcluded=plan.modern;
+}
+function vaaQuarantineLog_(out){
+  console.log('VAA_PROD_QUARANTINE '+JSON.stringify(out));
+  return out;
+}
+
+/** Safe after an unknown setValues/setProperties result; never mutates. */
+function vaaLedgerProdQuarantineAuditReadOnly(){
+  const out=vaaQuarantineSummary_('PROD_QUARANTINE_AUDIT_READ_ONLY');
+  let stage='PREPARE';
+  try{
+    const props=PropertiesService.getScriptProperties();
+    const before=props.getProperties();
+    const plan=vaaQuarantinePrepare_(props,before);
+    vaaQuarantineSummaryFill_(out,plan);
+    stage='SOURCE_STABILITY';
+    out.sourceStable=vaaLedgerProdLegacySnapshotsEqual_(
+      before,props.getProperties()
+    );
+    if(!out.sourceStable)throw vaaQuarantineError_('QUARANTINE_SOURCE_CHANGED');
+    out.pass=true;
+    out.errorStage='NONE';
+  }catch(err){
+    out.errorStage=stage;
+    const code=String(err&&err.code||'');
+    out.errorCode=/^QUARANTINE_[A-Z_]+$/.test(code)?code:
+      'QUARANTINE_READ_ONLY_UNVERIFIED';
+  }
+  return vaaQuarantineLog_(out);
+}
+
+/** One explicit administrator invocation. If a tab already exists, it MUST
+ * contain all 97 exact source rows or the operator must investigate.
+ */
+function vaaLedgerProdQuarantineCopyOnce(){
+  const out=vaaQuarantineSummary_('PROD_QUARANTINE_COPY_ONCE');
+  let lock=null,held=false,stage='LOCK';
+  try{
+    lock=LockService.getScriptLock();
+    lock.waitLock(20000);held=true;out.lockHeld=true;
+    const props=PropertiesService.getScriptProperties();
+    const before=props.getProperties();
+    stage='PREPARE';
+    const plan=vaaQuarantinePrepare_(props,before);
+    vaaQuarantineSummaryFill_(out,plan);
+    if(plan.markerCount!==0){
+      throw vaaQuarantineError_('QUARANTINE_ALREADY_COMPACTED');
+    }
+    if(plan.archive.exists){
+      out.archiveVerified=true;
+    }else{
+      stage='CREATE_AND_WRITE_UNCERTAIN';
+      const tab=plan.backup.book.insertSheet(VAA_QUARANTINE_TAB_);
+      const now=new Date().toISOString();
+      const rows=[VAA_QUARANTINE_HEADERS_].concat(
+        plan.candidates.map(function(item){
+          return [item.hash,item.raw,vaaLedgerReadyHash_(item.raw),
+            item.kind,item.location,now,VAA_QUARANTINE_SCHEMA_];
+        })
+      );
+      tab.getRange(1,1,rows.length,7).setValues(rows);
+      SpreadsheetApp.flush();
+      out.archiveWrites=plan.candidates.length;
+      out.copied=plan.candidates.length;
+    }
+    stage='VERIFY_READBACK';
+    const readback=vaaQuarantinePrepare_(props,props.getProperties());
+    vaaQuarantineSummaryFill_(out,readback);
+    if(!out.archiveVerified||readback.markerCount!==0 ||
+       readback.rawCount!==VAA_QUARANTINE_EXPECTED_.readyOutside){
+      throw vaaQuarantineError_('QUARANTINE_COPY_READBACK_FAILED');
+    }
+    stage='SOURCE_STABILITY';
+    out.sourceStable=vaaLedgerProdLegacySnapshotsEqual_(
+      before,props.getProperties()
+    );
+    if(!out.sourceStable)throw vaaQuarantineError_('QUARANTINE_SOURCE_CHANGED');
+    out.pass=true;
+    out.errorStage='NONE';
+  }catch(err){
+    out.errorStage=stage;
+    out.errorCode=String(err&&err.code||'').indexOf('QUARANTINE_')===0?
+      err.code:'QUARANTINE_COPY_UNVERIFIED';
+    out.unknownCompletion=stage==='CREATE_AND_WRITE_UNCERTAIN' ||
+      stage==='VERIFY_READBACK'||stage==='SOURCE_STABILITY';
+  }finally{
+    if(held)try{lock.releaseLock();}catch(_){
+      out.pass=false;out.errorStage='LOCK_RELEASE';
+      out.unknownCompletion=true;
+    }
+  }
+  return vaaQuarantineLog_(out);
+}
+
+/** One explicit administrator invocation AFTER an exact private COPY.
+ * Atomicity is not assumed: if batch write returns unknown, inspect
+ * vaaLedgerProdQuarantineAuditReadOnly; never blindly run it again.
+ */
+function vaaLedgerProdQuarantineCompactOnce(){
+  const out=vaaQuarantineSummary_('PROD_QUARANTINE_COMPACT_ONCE');
+  let lock=null,held=false,stage='LOCK';
+  try{
+    lock=LockService.getScriptLock();
+    lock.waitLock(20000);held=true;out.lockHeld=true;
+    const props=PropertiesService.getScriptProperties();
+    const before=props.getProperties();
+    stage='PREPARE';
+    const plan=vaaQuarantinePrepare_(props,before);
+    vaaQuarantineSummaryFill_(out,plan);
+    if(!plan.archive.exists||!out.archiveVerified ||
+       plan.markerCount!==0 ||
+       plan.rawCount!==VAA_QUARANTINE_EXPECTED_.readyOutside){
+      throw vaaQuarantineError_('QUARANTINE_COMPACT_NOT_READY');
+    }
+    // Recheck that no record changed between the proof and the batch.
+    stage='FINAL_SOURCE_CHECK';
+    if(!vaaLedgerProdLegacySnapshotsEqual_(before,props.getProperties())){
+      throw vaaQuarantineError_('QUARANTINE_SOURCE_CHANGED');
+    }
+    const changes=Object.create(null);
+    const afterExpected=Object.assign({},before);
+    plan.candidates.forEach(function(item){
+      const key=getRequestPropertyKey_(item.id);
+      if(before[key]!==item.raw){
+        throw vaaQuarantineError_('QUARANTINE_SOURCE_MISMATCH');
+      }
+      changes[key]=VAA_QUARANTINE_MARKER_;
+      afterExpected[key]=VAA_QUARANTINE_MARKER_;
+    });
+    // A single Script Properties call reduces time under ScriptLock.
+    // Unknown/partial completion is NOT assumed atomic or auto-retried.
+    stage='COMPACT_WRITE_UNCERTAIN';
+    props.setProperties(changes,false);
+    out.propertyWrites=plan.candidates.length;
+    stage='VERIFY_READBACK';
+    const after=props.getProperties();
+    if(!vaaLedgerProdLegacySnapshotsEqual_(afterExpected,after)){
+      throw vaaQuarantineError_('QUARANTINE_COMPACT_READBACK_FAILED');
+    }
+    const readback=vaaQuarantinePrepare_(props,after);
+    vaaQuarantineSummaryFill_(out,readback);
+    if(!out.archiveVerified ||
+       readback.markerCount!==VAA_QUARANTINE_EXPECTED_.readyOutside ||
+       readback.rawCount!==0){
+      throw vaaQuarantineError_('QUARANTINE_COMPACT_READBACK_FAILED');
+    }
+    out.sourceStable=true;
+    out.pass=true;
+    out.errorStage='NONE';
+  }catch(err){
+    out.errorStage=stage;
+    out.errorCode=String(err&&err.code||'').indexOf('QUARANTINE_')===0?
+      err.code:'QUARANTINE_COMPACT_UNVERIFIED';
+    out.unknownCompletion=stage==='COMPACT_WRITE_UNCERTAIN' ||
+      stage==='VERIFY_READBACK';
+  }finally{
+    if(held)try{lock.releaseLock();}catch(_){
+      out.pass=false;out.errorStage='LOCK_RELEASE';out.unknownCompletion=true;
+    }
+  }
+  return vaaQuarantineLog_(out);
+}
