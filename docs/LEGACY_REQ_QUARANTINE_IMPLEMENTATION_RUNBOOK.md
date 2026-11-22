@@ -1,6 +1,14 @@
 # 旧READY97件の非公開退避と小型REQマーカー化 — 実装・運用手順
 
-更新: 2026-11-22 / 状態: **本番COPY97件・COMPACT97件とも完全照合成功。元REQキーは維持、容量監査のみ未実施。**
+更新: 2026-11-22 / 状態: **本番COPY97件・COMPACT97件・最終読み取り専用容量監査がすべて成功。工程完了。**
+
+## 2026-11-22 最終容量監査：正常完了
+
+- 本番GASの `vaaAuditScriptPropertyCapacityReadOnly` で読み取り専用監査を完了。結果：`strictReadOnly:true`, `estimatedTotalBytes:78932` / `quotaLimitBytes:512000`、使用率 `15.4%`、登録 `246` プロパティ、最大値 `4189` B（値上限9216 B以内）。容量はUTF-8によるキー＋値の推定値でありGoogle側の厳密な使用量ではない。
+- `REQUEST_RECORDS`：104件／推定24171B。内訳は `ready:3`（保護対象2＋V2管理1）、`error:4`、`inProgressOrOther:97`（今回の退避済みRETIREDマーカー97件）、`malformed:0`、`activeLease:0`。マーカー97件には作成日時がないため `missingCreatedAt:97` は期待どおり。
+- 既存 `REPORT_REGISTRY`：43件／36895B、`VIEWER_MAPPINGS`：82件／16908B。今回はどちらも変更・削除していない。
+- 独立非公開バックアップ `legacy_quarantine_v1` に元JSON97件を保存・照合済み。COMPACTで97件すべてのREQ値を小型マーカー化、キー削除0、バックアップ書込0。元のrequestIdでの二重実行防止は維持。
+- **これをもって旧READY97件の退避・軽量化工程は完了。COPY・COMPACTの再実行は不要かつ禁止。** Webアプリの新規デプロイ、旧Viewer/Registry削除、バックアップ整理は本工程に含めない。容量削減のための追加削除は現状必要ではない。
 
 ## 2026-11-22 本番COMPACT完了・次は容量確認のみ
 
