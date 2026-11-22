@@ -4,6 +4,13 @@ Last updated: 2026-11-21
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Residual REQ triage source SYNC completed: 26/26 VERIFIED_MATCH; aggregate read-only GAS execution pending (2026-11-22)
+
+- Operator ran GitHub Actions `Central API sync to GAS` with `confirm=SYNC` on `main` commit `b4151d0`. Preflight read-only difference: 26 remote/26 GitHub scripts, **only file 25 changed**, 25 identical, new 0, unexpected 0. Guard: `LEGACY25_SOURCE_PRECHECK: PINNED_PREVIOUS_PRODUCTION_SOURCE`.
+- The guarded clasp push completed and independent fresh GAS pull verified `POST_SYNC_SOURCE_READBACK: VERIFIED_MATCH`, 26 expected/26 actual, missing 0, unexpected 0, drift 0; source now matches GitHub. Existing Apps Script manifest and non-server files preserved; no new Web App version or deployment, no Script Properties, private Sheets, request ID histories, COPY, RETIRE, or REQ deletions performed by SYNC.
+- **Next operator action (one read-only GAS editor invocation):** reopen production editor and run `vaaLedgerProdResidualReqTriageReadOnly` *once*. Share only aggregate `VAA_RESIDUAL_REQ_TRIAGE` JSON log. Inspect `pass`, `inventoryComplete`, `referencesComplete`, `sourceStable`, counts by source and category, `cleanupAuthorized:false`, and all mutation counters zero. If `pass:false`, investigate without automatically retrying or deleting.
+- Migration mode remains OFF; new V2 READY retirement mode independent and unchanged. 103 historical residual records are **not** authorized for retirement. Audit is to decide whether no-action or isolated archive/replay guard work is justified based on managed-folder membership and registry/viewer references.
+
 ## Residual REQ triage SYNC preflight: source AUDIT 26/26, safe prior-production pin refreshed (2026-11-22)
 
 - Operator ran the GitHub Actions `Central API sync to GAS` **`confirm=AUDIT`** action (read-only). Result: 26 remote GAS scripts, 26 GitHub server scripts, changed **only** `25_Request_Ledger_V2_Legacy_Batch_Migration.gs` (1), identical 25, new 0, extra 0. No remote project/source/properties/sheets/web deployment changes from this AUDIT.
