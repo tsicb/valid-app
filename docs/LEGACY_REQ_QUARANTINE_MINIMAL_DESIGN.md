@@ -51,7 +51,7 @@
 ### コピー対象の確定
 
 - 先行監査と同じ完全な管理フォルダ列挙（共通ルート＋直下サブフォルダ）で、**実行時にも**管理外であることを確認。
-- 候補は元の `status:READY`、旧V2 journal未登録、現在管理外の歴史的REQのみ（見込み **97件**）。うち旧UPDATE39件については現行の `vaaLedgerProdLegacyEntries_` が意図的に隔離する欠落メタデータ形状に限る。
+- 候補は元の `status:READY`、旧V2 journal未登録、現在管理外の歴史的REQのみ（見込み **97件**）。うち旧UPDATEは**管理フォルダ外37件／管理フォルダ内の保護対象2件（全体39件）**。このうち外部37件については現行の `vaaLedgerProdLegacyEntries_` が意図的に隔離する欠落メタデータ形状に限る。
 - 現役フォルダに戻っているシートは元REQを維持し、対象件数の変化があれば事前監査の既知の集計と不一致としてSTOP、判断し直す。
 - ERROR4件、現役READY2件、独立の現代V2 READY1件、QA系IDは対象から除外。
 - 現在のV1 READYアーカイブ、V2ジャーナルに過去IDの不整合がないことを検査する。ソースJSONの完全一致、V1/V2の競合、元REQのlease状態、不正JSON、管理フォルダの取得失敗はSTOP。
@@ -89,3 +89,5 @@
 - 本番GASデータへのCOPY、Script Properties書込・削除、Viewer/Registry変更は **すべて0**。
 
 実装済みの関数、COPY/COMPACTの安全条件、実行結果の確認方法は、[実装運用手順書](LEGACY_REQ_QUARANTINE_IMPLEMENTATION_RUNBOOK.md) を最新版として参照してください。本設計書の「実装予定」「まだしていない」は設計時点の記載で、現時点ではコード作成・隔離テストまで完了しています。本番実行はまだです。
+
+2026-11-22 補正：初回本番COPYは `QUARANTINE_KIND_MISMATCH` でPREPARE停止（REQ変更0・バックアップ書込0）。39件を全退避対象と誤認した実装側の問題を修正済み。37件外部＋保護対象2件＝39件の厳格検証と回帰テストを追加。修正はまだ本番SYNC前です。詳細は[運用手順書](LEGACY_REQ_QUARANTINE_IMPLEMENTATION_RUNBOOK.md)を参照。
