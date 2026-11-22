@@ -4,6 +4,13 @@ Last updated: 2026-11-21
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Second-stage residual linkage audit: production GAS source SYNC VERIFIED_MATCH (2026-11-22)
+
+- Operator completed guarded `Central API sync to GAS` with `confirm=SYNC` at source commit `7a34bb4`. Read-only prepush AUDIT: **26 remote GAS scripts / 26 GitHub server scripts**, source changed **1** (`25_Request_Ledger_V2_Legacy_Batch_Migration.gs`), identical **25**, new **0**, unexpected remote **0**.
+- `LEGACY25_SOURCE_PRECHECK: PINNED_PREVIOUS_PRODUCTION_SOURCE` passed. Post-push independent fresh remote pull: `POST_SYNC_SOURCE_READBACK: VERIFIED_MATCH`; expected **26**, actual **26**, missing **0**, unexpected **0**, content drift **0**. The prior `appsscript.json` and any non-server files were preserved.
+- SYNC updates GAS editor source only: **no Script Properties read/write, REQ deletion, Sheets/Drive data changes, V1/V2 journal mutations, or Web App deployment**. The existing Web App v63 stays in place; no further SYNC/redeploy necessary for this editor-only audit.
+- **Next operator action:** reopen production GAS editor and execute `vaaLedgerProdResidualLinkageAuditReadOnly` **once**. Return aggregate `VAA_RESIDUAL_LINKAGE_AUDIT` JSON. Check `pass:true`, `inventoryComplete:true`, `referencesComplete:true`, `sourceStable:true`, `cleanupAuthorized:false` and all mutation counters `0`. If it fails, do not infer safe deletion or retry blindly; inspect error stage/code. REQ/Registry/Viewer cleanup remains unauthorized pending analysis.
+
 ## Residual 81 linked READY histories: second-stage linkage read-only audit implemented, CI PASS, GAS UNSYNCED (2026-11-22)
 
 - Following the first production aggregate audit (103 old REQ, READY outside-with-link 81 / 131189 estimated bytes, 57 distinct target Spreadsheet IDs across all 103), added **one more editor-only, aggregate-only read-only audit** `vaaLedgerProdResidualLinkageAuditReadOnly` to `central-api/25_Request_Ledger_V2_Legacy_Batch_Migration.gs`. No new GAS files (26 remain); not yet synced into production GAS. Existing `vaaLedgerProdResidualReqTriageReadOnly` and normal doPost behavior remain unchanged.
