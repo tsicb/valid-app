@@ -1,6 +1,15 @@
 # 旧READY97件の非公開退避と小型REQマーカー化 — 実装・運用手順
 
-更新: 2026-11-22 / 状態: **GitHub実装済み、全CI PASS。GAS未SYNC、本番COPY/COMPACT未実行。**
+更新: 2026-11-22 / 状態: **補正コードGitHub実装済み・CI PASS。直前のGAS版でCOPYは事前停止（書込0）、補正版は未SYNC、COMPACT未実行。**
+
+## 2026-11-22 初回COPY停止と修正
+
+- 本番GASエディタで最初の `vaaLedgerProdQuarantineCopyOnce` を1回実行。結果は `pass:false`, `errorStage:PREPARE`, `errorCode:QUARANTINE_KIND_MISMATCH`, `propertyWrites:0`, `propertyDeletes:0`, `archiveWrites:0`, `unknownCompletion:false`。したがって本番元REQ・非公開バックアップタブには変更していない。
+- 原因は実装側が、**全旧UPDATE39件を、管理フォルダ外97件の内訳として誤って要求していた**こと。第1回の本番分類では旧UPDATE39件のうち**2件は管理フォルダ内**、退避対象の旧UPDATEは**37件**だった。
+- 修正では単純に照合を除外せず、`outsideOldUpdateNoProof===37`、`managedOldUpdateNoProof===2`、合計 `39` を必須条件にした。2件は元REQのまま保存し、コピー・置換の対象には含めない。
+- 合成fixtureも37件外部UPDATE＋2件管理内UPDATEに訂正し、外部39件・保護内0件などの誤った構成を拒否する専用回帰テストを追加した。成功した [Central API check #45018486539](https://github.com/tsicb/valid-app/actions/runs/45018486539) により、全Nodeテスト、GAS構文、SHA-256マニフェストを確認済み。
+- SYNCガードの旧本番ソースピンを、今回SYNC済みで実行時に停止した **`f6d213905b6abffe9331ad3c0707020ab3fa63b0`** の25番へ更新した。同期の差分想定は26本中25番のみ。
+- **補正版を本番にSYNCするまでCOPYを再実行しない。COMPACTは引き続き禁止。** 補正SYNCが26/26、identity guard、remote readback VERIFIED_MATCHを満たしてから、COPYだけを改めて1回実行する。COPYのログを確認後でなければCOMPACTへ進まない。
 
 ## 現時点の結論
 
@@ -24,7 +33,7 @@
 
 - 本番移行モードは **OFF**。本番V2ゲートとPRIVATE台帳のスコープが正常であること。
 - 現役管理フォルダ内の旧READY **2件**、既存ERROR **4件**、独立V2管理のREADY **1件**を対象から除外。V2の1件は名前で推測せず、V2ジャーナルの完成済みREADY rev2を照合して確認する。
-- フォルダ外READY **81+1+15=97件**、旧UPDATE（更新digest欠落）**39件**という元監査の内訳が変わっていたら、処理しない。管理フォルダはルート＋直下サブフォルダの全件走査が必須。
+- フォルダ外READY **81+1+15=97件**、そのうち旧UPDATE（更新digest欠落）**37件**、管理フォルダ内の保護対象旧UPDATE **2件**、合計 **39件**という元監査の内訳が変わっていたら、処理しない。管理フォルダはルート＋直下サブフォルダの全件走査が必須。
 - V1正常READY台帳、独立バックアップの既存 `receipts` タブ、V2ジャーナルに候補IDがあれば、コピー・置換とも停止。既存の通常台帳に不完全旧UPDATEを混ぜない。
 - 既存のバックアップタブ・行・ヘッダーの不正、元REQやバックアップのSHA-256不一致・重複・部分書き込み、フォルダ走査不成立、レジストリ/Viewer参照不正、アクティブ更新lease、途中のソース変化で停止。
 - この工程で **REQキー削除0、Viewer/Registry変更0、Webアプリ更新0、V1/V2変更0**。
@@ -56,7 +65,7 @@
 ## 検証・変更履歴
 
 - GitHubで変更した本番GASソース：`central-api/25_Request_Ledger_V2_Legacy_Batch_Migration.gs` **のみ**。新規GASソースなし。通常の受付・Viewer・Registryコード未変更。
-- 合成97件を使用する回帰テスト：`tests/request-ledger-quarantine-compact.test.cjs`。元履歴全件保存・監査、現役2、ERROR4、V2 READY1の保護、旧UPDATE39、CSV由来でない実JSON、重複、ソース変化、Drive移動、V1/V2衝突、ACL障害、書込不明と一部完了などを検査。
+- 合成97件を使用する回帰テスト：`tests/request-ledger-quarantine-compact.test.cjs`。元履歴全件保存・監査、現役2（旧UPDATE2）、ERROR4、V2 READY1の保護、退避対象旧UPDATE37／全体39、CSV由来でない実JSON、重複、ソース変化、Drive移動、V1/V2衝突、ACL障害、書込不明と一部完了などを検査。
 - 既存Webアプリの再送防止も `tests/request-ledger-v2-production-gate.test.cjs` の合成テストで確認済み。
 - 最終GitHub Actions CI: [Central API check #45011803321](https://github.com/tsicb/valid-app/actions/runs/45011803321) — 全Node回帰テスト、GAS構文、SHA-256マニフェスト、Pythonテストが成功。
 - `.github/workflows/central-api-sync.yml` の前回正常SYNCソース不変ピンをコミット `7a34bb4cf3cc45774dd15957888cbdaef7223c09` に更新。25番以外の差分や新規・余分GASスクリプトがあれば、SYNC開始前にブロックする。
