@@ -1201,6 +1201,8 @@ function vaaQuarantineArchiveRead_(book){
   const items=[],byId=Object.create(null);
   for(let i=1;i<values.length;i++){
     const row=values[i];
+    const archivedAt=row&&row[5] instanceof Date?
+      row[5].toISOString():row&&row[5];
     if(!row||row.length!==7||typeof row[1]!=='string'||
        typeof row[0]!=='string'||
        typeof row[2]!=='string'||
@@ -1208,7 +1210,8 @@ function vaaQuarantineArchiveRead_(book){
        (row[3]!=='OLD_UPDATE_NO_PROOF' &&
         row[3]!=='OLD_READY_TARGET')||
        ['OUTSIDE_WITH_LINK','OUTSIDE_NO_LINK','TRASHED'].indexOf(row[4])<0 ||
-       typeof row[5]!=='string' || !Number.isFinite(Date.parse(row[5]))){
+       typeof archivedAt!=='string' ||
+       !Number.isFinite(Date.parse(archivedAt))){
       throw vaaQuarantineError_('QUARANTINE_ROW_INVALID');
     }
     let parsed;
