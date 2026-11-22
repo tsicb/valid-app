@@ -1468,6 +1468,10 @@ function vaaLedgerProdQuarantineCopyOnce(){
     if(plan.archive.exists){
       out.archiveVerified=true;
     }else{
+      stage='FINAL_SOURCE_CHECK';
+      if(!vaaLedgerProdLegacySnapshotsEqual_(before,props.getProperties())){
+        throw vaaQuarantineError_('QUARANTINE_SOURCE_CHANGED');
+      }
       stage='CREATE_AND_WRITE_UNCERTAIN';
       const tab=plan.backup.book.insertSheet(VAA_QUARANTINE_TAB_);
       const now=new Date().toISOString();
@@ -1536,7 +1540,7 @@ function vaaLedgerProdQuarantineCompactOnce(){
     if(!vaaLedgerProdLegacySnapshotsEqual_(before,props.getProperties())){
       throw vaaQuarantineError_('QUARANTINE_SOURCE_CHANGED');
     }
-    const changes=Object.create(null);
+    const changes={};
     const afterExpected=Object.assign({},before);
     plan.candidates.forEach(function(item){
       const key=getRequestPropertyKey_(item.id);
