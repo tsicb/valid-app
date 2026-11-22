@@ -9,6 +9,7 @@ const source=load("central-api/24_Request_Ledger_V2_Production_Gate.gs");
 const bridge=load("central-api/23_Request_Ledger_V2_DoPost_Bridge.gs");
 const core=load("central-api/22_Request_Ledger_V2_Journal.gs");
 const entry=load("central-api/02_EntryPoint.gs");
+const requestTargetSource=load("central-api/04_Request_Target.gs");
 const ID="SAFE_SYNTHETIC_PROD_ID";
 const TARGET="SPREADSHEET_PRIVATE_TOKEN_NOT_TO_LOG";
 const LEDGER="P".repeat(42);
@@ -42,6 +43,9 @@ function harness(options={}){
   };
   if(options.legacy)data["REQ_"+ID]=reqRaw;
   if(options.badLegacy)data["REQ_"+ID]="invalid";
+  if(options.compactTombstone)data["REQ_"+ID]=JSON.stringify({
+    status:"RETIRED",archiveSchema:"LEGACY_QUARANTINE_V1"
+  });
   if(options.fenceOff)delete data.VAA_PROD_LEDGER_FENCE;
   if(options.badConfig)data.VAA_PROD_LEDGER_ROOT_ID="WRONG_ROOT";
   if(options.badJournalMode)data.VAA_REQUEST_JOURNAL_MODE="OFF";
@@ -204,6 +208,36 @@ test("pre-cutover legacy REQ is not registered as a new request",()=>{
   assert.equal(b.decide().state,"LEGACY");
   assert.equal(b.effects.reserve,0);
   // Legacy doPost's existing invalid receipt check then halts.
+});
+test("a compact archived tombstone blocks reused CREATE/UPDATE on existing production v63 path",()=>{
+  // No deployment or new admission guard required: the current gate sees
+  // REQ_ occupancy and refuses to reserve a fresh V2 request.
+  const requestModule=vm.createContext({
+    API_CONFIG:{REQUEST_PROPERTY_PREFIX:"REQ_"}
+  });
+  vm.runInContext(requestTargetSource,requestModule);
+  for(const mode of ["CREATE","UPDATE"]){
+    const h=harness({kind:mode,compactTombstone:true});
+    const original=h.data["REQ_"+ID];
+    const marker=JSON.parse(original);
+    assert.equal(marker.status,"RETIRED");
+    assert.equal(marker.archiveSchema,"LEGACY_QUARANTINE_V1");
+    assert.equal(marker.spreadsheetId,undefined);
+    assert.equal(marker.requestId,undefined);
+    assert.equal(requestModule.getRequestRecord_(h.props,ID),null);
+    const decision=h.decide();
+    assert.equal(decision.state,"LEGACY");
+    assert.equal(h.effects.reserve,0);
+    assert.equal(h.effects.finalize,0);
+    assert.equal(h.effects.deletes,0);
+    assert.equal(h.data["REQ_"+ID],original);
+  }
+  // Prove the existing doPost handler halts on occupied/unreadable REQ_
+  // before attempting the legacy workbook or write route.
+  const blocked=entry.indexOf("if (storedReceiptExists && !requestRecord) {");
+  const error=entry.indexOf("'REQUEST_RECEIPT_UNVERIFIED'",blocked);
+  const legacyWork=entry.indexOf("if (requestRecord) {",blocked);
+  assert.ok(blocked>0 && error>blocked && legacyWork>error);
 });
 test("archived V1 READY replays without REQ and never reserves",()=>{
   const h=harness({old:"FOUND"});
