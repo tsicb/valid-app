@@ -29,7 +29,7 @@ test("postflight performs fresh pull and source verification after push",()=>{
 });
 test("pinned history and synchronization are explicit and separately gated",()=>{
   assert.match(workflow,/0c4be7c5e9e3eb39eafcd341618dacb79797dd36/);
-  assert.match(workflow,/7a34bb4cf3cc45774dd15957888cbdaef7223c09/);
+  assert.match(workflow,/f6d213905b6abffe9331ad3c0707020ab3fa63b0/);
   assert.match(workflow,/VAA_PREVIOUS_PRODUCTION_FILE25=/);
   assert.match(workflow,/verify-central-api-sync.cjs preflight/);
   assert.match(workflow,/confirm.*'SYNC'/);
