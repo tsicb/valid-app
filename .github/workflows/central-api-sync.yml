@@ -190,8 +190,12 @@ jobs:
             'create sheets, or change requestId history.'
           ];
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+          const allowedFile25 = '25_Request_Ledger_V2_Legacy_Batch_Migration';
+          const unexpectedDrift = change.filter(name => name !== allowedFile25);
           fs.appendFileSync(process.env.GITHUB_OUTPUT,
-            'extra_count=' + extra.length + '\n');
+            'extra_count=' + extra.length + '\n' +
+            'new_count=' + add.length + '\n' +
+            'unexpected_change_count=' + unexpectedDrift.length + '\n');
           process.stdout.write(
             'GAS AUDIT: remote=' + actual.size +
             ' expected=' + expected.size + ' changed=' + change.length +
@@ -207,6 +211,20 @@ jobs:
           set -euo pipefail
           if [ "${{ steps.gas_audit.outputs.extra_count }}" != "0" ]; then
             echo "SYNC blocked: unexpected remote GAS source files would be deleted. Run AUDIT and reconcile first." >&2
+            exit 1
+          fi
+
+      - name: Block SYNC if GAS has missing or unapproved source drift
+        if: ${{ inputs.confirm == 'SYNC' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.gas_audit.outputs.new_count }}" != "0" ]; then
+            echo "SYNC blocked: GitHub contains scripts missing from production; review the source inventory." >&2
+            exit 1
+          fi
+          if [ "${{ steps.gas_audit.outputs.unexpected_change_count }}" != "0" ]; then
+            echo "SYNC blocked: source drift outside approved file25; run AUDIT and reconcile first." >&2
             exit 1
           fi
 
