@@ -4,6 +4,13 @@ Last updated: 2026-11-21
 
 This file documents the repository baseline and the latest production-release verification. Older development checkpoints below are historical snapshots and may contain descriptions such as "not deployed" that were true at that earlier date.
 
+## Legacy 97 REQ quarantine manager source SYNC PASS, COPY pending (2026-11-22)
+
+- Operator invoked guarded `Central API sync to GAS` with `confirm=SYNC` at GitHub commit `f6d2139`. Preflight read-only AUDIT found **26 remote / 26 GitHub scripts**, **only `25_Request_Ledger_V2_Legacy_Batch_Migration.gs` changed**, **25 identical**, **0 new**, **0 extra**; `LEGACY25_SOURCE_PRECHECK: PINNED_PREVIOUS_PRODUCTION_SOURCE` succeeded. The independent remote re-pull after clasp push returned `POST_SYNC_SOURCE_READBACK: VERIFIED_MATCH`, **26/26**, missing0, unexpected0, drift0.
+- Only GAS **source** was synchronized; `appsscript.json` and non-server files were preserved. No Web App version/redeploy, Script Properties read/write, backup tab creation, original REQ edits, or Viewer/Registry/V1/V2 mutations. Therefore production COPY and COMPACT **have not happened**.
+- **Next manual action: one editor invocation of `vaaLedgerProdQuarantineCopyOnce` ONLY.** This operation is expected to create/write an isolated `legacy_quarantine_v1` tab in the preconfigured, independently private backup workbook and independently read back all 97 historic READY source JSONs with digest, source kind and target-category matches. Expected: `pass:true`, `sourceStable:true`, `archiveVerified:true`, `backedUp:97`, `rawReady:97`, `compacted:0`, `propertyWrites:0`, `propertyDeletes:0` (and on a first COPY `archiveWrites:97`). If `pass:false` or `unknownCompletion:true`, do not blindly retry; inspect `vaaLedgerProdQuarantineAuditReadOnly` only when advised.
+- `vaaLedgerProdQuarantineCompactOnce` must **NOT** be executed yet. It changes source REQ **values** (not keys) and needs a new explicit instruction after COPY output is independently reviewed. Web App v63 remains on its existing deployed version, and COPY needs no redeploy.
+
 ## Legacy 97 REQ private quarantine COPY/COMPACT: GitHub IMPLEMENTED, CI PASS, PROD UNSYNCED (2026-11-22)
 
 - Implemented editor-only gated full-JSON private archive and compact tombstone workflow by **appending to existing `central-api/25_Request_Ledger_V2_Legacy_Batch_Migration.gs` only**. The 26 GAS server files remain unchanged in number; live `doPost`, 02, 24, normal request/Viewer/Registry interfaces were not altered. This does not require a new Web App version or redeployment.
