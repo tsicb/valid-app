@@ -19,7 +19,7 @@ function fixture(opts={}){
     const id="HISTORIC_"+String(i).padStart(3,"0");
     const target=i<81?"LINKED_"+i:i===81?"UNLINKED":"TRASHED_"+i;
     if(i<81)linked[target]=true;
-    const mode=i<39?"UPDATE":"CREATE";
+    const mode=i<(opts.extraOutsideLegacyUpdate?39:37)?"UPDATE":"CREATE";
     const rec={
       requestId:id,status:"READY",stage:"READY",operationMode:mode,
       spreadsheetId:target,internalSecret:SECRET,
@@ -32,8 +32,13 @@ function fixture(opts={}){
   }
   for(let i=0;i<2;i++){
     const id="CURRENT_"+i;
-    store["REQ_"+id]=JSON.stringify({requestId:id,operationMode:"CREATE",
-      spreadsheetId:"CURRENT_"+i,status:"READY",stage:"READY",secret:SECRET});
+    const managedMode=opts.managedReadyCreate?"CREATE":"UPDATE";
+    store["REQ_"+id]=JSON.stringify({requestId:id,
+      operationMode:managedMode,spreadsheetId:"CURRENT_"+i,
+      ...(managedMode==="UPDATE"?{
+        targetSpreadsheetId:"CURRENT_"+i,
+        updateStrategy:"",updatePayloadDigest:""}:{}),
+      status:"READY",stage:"READY",secret:SECRET});
   }
   for(let i=0;i<4;i++){
     const id="FAILED_"+i;
@@ -410,4 +415,39 @@ test("V2 pending or receipt-mismatched historical-looking ID blocks before archi
     assert.equal(f.effects.archiveAttempts,0);
     assert.equal(f.effects.setPropertiesCalls,0);
   }
+});
+
+test("historical UPDATE classification uses 37 outside plus 2 protected managed",()=>{
+  const f=fixture();
+  const a=f.audit();
+  assert.equal(a.pass,true);
+  const sourceOutside=f.outside.map(id=>JSON.parse(f.full[id]));
+  assert.equal(sourceOutside.filter(x=>x.operationMode==="UPDATE").length,37);
+  for(let i=0;i<2;i++){
+    const rec=JSON.parse(f.store["REQ_CURRENT_"+i]);
+    assert.equal(rec.operationMode,"UPDATE");
+    assert.equal(rec.targetSpreadsheetId,rec.spreadsheetId);
+  }
+  assert.equal(f.copy().pass,true);
+  assert.equal(f.compact().pass,true);
+});
+test("cannot silently admit 39 outside when two managed are also old UPDATE",()=>{
+  const f=fixture({extraOutsideLegacyUpdate:true});
+  assert.equal(f.audit().pass,false);
+  const c=f.copy();
+  assert.equal(c.pass,false);
+  assert.equal(c.errorCode,"QUARANTINE_KIND_MISMATCH");
+  assert.equal(c.errorStage,"PREPARE");
+  assert.equal(f.effects.archiveAttempts,0);
+  assert.equal(f.effects.setPropertiesCalls,0);
+});
+test("cannot lose two protected managed old UPDATEs from the 39 source baseline",()=>{
+  const f=fixture({managedReadyCreate:true});
+  assert.equal(f.audit().pass,false);
+  const c=f.copy();
+  assert.equal(c.pass,false);
+  assert.equal(c.errorCode,"QUARANTINE_KIND_MISMATCH");
+  assert.equal(c.errorStage,"PREPARE");
+  assert.equal(f.effects.archiveAttempts,0);
+  assert.equal(f.effects.setPropertiesCalls,0);
 });
