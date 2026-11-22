@@ -2,6 +2,31 @@
 
 更新: 2026-11-22 / Status: **READ-ONLY AUDIT IMPLEMENTED IN GITHUB — NOT SYNCED TO GAS / 本番データ未変更**
 
+## 第2回監査：登録情報・共有設定との関係をまとめて調べる（GitHub実装済み・本番未SYNC）
+
+2026-11-22 本番の第1回読み取り専用監査 `vaaLedgerProdResidualReqTriageReadOnly` は `pass:true`。残存103件、管理フォルダ内READY2件、フォルダ外READY97件（登録情報関連81・関連なし1・ゴミ箱15）、ERROR4。管理フォルダには6フォルダ・29シートあり、103件の参照先は57種類。既存レジストリ43、Viewer82件、参照JSON破損0。実処理・削除はなし。
+
+この結果から、81件が**81社や81ファイルではなく、複数REQが共通Spreadsheet IDへ紐づく**ため、まず外部に残存する登録情報の重複・関連を把握することにした。そこで `central-api/25_Request_Ledger_V2_Legacy_Batch_Migration.gs` に **`vaaLedgerProdResidualLinkageAuditReadOnly`** を追加（前回と同じ25番ファイルに関数追加のみ、26ファイル構成は変えない）。
+
+### 第2回監査の計測内容
+
+- 管理フォルダ＋直下サブフォルダのGoogle Sheetsを全件走査（既存読み取り専用ヘルパー再使用。500フォルダ・10,000ファイルの安全上限。列挙エラー／不完全は失敗）。
+- 残存REQを既存の厳格なソース判定とV2ジャーナル除外で分類。READYの参照先はSpreadsheet IDで重複集約。ERROR等は数えるが、READYの整理候補から除外する。
+- `RPTREG_` と `VIEWER_` をそれぞれ元JSONのSpreadsheet IDで参照表にし、管理フォルダ内外のユニークなファイル数、対応するREQ件数と推定容量、レジストリのみ／Viewerのみ／両方の差を集計。マッピングのJSON不正やキー不一致は `pass:false`。
+- `linkedReadyByMapping`: `REGISTRY_AND_VIEWER` / `REGISTRY_ONLY` / `VIEWER_ONLY` の **REQ数、重複除外した参照先シート数、推定REQ bytes** を返す。ゴミ箱にあるREQは従来どおり `TRASHED` として分け、この81件相当の群には混ぜない。
+- `mappedTargets`: `CURRENT_MANAGED` / `OUTSIDE_WITH_READY_REQ` / `OUTSIDE_WITHOUT_READY_REQ`。この「OUTSIDE_WITH_READY_REQ」にはゴミ箱内の参照先も含む。列ごとにマッピングの件数（RegistryとViewer）を返す。
+- Viewer側の `lastAccessAt` については、対象のうち日時が存在する数と **過去30日以内の記録がある対象シート数** を匿名集計する。アクセス日時は過去の記録であり、現在アクセスできる証拠・共有が有効な証拠ではない。
+- `OUTSIDE_WITH_LINK` は **管理フォルダの完全な一覧に現在見当たらず、登録情報の参照だけが存在する状態** を表す。物理削除・永久削除済みや他所での使用停止を断定しない。
+- 監査ログは集計値のみ。requestId、Spreadsheet ID、URL、企業名、ソースJSON、アクセストークン、個々のアクセス日時は表示しない。`propertyWrites:0`、`propertyDeletes:0`、`archiveWrites:0`、`requestPosts:0`、`cleanupAuthorized:false`。元Propertiesの実行前後の一致で `sourceStable` を確認する。
+- 同じ26本のGAS構成を維持。テスト `tests/request-ledger-residual-linkage-readonly.test.cjs` で重複集計、古いViewerアクセス日時、誤った参照情報、フォルダ走査失敗、途中のProperties変化、ログ非公開を検査。`central-api/SOURCE_SHA256SUMS.txt` 更新。
+- 低工数化のため **SYNCワークフロー内で自動AUDIT、25番以外の差分・不足・余分なスクリプトがあればSYNCをブロック**する追加ガードを装備。直前の正常SYNC版 `b4151d0` を不変の旧ソース参照として照合する。独立再取得 `VERIFIED_MATCH` まで行うので、問題がない場合は人間側の `confirm=SYNC` 1回とGASエディタで本関数1回で進められる。
+
+### 本番へ反映する場合の確認手順
+
+1. GitHub Actions `Central API sync to GAS` を `branch=main`, `confirm=SYNC` で実行。ワークフロー内部のsource AUDITが26/26、変更25番のみ・新規0・余分0を報告すること、`LEGACY25_SOURCE_PRECHECK: PINNED_PREVIOUS_PRODUCTION_SOURCE`（または `ALREADY_CURRENT`）、事後 `VERIFIED_MATCH` を確認。問題があれば再実行せず停止。**別途AUDITだけを1回行う必要はない。**
+2. 正常SYNC後、GASエディタを開き直して `vaaLedgerProdResidualLinkageAuditReadOnly` を1回実行。ログ `VAA_RESIDUAL_LINKAGE_AUDIT` の `pass:true`, `inventoryComplete:true`, `referencesComplete:true`, `sourceStable:true` と分類件数・0書込を確認。
+3. 結果を見て、整理対象に現役である証拠があるのか、別途隔離/再送禁止措置を実装するかを判断する。**本工程でREQ・Registry・Viewerの削除は一切承認していない。**既存Webアプリの再デプロイも不要。
+
 ## 実装済み（GitHubのみ、未SYNC）
 
 - `central-api/25_Request_Ledger_V2_Legacy_Batch_Migration.gs` に新しい**エディタ専用・読み取り専用**関数 `vaaLedgerProdResidualReqTriageReadOnly` を追加。既存の26本のGAS構成を維持した（新ファイル数0、25番のみ変更）。
