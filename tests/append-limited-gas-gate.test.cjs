@@ -224,3 +224,34 @@ test("stats retain only counts, not applicant identifiers",()=>{
  assert.equal(s.userName,undefined);
  assert.ok(!JSON.stringify(s).includes("private"));
 });
+
+
+test("supplemental candidates for a genuinely NEW applicant are ignored, not rejected",()=>{
+ const h=make();
+ const old=existing([app("山田")],[job()]);
+ const pld=payload([
+   app("佐藤",{job:"J202",date:"2026/11/18 10:00:00",ref:"",flag:0})
+ ],[],extras([{who:"佐藤",job:"J202",status:"面接確定"}]));
+ const result=h.f("VAALimitedAppendMerge").mergeLimited({
+   mode:"APPEND",existing:old,incoming:pld.datasets,
+   candidates:pld.limitedAppendCandidates
+ });
+ assert.equal(result.stats.addedApplications,1);
+ assert.equal(result.stats.finalApplications,2);
+ assert.equal(result.stats.statusUpdatedApplications,0);
+ assert.equal(result.stats.updatedFromSupplementalCandidates,0);
+});
+
+test("GAS script evaluation order does not pre-bind the merge dependency",()=>{
+ const context={};
+ vm.createContext(context);
+ assert.doesNotThrow(()=>vm.runInContext(read("26_Limited_Append.gs"),context));
+ assert.equal(typeof context.VAALimitedAppendMerge.mergeLimited,"function");
+ vm.runInContext(read("11_Append_Merge.gs"),context);
+ const original=existing([app("山田")],[job()]);
+ const next=newData([app("山田")],[job()]);
+ const result=context.VAALimitedAppendMerge.mergeLimited({
+   mode:"APPEND",existing:original,incoming:next
+ });
+ assert.equal(result.stats.finalApplications,1);
+});
