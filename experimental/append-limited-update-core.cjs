@@ -85,9 +85,11 @@ function mergeLimited(input) {
       existingByIdentity.set(str(get(old,row,"応募識別キー")),{row,index});
   });
   const incomingByIdentity=new Map();
+  const allPrimaryByIdentity=new Map();
   inc.rows.forEach(row=>{
     if(!isPerson(str(get(inc,row,"応募識別方式")))) return;
     const identity=str(get(inc,row,"応募識別キー"));
+    if(!allPrimaryByIdentity.has(identity)) allPrimaryByIdentity.set(identity,row);
     if(!existingByIdentity.has(identity)) return;
     if(!incomingByIdentity.has(identity)) incomingByIdentity.set(identity,[]);
     incomingByIdentity.get(identity).push({d:inc,row,sidecar:false});
@@ -113,13 +115,14 @@ function mergeLimited(input) {
         e.code="INVALID_UPDATE_CANDIDATES";throw e;
       }
       const group=incomingByIdentity.get(identity);
-      // A discarded row must be associated with a real uploaded
-      // representative. It cannot invent a new identity.
-      if(!group) {
+      // A discarded row must belong to an actual primary upload, but
+      // brand-new applicants have no saved representative to update.
+      const primaryRow=allPrimaryByIdentity.get(identity);
+      if(!primaryRow) {
         const e=new Error("INVALID_UPDATE_CANDIDATES: no primary applicant");
         e.code="INVALID_UPDATE_CANDIDATES";throw e;
       }
-      const primary=group[0];
+      const primary=group ? group[0] : {d:inc,row:primaryRow};
       const primaryCompany=str(get(primary.d,primary.row,"企業ID")).toUpperCase();
       const extraCompany=str(get(extraApps,row,"企業ID")).toUpperCase();
       const primaryMode=str(get(primary.d,primary.row,"応募識別方式"));
@@ -130,7 +133,8 @@ function mergeLimited(input) {
         const e=new Error("INVALID_UPDATE_CANDIDATES: applicant mismatch");
         e.code="INVALID_UPDATE_CANDIDATES";throw e;
       }
-      group.push({d:extraApps,row,sidecar:true});
+      if(group) group.push({d:extraApps,row,sidecar:true});
+      // New people continue through the ordinary new-row path unchanged.
     });
   }
 
