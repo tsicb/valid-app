@@ -1358,6 +1358,7 @@
         };
         let globalInputFileInfo = [];
         let globalJoinCount = 0;
+        let globalLimitedAppendPotentialJobMatchCount = 0;
         let globalEtlExecutedAt = "";
 
         // Google Sheets API連携状態
@@ -1710,6 +1711,8 @@ function invalidateEtlDerivedStateForCsvChange() {
     };
     globalInputFileInfo = [];
     globalJoinCount = 0;
+    globalLimitedAppendPotentialJobMatchCount = 0;
+    globalLimitedAppendCandidates = null;
     globalEtlExecutedAt = "";
     globalDuplicateCount = 0;
     globalDuplicateData = [];
@@ -4184,6 +4187,25 @@ async function vaaFetchIdentitySecret(accessKey) {
     } finally {
         clearTimeout(timeout);
     }
+}
+
+function vaaCountPotentialDiscardedJobCsvMatches(discarded, jobsByKey) {
+    // Pre-confirmation advisory only: the final encrypted candidate
+    // identity and JOIN proof are verified later by the GAS merge.
+    if (!Array.isArray(discarded) || !(jobsByKey instanceof Map)) return 0;
+    return discarded.filter(row => {
+        const enterprise = getEnterpriseIdFromRow(row).toUpperCase();
+        const jobNo = preprocessKey(row?.["仕事番号"]);
+        return !!enterprise && !!jobNo && jobsByKey.has(enterprise + "_" + jobNo);
+    }).length;
+}
+
+function vaaHasEffectiveJobCsvMatchForUpdate() {
+    return globalJoinCount > 0 || (
+        globalLimitedAppendCapabilityEnabled &&
+        globalLastUpdateStrategy === "APPEND" &&
+        (globalLimitedAppendCandidates?.jobAnalysisMaster?.rows?.length || 0) > 0
+    );
 }
 
 async function vaaApplyApplicationIdentities(accessKey) {
@@ -8486,7 +8508,7 @@ async function createGoogleSpreadsheet({
 
     if (
         jobFileCount > 0 &&
-        globalJoinCount === 0
+        !vaaHasEffectiveJobCsvMatchForUpdate()
     ) {
         if (targetSpreadsheetId) {
             // UPDATE users have already reviewed this warning in the
@@ -13328,6 +13350,11 @@ let viewerTab = targetSpreadsheetId
                 });
 
                 globalJoinCount = matchCount;
+                globalLimitedAppendPotentialJobMatchCount =
+                    globalLimitedAppendCapabilityEnabled &&
+                    globalLastUpdateStrategy === "APPEND"
+                        ? vaaCountPotentialDiscardedJobCsvMatches(duplicateList, mapB)
+                        : 0;
                 globalEtlExecutedAt = new Date().toISOString();
 
                 const etlTransformMs =
@@ -13360,6 +13387,13 @@ msgEl.innerHTML = `
                 </span>
                 <span class="mt-1 text-[11px] text-slate-400">
                     重複除外 ${duplicateCount.toLocaleString()}件 ／ ETL ${timeTaken} ms
+                </span>
+                ${globalLimitedAppendPotentialJobMatchCount > 0
+                    ? ('<span class="mt-1 text-[11px] text-blue-700">除外行の求人突合候補 ' +
+                        globalLimitedAppendPotentialJobMatchCount.toLocaleString() +
+                        '件（保存時に正式照合）</span>')
+                    : ''}
+                <span class="hidden">
                 </span>
             </div>
         `;
@@ -13407,7 +13441,9 @@ msgEl.innerHTML = `
         if (targetSpreadsheetId) {
             stopEtlProcessingOverlay();
             const unmatchedJobWarning =
-                filesB.length > 0 && globalJoinCount === 0;
+                filesB.length > 0 &&
+                globalJoinCount === 0 &&
+                globalLimitedAppendPotentialJobMatchCount === 0;
             const confirmed = await vaaAwaitUpdateConfirmation({
                 mode: globalLastUpdateStrategy,
                 spreadsheetId: targetSpreadsheetId,
