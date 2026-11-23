@@ -111,11 +111,15 @@ function mergeLimited(input) {
   if(extraApps) {
     const required=["応募識別キー","応募識別方式","企業ID","仕事番号",
       "応募日時","対応状況","求人参照ID","求人データ突合フラグ"];
-    for(const col of required) {
-      if(!extraApps.index.has(col)) {
-        const e=new Error("INVALID_UPDATE_CANDIDATES: missing "+col);
-        e.code="INVALID_UPDATE_CANDIDATES";throw e;
-      }
+    if(extraApps.headers.length!==required.length ||
+       required.some((col,i)=>extraApps.headers[i]!==col) ||
+       extraApps.rows.length>100000 ||
+       !extraJobs ||
+       extraJobs.rows.length>100000 ||
+       extraJobs.headers.length!==incJobs.headers.length ||
+       incJobs.headers.some((col,i)=>extraJobs.headers[i]!==col)) {
+      const e=new Error("INVALID_UPDATE_CANDIDATES: schema/row count");
+      e.code="INVALID_UPDATE_CANDIDATES";throw e;
     }
     extraApps.rows.forEach(row=>{
       if(!Array.isArray(row)||row.length!==extraApps.headers.length) {
