@@ -1,7 +1,19 @@
 # 限定更新型APPEND：Pages→GAS接続の実装境界（試験段階）
 
 更新日: 2026-11-23  
-状態: **Draft PR #61 / 検証コードのみ。実際のPages/GAS経路は未接続。**
+状態: **Draft PR #61 / Pages→GASコード接続済み・全て本番未反映。隔離Google実環境でのWeb App/Sheets実行は未検証。**
+
+## 2026-11-24 隔離QA準備
+
+- **合成CSVを使った横断QA**：`tests/append-limited-real-csv-viewer-qa.test.cjs` で現行のCSV正規化、HMAC識別、GAS限定統合プラン、Viewerレコード生成を一貫検証。初回7→APPEND10（ステータス更新＋旧給与保護）、AirWork件数減少、未突合応募1件→後日求人CSV補完＋面接確定、同月CSV_B別応募を確認。
+- **追加架空CSV**：`06_未突合初回応募.csv` / `07_後日補完求人.csv` / `08_別求人先行・更新候補後続.csv`。一切実在の応募者情報を含まない。
+- **誤警告の修正**：代表応募のJOINが0件でも、捨てた応募行の求人突合候補があるときに「求人CSVが使われない」と案内しない。最終的な更新はサーバー側でHMACと同求人キーを再検証する。
+- **GAS入力許可リスト**：追加候補は固定8列のみ、求人候補列は正規求人マスタ列と完全一致、行数上限を厳密に検査。余分な氏名等の列を拒否する。
+- **試験用Workflow**：`isolated-main-gas-qa-sync.yml` にコミット固定のPRブランチを追加。ただし以前のTEST GASに存在する独自QA関数を保護するため、**新規空TEST GAS** 以外は同期を拒否。`build-isolated-pages-preview.yml` は接続先の `LIMITED_APPEND_V1 enabled:true` を必須化。
+- **実環境QA手順と期待値**：[`APPEND_LIMITED_ISOLATED_QA_RUNBOOK.md`](APPEND_LIMITED_ISOLATED_QA_RUNBOOK.md)。
+- **未達**：実Google TEST GASのWeb Appデプロイ、TEST Sheetへの書込み、ブラウザからの実POST/READY照合。本番や既存TESTスクリプトは変更していない。
+
+---
 
 ## 2026-11-23 実装進捗（PR #61内のみ）
 
