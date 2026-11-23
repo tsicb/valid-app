@@ -117,7 +117,8 @@ function mergeLimited(input) {
        !extraJobs ||
        extraJobs.rows.length>100000 ||
        extraJobs.headers.length!==incJobs.headers.length ||
-       incJobs.headers.some((col,i)=>extraJobs.headers[i]!==col)) {
+       new Set(extraJobs.headers).size!==extraJobs.headers.length ||
+       extraJobs.headers.some(col=>!incJobs.index.has(col))) {
       const e=new Error("INVALID_UPDATE_CANDIDATES: schema/row count");
       e.code="INVALID_UPDATE_CANDIDATES";throw e;
     }
