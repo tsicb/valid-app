@@ -170,3 +170,41 @@ test("actual buildSheetsPayloadV3 sends optional sidecar for APPEND only",()=>{
  const created=ctx.buildSheetsPayloadV3("","qa1","");
  assert.equal(Object.hasOwn(created,"limitedAppendProtocol"),false);
 });
+
+
+test("pre-confirm advisory recognizes a real JOB_CSV match on a discarded person row",()=>{
+  const src=cut("function vaaCountPotentialDiscardedJobCsvMatches(",
+    "async function vaaApplyApplicationIdentities(");
+  const ctx={
+    Map,console,
+    getEnterpriseIdFromRow:r=>String(r["企業コード"]||r["企業ID"]||""),
+    preprocessKey:v=>String(v||"").trim().toUpperCase(),
+    globalJoinCount:0,
+    globalLimitedAppendCapabilityEnabled:true,
+    globalLastUpdateStrategy:"APPEND",
+    globalLimitedAppendCandidates:null
+  };
+  vm.createContext(ctx);vm.runInContext(src,ctx);
+  const byJob=new Map([["C01_J101",{source:"JOB_CSV"}]]);
+  assert.equal(ctx.vaaCountPotentialDiscardedJobCsvMatches([
+    {"企業コード":"C01","仕事番号":"J101","氏名":"架空花子"},
+    {"企業コード":"C01","仕事番号":"J999","氏名":"架空太郎"}
+  ],byJob),1);
+  assert.equal(ctx.vaaHasEffectiveJobCsvMatchForUpdate(),false);
+  ctx.globalLimitedAppendCandidates={
+    jobAnalysisMaster:{headers:["求人参照ID"],rows:[["UC000001"]]}
+  };
+  assert.equal(ctx.vaaHasEffectiveJobCsvMatchForUpdate(),true);
+  ctx.globalLastUpdateStrategy="REPLACE";
+  assert.equal(ctx.vaaHasEffectiveJobCsvMatchForUpdate(),false);
+  ctx.globalLastUpdateStrategy="APPEND";
+  ctx.globalLimitedAppendCapabilityEnabled=false;
+  assert.equal(ctx.vaaHasEffectiveJobCsvMatchForUpdate(),false);
+});
+
+test("job-not-found warning remains for truly unmatched CSV, but not a real discarded-row candidate",()=>{
+  assert.match(html,/globalLimitedAppendPotentialJobMatchCount === 0;/);
+  assert.match(html,/!vaaHasEffectiveJobCsvMatchForUpdate\(\)/);
+  assert.match(html,/globalLimitedAppendPotentialJobMatchCount\.toLocaleString\(\)/);
+  assert.match(html,/globalLimitedAppendPotentialJobMatchCount = 0;/);
+});
