@@ -64,7 +64,7 @@ var VAALimitedAppendCandidates = (function () {
         enumerable:false,configurable:true,
         value:{name:str(row["氏名"]),applicantId:str(row["応募者ID"])}
       });
-      return {raw,reduced};
+      return {raw:row,reduced};
     });
     if(temp.length)await identityApi.assign(temp.map(item=>item.reduced),o.secret,o.cryptoProvider);
 
