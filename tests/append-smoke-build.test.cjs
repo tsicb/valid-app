@@ -41,7 +41,7 @@ test("local smoke builder switches both Pages entrypoints without modifying trac
     assert.match(legacy,/旧形式移行テスト専用/);
     assert.match(legacy,/http:\/\/localhost:8765\/__test_api__/);
     assert.ok(!legacy.includes(TEST) && !legacy.includes(PROD));
-    for(const name of ["append-identity-v1.js","analysis-core.js","common-masters-v1.js",
+    for(const name of ["append-identity-v1.js","limited-append-candidates-v1.js","analysis-core.js","common-masters-v1.js",
         "assets/favicon-index.svg","assets/favicon-report.svg"]){
       assert.ok(fs.existsSync(path.join(out,name)),name);
     }
