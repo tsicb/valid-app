@@ -19,7 +19,12 @@ var VAALimitedAppendMerge = (function () {
  * fills its missing JOB_CSV information (same company + normalized job).
  * The source datasets and the existing merge() implementation are untouched.
  */
-const base = VAAAppendMergeCore;
+const base = {
+  // Resolve across GAS script files only when the function is invoked.
+  // File evaluation order must not be a dependency of this feature.
+  jobKey: (...args) => VAAAppendMergeCore.jobKey(...args),
+  merge: (...args) => VAAAppendMergeCore.merge(...args)
+};
 
 function str(value) {
   return value === undefined || value === null ? "" : String(value).trim();
