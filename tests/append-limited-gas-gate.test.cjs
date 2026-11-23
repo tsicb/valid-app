@@ -255,3 +255,33 @@ test("GAS script evaluation order does not pre-bind the merge dependency",()=>{
  });
  assert.equal(result.stats.finalApplications,1);
 });
+
+
+test("GAS rejects an unexpected personal-information column in update evidence",()=>{
+ const h=make(),prior=existing([app("山田")],[job()]);
+ const input=payload([app("山田")],[job()],extras([{who:"山田"}]));
+ input.limitedAppendCandidates.applicationData.headers.push("氏名");
+ input.limitedAppendCandidates.applicationData.rows[0].push("この列は送信禁止");
+ assert.throws(()=>h.f("VAALimitedAppendMerge").mergeLimited({
+   mode:"APPEND",existing:prior,incoming:input.datasets,
+   candidates:input.limitedAppendCandidates
+ }),{code:"INVALID_UPDATE_CANDIDATES"});
+});
+
+test("GAS rejects job evidence with unexpected columns and excess applicant candidates",()=>{
+ const h=make(),prior=existing([app("山田")],[job()]);
+ const input=payload([app("山田")],[job()],extras([{who:"山田"}]));
+ input.limitedAppendCandidates.jobAnalysisMaster.headers.push("メールアドレス");
+ assert.throws(()=>h.f("VAALimitedAppendMerge").mergeLimited({
+   mode:"APPEND",existing:prior,incoming:input.datasets,
+   candidates:input.limitedAppendCandidates
+ }),{code:"INVALID_UPDATE_CANDIDATES"});
+ input.limitedAppendCandidates.jobAnalysisMaster.headers.pop();
+ const template=input.limitedAppendCandidates.applicationData.rows[0];
+ const repeated=Array.from({length:100001},()=>template);
+ input.limitedAppendCandidates.applicationData.rows=repeated;
+ assert.throws(()=>h.f("VAALimitedAppendMerge").mergeLimited({
+   mode:"APPEND",existing:prior,incoming:input.datasets,
+   candidates:input.limitedAppendCandidates
+ }),{code:"INVALID_UPDATE_CANDIDATES"});
+});
