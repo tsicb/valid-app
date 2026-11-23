@@ -181,6 +181,11 @@ const items=updated=>updated.datasets.applicationData.rows.map(r=>({
 const getJob=updated=>updated.datasets.jobAnalysisMaster.rows.find(
   r=>val(updated.datasets.jobAnalysisMaster,r,"仕事番号")==="DEMO_JOB"
 );
+const emptyCandidates=()=>({
+ applicationData:ds(["応募識別キー","応募識別方式","企業ID","仕事番号","応募日時",
+  "対応状況","求人参照ID","求人データ突合フラグ"],[]),
+ jobAnalysisMaster:ds(JOB_HEADERS,[])
+});
 
 test("real synthetic CSV cycle: create 7 → limited append 10, status updates and salary stays original",async()=>{
   const g=makeGAS();
@@ -213,7 +218,7 @@ test("real synthetic CSV cycle: create 7 → limited append 10, status updates a
   assert.equal(val(second.updated.datasets.jobAnalysisMaster,getJob(second.updated),"求人参照ID"),beforeJobId);
   assert.equal(second.plan.payload.limitedAppendCandidates,undefined);
 
-  const third=merge(g,"APPEND",second.updated,newPayload(upload));
+  const third=merge(g,"APPEND",second.updated,newPayload(upload,emptyCandidates()));
   assert.equal(third.plan.stats.finalApplications,10);
   assert.equal(third.plan.stats.addedApplications,0);
   assert.equal(third.plan.stats.statusUpdatedApplications,0);
@@ -309,7 +314,7 @@ test("real fixture CSV_B distinguishes PERSON_ID and does not treat later applic
   const g=makeGAS();
   const first=merge(g,"REPLACE",null,newPayload(jobSource([rows[0]])));
   rows[1]["対応状況"]="面接確定";
-  const second=merge(g,"APPEND",first.updated,newPayload(jobSource([rows[1]])));
+  const second=merge(g,"APPEND",first.updated,newPayload(jobSource([rows[1]]),emptyCandidates()));
   assert.equal(second.plan.stats.addedApplications,0);
   assert.equal(second.plan.stats.statusUpdatedApplications,0);
   assert.equal(second.plan.stats.statusUpdateSkippedDifferentEvent,1);
