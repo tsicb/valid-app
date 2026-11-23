@@ -3,11 +3,33 @@
  * No change to public Viewer authentication or Spreadsheet schema 3.0.
  */
 
+// Disabled in production unless explicitly armed via Script Properties.
+// The feature is opt-in per request; old APPEND/REPLACE signatures are unchanged.
+function vaaLimitedAppendEnabled_() {
+  try {
+    return PropertiesService.getScriptProperties()
+      .getProperty('VAA_LIMITED_APPEND_ENABLED') === 'true';
+  } catch (_) {
+    return false;
+  }
+}
+
+function vaaLimitedAppendRequested_(payload) {
+  return !!payload && (
+    Object.prototype.hasOwnProperty.call(payload,'limitedAppendProtocol') ||
+    Object.prototype.hasOwnProperty.call(payload,'limitedAppendCandidates')
+  );
+}
+
 function vaaUpdateCapabilities_() {
   return {
     updateProtocol: 'IDENTITY_V1',
     updateStrategies: ['APPEND', 'REPLACE'],
-    applicationIdentityVersion: VAAAppendMergeCore.VERSION
+    applicationIdentityVersion: VAAAppendMergeCore.VERSION,
+    limitedAppend: {
+      protocol:'LIMITED_APPEND_V1',
+      enabled:vaaLimitedAppendEnabled_()
+    }
   };
 }
 
@@ -32,19 +54,49 @@ function vaaValidateUpdateProtocol_(payload) {
       '応募識別キーがありません。新しい更新ページでCSVを読み直してください。'
     );
   }
+  if (vaaLimitedAppendRequested_(payload)) {
+    if (strategy !== 'APPEND' ||
+        normalizeString_(payload.limitedAppendProtocol) !==
+          'LIMITED_APPEND_V1' ||
+        !payload.limitedAppendCandidates ||
+        !payload.limitedAppendCandidates.applicationData ||
+        !payload.limitedAppendCandidates.jobAnalysisMaster) {
+      return invalid_(
+        'LIMITED_APPEND_PROTOCOL_INVALID',
+        '限定更新データの形式が一致しません。ページを再読み込みしてください。'
+      );
+    }
+    if (!vaaLimitedAppendEnabled_()) {
+      return invalid_(
+        'LIMITED_APPEND_NOT_ENABLED',
+        '限定更新機能は現在利用できません。通常の差分追加をご利用ください。'
+      );
+    }
+  }
   return {ok:true, strategy:strategy, protocol:protocol};
 }
 
 function vaaDigestUpdateRequest_(payload) {
   // Bound requestId to exactly one uploaded payload and strategy. Digest data
   // never persists the raw applicant CSV or any personally identifying data.
-  const material = JSON.stringify([
+  const baseDigestFields = [
     normalizeString_(payload.updateStrategy).toUpperCase(),
     normalizeString_(payload.updateProtocol),
     normalizeString_(payload.targetSpreadsheetUrl ||
       payload.targetSpreadsheetId),
     payload.datasets
-  ]);
+  ];
+  // Preserve the exact legacy digest material for requests without the
+  // limited protocol. For opted-in requests, bind the one-time candidates
+  // and protocol to the same requestId/replay digest as ordinary datasets.
+  if (vaaLimitedAppendRequested_(payload)) {
+    baseDigestFields.push([
+      normalizeString_(payload.limitedAppendProtocol),
+      payload.limitedAppendCandidates === undefined
+        ? null : payload.limitedAppendCandidates
+    ]);
+  }
+  const material = JSON.stringify(baseDigestFields);
   const bytes = Utilities.computeDigest(
     Utilities.DigestAlgorithm.SHA_256, material, Utilities.Charset.UTF_8
   );
@@ -128,7 +180,14 @@ function vaaSummarizeUpdateStats_(stats) {
     addedJobs: Number(stats.addedJobs || 0),
     finalJobs: Number(stats.finalJobs || 0),
     aggregateDecreaseGroups: Array.isArray(stats.aggregateDecreases)
-      ? stats.aggregateDecreases.length : Number(stats.aggregateDecreaseGroups || 0)
+      ? stats.aggregateDecreases.length : Number(stats.aggregateDecreaseGroups || 0),
+    statusUpdatedApplications: Number(stats.statusUpdatedApplications || 0),
+    statusUpdateSkippedDifferentEvent: Number(stats.statusUpdateSkippedDifferentEvent || 0),
+    statusUpdateSkippedAmbiguous: Number(stats.statusUpdateSkippedAmbiguous || 0),
+    updatedFromSupplementalCandidates: Number(stats.updatedFromSupplementalCandidates || 0),
+    jobPromotedToCsv: Number(stats.jobPromotedToCsv || 0),
+    jobAddedForExistingApplications: Number(stats.jobAddedForExistingApplications || 0),
+    applicationsNewlyMatchedToJobCsv: Number(stats.applicationsNewlyMatchedToJobCsv || 0)
   };
 }
 
