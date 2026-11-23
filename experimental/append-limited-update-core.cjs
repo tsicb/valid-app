@@ -73,6 +73,9 @@ function mergeLimited(input) {
   const old=ds(input.existing.applicationData);
   const inc=ds(input.incoming.applicationData);
   const incJobs=ds(input.incoming.jobAnalysisMaster);
+  const extras=input.candidates || null;
+  const extraApps=extras ? ds(extras.applicationData) : null;
+  const extraJobs=extras ? ds(extras.jobAnalysisMaster) : null;
   const apps=ds(result.applicationData);
   const jobs=ds(result.jobAnalysisMaster);
 
@@ -87,13 +90,75 @@ function mergeLimited(input) {
     const identity=str(get(inc,row,"応募識別キー"));
     if(!existingByIdentity.has(identity)) return;
     if(!incomingByIdentity.has(identity)) incomingByIdentity.set(identity,[]);
-    incomingByIdentity.get(identity).push(row);
+    incomingByIdentity.get(identity).push({d:inc,row,sidecar:false});
   });
+  if(extraApps) {
+    const required=["応募識別キー","応募識別方式","企業ID","仕事番号",
+      "応募日時","対応状況","求人参照ID","求人データ突合フラグ"];
+    for(const col of required) {
+      if(!extraApps.index.has(col)) {
+        const e=new Error("INVALID_UPDATE_CANDIDATES: missing "+col);
+        e.code="INVALID_UPDATE_CANDIDATES";throw e;
+      }
+    }
+    extraApps.rows.forEach(row=>{
+      if(!Array.isArray(row)||row.length!==extraApps.headers.length) {
+        const e=new Error("INVALID_UPDATE_CANDIDATES: bad row width");
+        e.code="INVALID_UPDATE_CANDIDATES";throw e;
+      }
+      const identity=str(get(extraApps,row,"応募識別キー"));
+      const mode=str(get(extraApps,row,"応募識別方式"));
+      if(!isPerson(mode)||!/^I1:[a-f0-9]{64}$/.test(identity)) {
+        const e=new Error("INVALID_UPDATE_CANDIDATES: bad identity");
+        e.code="INVALID_UPDATE_CANDIDATES";throw e;
+      }
+      const group=incomingByIdentity.get(identity);
+      // A discarded row must be associated with a real uploaded
+      // representative. It cannot invent a new identity.
+      if(!group) {
+        const e=new Error("INVALID_UPDATE_CANDIDATES: no primary applicant");
+        e.code="INVALID_UPDATE_CANDIDATES";throw e;
+      }
+      const primary=group[0];
+      const primaryCompany=str(get(primary.d,primary.row,"企業ID")).toUpperCase();
+      const extraCompany=str(get(extraApps,row,"企業ID")).toUpperCase();
+      const primaryMode=str(get(primary.d,primary.row,"応募識別方式"));
+      const primaryDate=exactTime(get(primary.d,primary.row,"応募日時"));
+      const extraDate=exactTime(get(extraApps,row,"応募日時"));
+      if(!primaryCompany||primaryCompany!==extraCompany||primaryMode!==mode ||
+        (primaryDate&&extraDate&&primaryDate.slice(0,7)!==extraDate.slice(0,7))) {
+        const e=new Error("INVALID_UPDATE_CANDIDATES: applicant mismatch");
+        e.code="INVALID_UPDATE_CANDIDATES";throw e;
+      }
+      group.push({d:extraApps,row,sidecar:true});
+    });
+  }
 
   const byJobKey=new Map();
   jobs.rows.forEach(row=>{if(key(jobs,row)) byJobKey.set(key(jobs,row),row);});
   const byProvisionalRef=new Map();
-  incJobs.rows.forEach(row=>byProvisionalRef.set(str(get(incJobs,row,"求人参照ID")),row));
+  incJobs.rows.forEach(row=>{
+    const ref=str(get(incJobs,row,"求人参照ID"));
+    if(ref) byProvisionalRef.set(ref,{d:incJobs,row});
+  });
+  if(extraJobs) {
+    if(!["求人参照ID","企業ID","仕事番号","求人分析情報ソース"].every(h=>extraJobs.index.has(h))) {
+      const e=new Error("INVALID_UPDATE_CANDIDATES: missing job columns");
+      e.code="INVALID_UPDATE_CANDIDATES";throw e;
+    }
+    extraJobs.rows.forEach(row=>{
+      if(!Array.isArray(row)||row.length!==extraJobs.headers.length) {
+        const e=new Error("INVALID_UPDATE_CANDIDATES: bad job row width");
+        e.code="INVALID_UPDATE_CANDIDATES";throw e;
+      }
+      const ref=str(get(extraJobs,row,"求人参照ID"));
+      if(!ref || byProvisionalRef.has(ref)) {
+        const e=new Error("INVALID_UPDATE_CANDIDATES: duplicate job ref");
+        e.code="INVALID_UPDATE_CANDIDATES";throw e;
+      }
+      byProvisionalRef.set(ref,{d:extraJobs,row});
+    });
+  }
   const nextJobId=allocateJobId(jobs.rows,jobs);
 
   const counters={
@@ -102,26 +167,25 @@ function mergeLimited(input) {
     statusUpdateSkippedAmbiguous:0,
     jobPromotedToCsv:0,
     jobAddedForExistingApplications:0,
-    applicationsNewlyMatchedToJobCsv:0
+    applicationsNewlyMatchedToJobCsv:0,
+    updatedFromSupplementalCandidates:0
   };
 
   incomingByIdentity.forEach((group,identity)=>{
-    // The current browser drops later same-person rows before JOIN:
-    // do not act as if those later rows were available to GAS.
-    const candidate=group[0];
     const saved=existingByIdentity.get(identity);
     const oldRow=saved.row;
     const outRow=apps.rows[saved.index];
-    const savedKey=key(old,oldRow), candidateKey=key(inc,candidate);
-    const sameJob=!!savedKey && savedKey===candidateKey;
-    const before=exactTime(get(old,oldRow,"応募日時"));
-    const incomingTime=exactTime(get(inc,candidate,"応募日時"));
-    if(sameJob && before && before===incomingTime) {
-      const statuses=new Set(group
-        .filter(row=>key(inc,row)===savedKey &&
-          exactTime(get(inc,row,"応募日時"))===before)
-        .map(row=>str(get(inc,row,"対応状況")))
-        .filter(Boolean));
+    const savedKey=key(old,oldRow);
+    const savedTime=exactTime(get(old,oldRow,"応募日時"));
+    const isSameJob=c=>!!savedKey && key(c.d,c.row)===savedKey;
+    const sameJob=group.filter(isSameJob);
+    const sameEvent=savedTime
+      ? sameJob.filter(c=>exactTime(get(c.d,c.row,"応募日時"))===savedTime)
+      : [];
+
+    if(sameEvent.length) {
+      const statuses=new Set(sameEvent
+        .map(c=>str(get(c.d,c.row,"対応状況"))).filter(Boolean));
       if(statuses.size>1) {
         counters.statusUpdateSkippedAmbiguous++;
       } else if(statuses.size===1 && apps.index.has("対応状況")) {
@@ -129,25 +193,33 @@ function mergeLimited(input) {
         if(str(get(apps,outRow,"対応状況"))!==value) {
           set(apps,outRow,"対応状況",value);
           counters.statusUpdatedApplications++;
+          if(sameEvent.some(c=>c.sidecar)) counters.updatedFromSupplementalCandidates++;
         }
       }
     } else {
       counters.statusUpdateSkippedDifferentEvent++;
     }
 
-    // Job enrichment is independent of status update, but must be for
-    // the SAME job as the stored representative (never another job).
-    if(!sameJob || str(get(inc,candidate,"求人データ突合フラグ"))!=="1") return;
-    const provisionalRef=str(get(inc,candidate,"求人参照ID"));
-    if(!provisionalRef) return;
-    const jobCandidate=byProvisionalRef.get(provisionalRef);
-    if(!jobCandidate) return;
-    if(key(incJobs,jobCandidate)!==savedKey) invalidRef();
-    if(str(get(incJobs,jobCandidate,"求人分析情報ソース"))!=="JOB_CSV") return;
+    // The source must genuinely JOIN on the SAME job as the saved
+    // representative; another applicant event is permitted for
+    // enrichment, not for status replacement.
+    let proof=null;
+    for(const c of sameJob) {
+      if(str(get(c.d,c.row,"求人データ突合フラグ"))!=="1") continue;
+      const ref=str(get(c.d,c.row,"求人参照ID"));
+      if(!ref) continue;
+      const job=byProvisionalRef.get(ref);
+      if(!job) continue;
+      if(key(job.d,job.row)!==savedKey) invalidRef();
+      if(str(get(job.d,job.row,"求人分析情報ソース"))!=="JOB_CSV") continue;
+      proof=job;
+      break;
+    }
+    if(!proof) return;
 
     let outJob=byJobKey.get(savedKey);
     if(!outJob) {
-      outJob=jobs.headers.map(column=>get(incJobs,jobCandidate,column));
+      outJob=jobs.headers.map(column=>get(proof.d,proof.row,column));
       set(jobs,outJob,"求人参照ID",nextJobId());
       jobs.rows.push(outJob);
       byJobKey.set(savedKey,outJob);
@@ -155,13 +227,14 @@ function mergeLimited(input) {
     } else if(str(get(jobs,outJob,"求人分析情報ソース"))==="APPLICATION_EMBEDDED") {
       jobs.headers.forEach(column=>{
         if(["求人参照ID","企業ID","仕事番号"].includes(column)) return;
-        const val=get(incJobs,jobCandidate,column);
+        const val=get(proof.d,proof.row,column);
         if(str(val)) set(jobs,outJob,column,val);
       });
       set(jobs,outJob,"求人分析情報ソース","JOB_CSV");
       counters.jobPromotedToCsv++;
     }
-    // Existing JOB_CSV, including legacy blank-source master, is immutable.
+    // Existing JOB_CSV, including legacy blank-source master, is
+    // intentionally immutable (no retroactive salary update).
     set(apps,outRow,"求人参照ID",get(jobs,outJob,"求人参照ID"));
     if(str(get(apps,outRow,"求人データ突合フラグ"))!=="1") {
       set(apps,outRow,"求人データ突合フラグ",1);
