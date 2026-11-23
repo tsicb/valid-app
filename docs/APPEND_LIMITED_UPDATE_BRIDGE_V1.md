@@ -3,6 +3,22 @@
 更新日: 2026-11-23  
 状態: **Draft PR #61 / 検証コードのみ。実際のPages/GAS経路は未接続。**
 
+## 2026-11-23 実装進捗（PR #61内のみ）
+
+この文書の「将来接続（まだ実装しない）」という節は最初の設計段階の記録である。
+**現在のドラフトPRには、PagesとGASの接続コードを実装済みだが、本番環境では完全に未有効化**。
+
+- `index.html` と `limited-append-candidates-v1.js`: 認証応答 `capabilities.incrementalUpdate.limitedAppend.enabled === true` かつ APPEND のときだけ、一時候補を生成し `limitedAppendProtocol:LIMITED_APPEND_V1` と `limitedAppendCandidates` を付けて送信。通常の応募件数は変えない。CREATE/REPLACEは既存形式。
+- `central-api/26_Limited_Append.gs`: 純粋統合エンジンをGASへ移植。元の `11_Append_Merge.gs` を変更せず、既存JOB_CSV給与・代表応募の仕事番号とAPP IDを保持する。
+- `central-api/13_Append_Update_Guard.gs`: Script Property `VAA_LIMITED_APPEND_ENABLED` の値が明示的な文字列 `true` でない限り、機能はOFF。機能を要求しているのにOFFなら拒否し、黙って従来APPENDへフォールバックさせない。機能を使う場合だけ候補もrequestIdダイジェストに含める。旧要求のダイジェストは不変。
+- `central-api/12_Append_DataStore.gs`: 一時候補は統合計算にのみ渡し、保存用 `plan.payload` のトップレベルから完全に除外。ステージ関数にも誤混入を拒否する保護を追加。
+- `tests/append-limited-gas-gate.test.cjs` / `tests/append-limited-pages-wiring.test.cjs`: GASの機能OFF/ON、実際のPages関数、requestIdダイジェスト、保存非混入、新規応募者の候補、GASファイル初期化順などを検証。
+- `central-api/SOURCE_SHA256SUMS.txt`: 変更されたGAS 12・13と新規26のハッシュを反映。
+
+**残るゲート:** 実ブラウザからQA用GAS/Web App、QA専用シートへの多ファイルCSV投入、レポート集計確認、ID/給与不変検証、操作ログの確認。本番GASへSYNCせず、本番の `VAA_LIMITED_APPEND_ENABLED` も変更しない。PRはdraftのまま。
+
+---
+
 前提: [APPEND_LIMITED_UPDATE_V1_DESIGN.md](APPEND_LIMITED_UPDATE_V1_DESIGN.md)。応募者・同月・同一企業のI1重複判定を維持。ステータス更新と求人CSV未取得補完だけを対象とする。通常APPEND、REPLACE、AirWork、Viewer、DataStore運用、履歴を遡及更新しない原則を守る。
 
 ## 1. ブランチ上の実証済み部品
