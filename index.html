@@ -4260,7 +4260,9 @@ function vaaAwaitUpdateConfirmation({
     document.getElementById("vaaUpdateConfirmMessage").textContent =
         isReplace ?
         "保存済みの応募・求人分析データを今回のCSVで再構築します。今回のCSVにない過去の応募は分析対象から外れます。分析設定・共有URLは維持します。" :
-        "保存済み応募と求人情報は維持し、未登録の応募と求人だけ追加します。重複件数は保存先と照合したあとに計算します。";
+        (globalLimitedAppendCapabilityEnabled
+            ? "未登録の応募を追加します。同じ応募の対応状況は更新し、未取得だった求人情報は補完します。保存済みの仕事番号や取得済み求人条件は原則維持します。"
+            : "保存済み応募と求人情報は維持し、未登録の応募と求人だけ追加します。重複件数は保存先と照合したあとに計算します。");
     const unmatchedWarning = document.getElementById(
         "vaaUpdateConfirmUnmatchedWarning"
     );
@@ -4720,7 +4722,11 @@ function setAccessKeyUiState(
     globalAccessKeyUiState = state;
     globalAccessKeyVerified =
         state === "ok";
-    if (state !== "ok") globalIncrementalCapabilityAvailable = false;
+    if (state !== "ok") {
+        globalIncrementalCapabilityAvailable = false;
+        globalLimitedAppendCapabilityEnabled = false;
+        globalLimitedAppendCandidates = null;
+    }
 
     if (card) {
         card.dataset.accessState = state;
