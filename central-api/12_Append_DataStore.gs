@@ -6,6 +6,13 @@
  * Source-of-truth: docs/APPEND_UPDATE_IMPLEMENTATION_PLAN_V1.md
  */
 
+function vaaHasLimitedAppendFields_(source) {
+  return !!source && (
+    Object.prototype.hasOwnProperty.call(source, 'limitedAppendProtocol') ||
+    Object.prototype.hasOwnProperty.call(source, 'limitedAppendCandidates')
+  );
+}
+
 function vaaAppendStoreError_(code, message) {
   const error = new Error(message);
   error.code = code;
@@ -46,7 +53,7 @@ function vaaBuildAppendStorePlan_(payload, existingData, strategy) {
       }
     : null;
 
-  const requested = vaaLimitedAppendRequested_(payload);
+  const requested = vaaHasLimitedAppendFields_(payload);
   if (requested && (
       mode !== 'APPEND' ||
       normalizeString_(payload.limitedAppendProtocol) !==
@@ -143,7 +150,7 @@ function vaaStageAppendDataStore_(ss, plan, requestId, expectedSourceFileId) {
   if (!rid) {
     throw vaaAppendStoreError_('INVALID_REQUEST_ID', 'requestIdがありません。');
   }
-  if (vaaLimitedAppendRequested_(plan.payload)) {
+  if (vaaHasLimitedAppendFields_(plan.payload)) {
     throw vaaAppendStoreError_(
       'LIMITED_APPEND_PERSISTENCE_BLOCKED',
       '限定更新の一時データを保存できません。'
