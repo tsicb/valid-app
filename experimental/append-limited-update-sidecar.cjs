@@ -58,7 +58,7 @@ async function buildSidecar(input) {
     });
     return safe;
   });
-  if(temporary.length) await clientIdentity.assign(temporary,input.secret);
+  if(temporary.length) await clientIdentity.assign(temporary,input.secret,input.cryptoProvider);
   const firstJobs=new Map();
   jobRows.forEach(row=>{
     const k=key(row);
