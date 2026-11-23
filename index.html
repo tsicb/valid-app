@@ -15,6 +15,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="./common-masters-v1.js"></script>
 <script src="./append-identity-v1.js"></script>
+<script src="./limited-append-candidates-v1.js"></script>
     <style>
         /* スクロールバー装飾 */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -1382,6 +1383,8 @@ const SHEETS_MAX_AUTO_RESUME_ROUNDS = 12;
         let globalSheetsCreateInFlight = false;
 
         let globalIncrementalCapabilityAvailable = false;
+        let globalLimitedAppendCapabilityEnabled = false;
+        let globalLimitedAppendCandidates = null;
         let globalIdentityKeyVersion = "";
         let globalIdentityStats = null;
         let globalLastUpdateStrategy = "APPEND";
@@ -4092,7 +4095,7 @@ function buildSheetsPayloadV3(accessKey = "", requestId = "", targetSpreadsheetU
 
     const normalizedModel = buildNormalizedSheetsModel();
 
-    return {
+    const payload = {
         schemaVersion: SHEETS_SCHEMA_VERSION,
         requestId: requestId || makeRequestId(),
         accessKey,
@@ -4134,6 +4137,16 @@ function buildSheetsPayloadV3(accessKey = "", requestId = "", targetSpreadsheetU
             imageMasterInitial: buildImageMasterInitialDataset()
         }
     };
+    if (normalizeString(targetSpreadsheetUrl) &&
+        globalLastUpdateStrategy === "APPEND" &&
+        globalLimitedAppendCapabilityEnabled) {
+        if (!globalLimitedAppendCandidates) {
+            throw new Error("限定更新の候補データを準備できませんでした。");
+        }
+        payload.limitedAppendProtocol = "LIMITED_APPEND_V1";
+        payload.limitedAppendCandidates = globalLimitedAppendCandidates;
+    }
+    return payload;
 }
 
 /**
@@ -4174,6 +4187,7 @@ async function vaaFetchIdentitySecret(accessKey) {
 }
 
 async function vaaApplyApplicationIdentities(accessKey) {
+    globalLimitedAppendCandidates = null;
     const secret = await vaaFetchIdentitySecret(accessKey);
     const stats = await VAAClientIdentity.assign(globalFinalData, secret);
     // The upload-level dedupe also uses the exact persisted identity key.
@@ -4182,11 +4196,13 @@ async function vaaApplyApplicationIdentities(accessKey) {
     const seen = new Set();
     let removed = 0;
     let removedMatches = 0;
+    const discardedJoinedRows = [];
     globalFinalData = globalFinalData.filter(row => {
         const key = row.__vaaIdentity?.key;
         if (!key) return true;
         if (seen.has(key)) {
             removed++;
+            discardedJoinedRows.push(row);
             if (Number(row["ファイルB結合フラグ"]) === 1) removedMatches++;
             return false;
         }
@@ -4195,6 +4211,32 @@ async function vaaApplyApplicationIdentities(accessKey) {
     });
     globalDuplicateCount += removed;
     globalJoinCount = Math.max(0, globalJoinCount - removedMatches);
+
+    // Temporary status/job evidence is separate from applicationData.
+    // This only runs when the authenticated GAS capability explicitly
+    // authorizes LIMITED_APPEND_V1; old APIs preserve their old behavior.
+    if (globalLimitedAppendCapabilityEnabled &&
+        globalLastUpdateStrategy === "APPEND") {
+        globalLimitedAppendCandidates = await VAALimitedAppendCandidates.build({
+            discardedRawRows: globalDuplicateData,
+            discardedJoinedRows,
+            primaryRows: globalFinalData,
+            jobRows: globalJobSnapshot,
+            jobHeaders: JOB_ANALYSIS_HEADERS,
+            secret,
+            getCompany: getEnterpriseIdFromRow,
+            jobNo: preprocessKey,
+            formatDate: formatDateTime,
+            buildJobMeta: buildJobAnalysisMeta,
+            buildJobRecord: (meta, ref) => {
+                const projected = {};
+                Object.defineProperty(projected, "__jobAnalysisMeta", {
+                    value: meta, enumerable: false
+                });
+                return buildJobRecordFromJoinedRow(projected, ref);
+            }
+        });
+    }
     return {...stats,duplicateWithinUpload:removed};
 }
 
@@ -5208,6 +5250,10 @@ async function verifyStoredAccessKey(options = {}) {
                     Array.isArray(capability?.updateStrategies) &&
                     capability.updateStrategies.includes("APPEND") &&
                     capability.updateStrategies.includes("REPLACE");
+                globalLimitedAppendCapabilityEnabled =
+                    globalIncrementalCapabilityAvailable &&
+                    capability?.limitedAppend?.enabled === true &&
+                    capability?.limitedAppend?.protocol === "LIMITED_APPEND_V1";
                 if (!globalIncrementalCapabilityAvailable) {
                     setAccessKeyUiState(
                         "incompatible",
