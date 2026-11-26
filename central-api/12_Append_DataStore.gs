@@ -6,6 +6,13 @@
  * Source-of-truth: docs/APPEND_UPDATE_IMPLEMENTATION_PLAN_V1.md
  */
 
+function vaaHasLimitedAppendFields_(source) {
+  return !!source && (
+    Object.prototype.hasOwnProperty.call(source, 'limitedAppendProtocol') ||
+    Object.prototype.hasOwnProperty.call(source, 'limitedAppendCandidates')
+  );
+}
+
 function vaaAppendStoreError_(code, message) {
   const error = new Error(message);
   error.code = code;
@@ -46,27 +53,50 @@ function vaaBuildAppendStorePlan_(payload, existingData, strategy) {
       }
     : null;
 
-  const merge = VAAAppendMergeCore.merge({
+  const requested = vaaHasLimitedAppendFields_(payload);
+  if (requested && (
+      mode !== 'APPEND' ||
+      normalizeString_(payload.limitedAppendProtocol) !==
+        'LIMITED_APPEND_V1' ||
+      !payload.limitedAppendCandidates ||
+      !vaaLimitedAppendEnabled_())) {
+    throw vaaAppendStoreError_(
+      'LIMITED_APPEND_NOT_AUTHORIZED',
+      '限定更新は承認済みの差分追加リクエストのみ利用できます。'
+    );
+  }
+
+  const argumentsForMerge = {
     mode: mode,
     existing: existing,
     incoming: payload.datasets,
     maxRows: API_CONFIG.MAX_DATASET_ROWS
-  });
+  };
+  if (requested) {
+    argumentsForMerge.candidates = payload.limitedAppendCandidates;
+  }
+  const merge = requested
+    ? VAALimitedAppendMerge.mergeLimited(argumentsForMerge)
+    : VAAAppendMergeCore.merge(argumentsForMerge);
 
   const datasets = Object.assign({}, payload.datasets, {
     applicationData: merge.applicationData,
     jobAnalysisMaster: merge.jobAnalysisMaster
   });
 
+  // LIMITED_APPEND_V1 is request-only evidence: never include it in a
+  // DataStore payload, mirror, REQ receipt, or Viewer dataset.
+  const safePayload = Object.assign({}, payload);
+  delete safePayload.limitedAppendCandidates;
+  delete safePayload.limitedAppendProtocol;
+  safePayload.datasets = datasets;
+
   return {
     strategy: mode,
     applicationIdentityVersion: merge.applicationIdentityVersion,
     datasets: datasets,
     stats: merge.stats,
-    // The source payload is never mutated: callers can compare its input rows.
-    payload: Object.assign({}, payload, {
-      datasets: datasets
-    })
+    payload: safePayload
   };
 }
 
@@ -119,6 +149,12 @@ function vaaStageAppendDataStore_(ss, plan, requestId, expectedSourceFileId) {
   const rid = normalizeString_(requestId);
   if (!rid) {
     throw vaaAppendStoreError_('INVALID_REQUEST_ID', 'requestIdがありません。');
+  }
+  if (vaaHasLimitedAppendFields_(plan.payload)) {
+    throw vaaAppendStoreError_(
+      'LIMITED_APPEND_PERSISTENCE_BLOCKED',
+      '限定更新の一時データを保存できません。'
+    );
   }
 
   const dataObject = buildAnalysisDataStoreObject_(
@@ -321,21 +357,20 @@ function vaaExecuteAppendDataStoreUpdate_(ss, payload, requestId, strategy) {
         '同じrequestIdを異なる更新方法で再利用できません。'
       );
     }
+    const safeReplayPayload = Object.assign({}, payload);
+    delete safeReplayPayload.limitedAppendProtocol;
+    delete safeReplayPayload.limitedAppendCandidates;
+    safeReplayPayload.datasets = Object.assign({}, payload.datasets, {
+      applicationData: source.dataObject.datasets.applicationData,
+      jobAnalysisMaster: source.dataObject.datasets.jobAnalysisMaster
+    });
     return {
       plan: {
         strategy: normalizedStrategy,
         applicationIdentityVersion: VAAAppendMergeCore.VERSION,
-        datasets: Object.assign({}, payload.datasets, {
-          applicationData: source.dataObject.datasets.applicationData,
-          jobAnalysisMaster: source.dataObject.datasets.jobAnalysisMaster
-        }),
+        datasets: safeReplayPayload.datasets,
         stats: source.dataObject.updateStats || null,
-        payload: Object.assign({}, payload, {
-          datasets: Object.assign({}, payload.datasets, {
-            applicationData: source.dataObject.datasets.applicationData,
-            jobAnalysisMaster: source.dataObject.datasets.jobAnalysisMaster
-          })
-        })
+        payload: safeReplayPayload
       },
       stage: {
         fileId: source.fileId,

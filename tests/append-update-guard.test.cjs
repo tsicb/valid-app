@@ -62,7 +62,7 @@ test("update strategy is explicit and must carry identity headers",()=>{
 });
 test("capability returns explicit supported protocol",()=>{
   const cap=JSON.parse(JSON.stringify(harness().f("vaaUpdateCapabilities_")()));
-  assert.deepEqual(cap,{updateProtocol:"IDENTITY_V1",updateStrategies:["APPEND","REPLACE"],applicationIdentityVersion:"1"});
+  assert.deepEqual(cap,{updateProtocol:"IDENTITY_V1",updateStrategies:["APPEND","REPLACE"],applicationIdentityVersion:"1",limitedAppend:{protocol:"LIMITED_APPEND_V1",enabled:false}});
 });
 test("a requestId is bound to update strategy and payload content",()=>{
   const h=harness(), p=incoming(), d=h.f("vaaDigestUpdateRequest_")(p);

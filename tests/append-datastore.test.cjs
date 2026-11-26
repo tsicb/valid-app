@@ -48,6 +48,8 @@ function makeHarness(){
   }
   const sandbox={
     VAAAppendMergeCore:core,
+    vaaLimitedAppendRequested_:()=>false,
+    vaaLimitedAppendEnabled_:()=>false,
     API_CONFIG:{MAX_DATASET_ROWS:100000,ANALYSIS_DATASTORE_VERSION:"1.0"},
     normalizeString_:v=>v===undefined||v===null?"":String(v).trim(),
     MimeType:{PLAIN_TEXT:"text/plain"},

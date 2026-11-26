@@ -54,8 +54,9 @@ jobs:
             echo 'Confirmation must be exactly TEST_ONLY.' >&2
             exit 1
           fi
-          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
-            echo 'Only main is permitted; select main in the Run workflow branch dropdown.' >&2
+          if [ "${GITHUB_REF}" != "refs/heads/main" ] &&
+             [ "${GITHUB_REF}" != "refs/heads/feature/append-limited-update-core-v1" ]; then
+            echo 'Only main or the explicitly pinned limited-APPEND QA branch is permitted.' >&2
             exit 1
           fi
           if [[ ! "${EXPECTED_SHA}" =~ ^[0-9a-f]{40}$ ]] ||
@@ -146,6 +147,32 @@ jobs:
           mkdir -p .gas-test
           clasp pull
           test -f .gas-test/appsscript.json
+
+      - name: Fail closed before overwriting pre-existing TEST QA scripts
+        if: github.ref == 'refs/heads/feature/append-limited-update-core-v1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The shared historical TEST project contains custom QA routines.
+          # This limited-APPEND QA push is allowed only into a FRESH empty
+          # standalone TEST project so those routines cannot be destroyed.
+          node - <<'NODE'
+          const fs=require('node:fs'),path=require('node:path');
+          const root='.gas-test';
+          const scripts=fs.readdirSync(root).filter(name=>/\.(gs|js)$/.test(name));
+          if(scripts.length>1 || (scripts.length===1 &&
+             !['Code.gs','Code.js'].includes(scripts[0]))) {
+            throw Error('Isolated limited-APPEND QA requires a NEW blank TEST Script project. Existing TEST source/QA routines must not be overwritten.');
+          }
+          if(scripts.length===1) {
+            const content=fs.readFileSync(path.join(root,scripts[0]),'utf8')
+              .replace(/^\uFEFF/,'').trim();
+            if(content && !/^function\s+myFunction\(\)\s*\{\s*\}\s*;?\s*$/.test(content)) {
+              throw Error('TEST project Code file is not the default empty template. Refusing destructive clasp push.');
+            }
+          }
+          console.log('Verified new empty TEST Apps Script project; no existing QA script overwrite.');
+          NODE
 
       - name: Stage canonical source with test-only Drive folders
         shell: bash

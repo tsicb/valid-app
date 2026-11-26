@@ -34,8 +34,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ "${GITHUB_REF}" != "refs/heads/feature/incremental-update-pages" ]; then
-            echo 'Select feature/incremental-update-pages in Run workflow.' >&2
+          if [ "${GITHUB_REF}" != "refs/heads/feature/incremental-update-pages" ] &&
+             [ "${GITHUB_REF}" != "refs/heads/feature/append-limited-update-core-v1" ]; then
+            echo 'Select an explicitly allowed isolated test branch in Run workflow.' >&2
             exit 1
           fi
           if [ "${TEST_CONFIRM}" != "TEST_ONLY" ]; then
@@ -94,6 +95,13 @@ jobs:
           if (data.rootFolderId !== process.env.EXPECTED_TEST_ROOT ||
               data.sheetOutputFolderId !== process.env.EXPECTED_TEST_OUTPUT) {
             throw Error('Test GAS Drive destinations are not the isolated test folders; refuse to proceed.');
+          }
+          // The draft limited-APPEND branch must never silently fall back to
+          // an older or disabled GAS deployment during browser QA.
+          if (process.env.GITHUB_REF === 'refs/heads/feature/append-limited-update-core-v1' &&
+              (capability?.limitedAppend?.protocol !== 'LIMITED_APPEND_V1' ||
+               capability?.limitedAppend?.enabled !== true)) {
+            throw Error('Limited APPEND must be explicitly enabled on the isolated TEST Web App.');
           }
           console.log('TEST API capability, schema and isolated Drive destinations verified.');
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
@@ -168,6 +176,11 @@ jobs:
           11. Repeat step 10; no new applications should be added.
           12. APPEND: 03_日次数減少応募.csv (should not delete saved records).
           13. REPLACE: 04_全件入れ替え応募.csv + 04_入れ替え求人.csv
+          14. LIMITED_APPEND QA: 06_未突合初回応募.csv (CREATE on a NEW fake company Sheet).
+          15. APPEND: 08_別求人先行・更新候補後続.csv + 07_後日補完求人.csv.
+              Expect unchanged applicant count, updated status, and JOB_CSV salary 1350.
+          16. Repeat step 15; expect zero additional applicants/updates.
+          17. Never run these fixtures against an existing production or old historical TEST company Sheet.
 
           Never upload production applicant files or production access keys.
           This site talks only to the test GAS URL supplied at build time.

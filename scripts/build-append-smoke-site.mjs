@@ -30,7 +30,7 @@ if(test.href===prod) {
 mkdirSync(out,{recursive:true});
 const localEndpoint="http://localhost:8765/__test_api__";
 const sources=["index.html","report.html","common-masters-v1.js","analysis-core.js","append-identity-v1.js",
-  "assets/favicon-index.svg","assets/favicon-index-32.png","assets/favicon-report.svg","assets/favicon-report-32.png"];
+  "limited-append-candidates-v1.js","assets/favicon-index.svg","assets/favicon-index-32.png","assets/favicon-report.svg","assets/favicon-report-32.png"];
 for(const name of sources){
   const src=join(root,name),dest=join(out,name);
   if(!existsSync(src))throw Error("Pages依存ファイルがありません: "+name);
